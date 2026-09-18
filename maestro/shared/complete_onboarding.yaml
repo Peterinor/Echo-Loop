@@ -1,0 +1,14 @@
+# 共享前置条件：仅在已显示首启问卷时完成它；由业务 flow 负责启动并清空状态。
+appId: ${APP_ID}
+---
+- assertVisible: '你练习英语听说的主要目标是什么？|What''s your main goal for improving your English listening & speaking\?'
+- tapOn: ".*(日常交流|Daily conversation).*"
+- assertVisible: '你计划每天练习多久？|How long do you plan to practice each day\?'
+- tapOn: ".*(约 5 分钟|About 5 min).*"
+- assertVisible: '你是从哪里知道我们的？|How did you hear about us\?'
+- scrollUntilVisible:
+    element: ".*(其他|Other).*"
+    direction: DOWN
+- tapOn: ".*(其他|Other).*"
+- assertVisible: '.*(你知道么？|Did you know\?).*'
+- tapOn: ".*(开始学习|Start Practicing).*"

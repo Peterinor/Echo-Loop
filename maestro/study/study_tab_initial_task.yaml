@@ -1,0 +1,14 @@
+# Study Tab 首屏：验证全新用户完成前置设置后，自动进入学习页并展示示例首次学习任务。
+# APP_ID 由 scripts/test_maestro.sh 传入；问卷步骤复用 shared flow，避免与 Study 断言耦合。
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- runFlow: ../shared/complete_onboarding.yaml
+- extendedWaitUntil:
+    visible: "学习任务|Study Tasks"
+    timeout: 15000
+- assertVisible: ".*(首次学习|First Study).*"
+- assertVisible: ".*A1 - Class Information.*"

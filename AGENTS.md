@@ -34,6 +34,9 @@
    - `flutter analyze <改动相关文件>`
    - `flutter test <改动相关测试文件>`
    - 如改动影响 integration 边界，再运行对应 integration 测试
+   - 如改动影响 UI、路由或首启流程，且已有可用模拟器/真机，运行
+     Android 真机优先使用 `scripts/test_maestro_android.sh` 自动构建、安装和测试（多设备时通过 `--device <adb-serial>` 选择）；
+     已安装包或 iOS 使用 `MAESTRO_APP_ID=<目标包名> scripts/test_maestro.sh`；未运行时说明设备或 CLI 阻塞原因
 5. 仅在发版、大范围重构、跨核心模块改动，或用户明确要求时运行 `scripts/check.sh`
 6. 更新 `TASKS.md`（勾选任务并记录完成时间）
 7. 如里程碑状态变化，更新 `PLAN.md`

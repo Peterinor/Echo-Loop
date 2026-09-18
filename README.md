@@ -367,8 +367,17 @@ open -a Simulator
 flutter analyze                          # 静态分析
 flutter test                             # 全部测试
 flutter test integration_test -d macos   # 集成测试
+# Maestro UI 烟测（先启动设备并安装开发包；Android 开发包示例）
+MAESTRO_APP_ID=app.echoloop.dev scripts/test_maestro.sh
+# Android 真机：自动构建、安装 dev 包并运行 Study 测试
+scripts/test_maestro_android.sh
+# 多台设备时，显式指定目标；也可一次性 export MAESTRO_ANDROID_DEVICE=<adb-serial>
+scripts/test_maestro_android.sh --device <adb-serial>
 dart format .                            # 格式化
 ```
+
+> Maestro CLI 安装：`curl -fsSL https://get.maestro.mobile.dev | bash`。iOS 开发包请将
+> `MAESTRO_APP_ID` 改为 `top.echo-loop.dev`；测试流存放在 `maestro/`。
 
 **代码生成**（修改 Riverpod Provider 后）
 

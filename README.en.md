@@ -343,8 +343,17 @@ open -a Simulator
 flutter analyze                          # Static analysis
 flutter test                             # All tests
 flutter test integration_test -d macos   # Integration tests
+# Maestro UI smoke test (start a device and install the dev build first)
+MAESTRO_APP_ID=app.echoloop.dev scripts/test_maestro.sh
+# Android device: build, install the dev build, then run the Study tests
+scripts/test_maestro_android.sh
+# With multiple devices, specify the target; alternatively export MAESTRO_ANDROID_DEVICE=<adb-serial> once
+scripts/test_maestro_android.sh --device <adb-serial>
 dart format .                            # Format
 ```
+
+> Install the Maestro CLI with `curl -fsSL https://get.maestro.mobile.dev | bash`.
+> For the iOS dev build, use `MAESTRO_APP_ID=top.echo-loop.dev`; flows live in `maestro/`.
 
 **Code generation** (after modifying Riverpod providers)
 

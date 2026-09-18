@@ -1,0 +1,9 @@
+# 首启烟测：验证应用完成启动并进入新用户问卷首题。
+# APP_ID 在 scripts/test_maestro.sh 中显式传入，以兼容 Android / iOS 的不同包名。
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+- assertVisible: '你练习英语听说的主要目标是什么？|What''s your main goal for improving your English listening & speaking\?'
