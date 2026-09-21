@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
 import '../models/app_update_info.dart';
@@ -16,6 +17,7 @@ import '../models/learning_progress.dart';
 import '../models/reminder_settings.dart';
 import '../analytics/analytics_providers.dart';
 import '../analytics/models/event_names.dart';
+import '../config/api_config.dart';
 import '../database/providers.dart';
 import '../features/podcast/podcast_refresh_controller.dart';
 import '../features/remote_config/remote_config_providers.dart';
@@ -42,6 +44,7 @@ import '../services/startup_trace.dart';
 import '../services/app_update_launcher.dart';
 import '../services/review_reminder_service.dart';
 import '../services/review_reminder_time_calculator.dart';
+import '../screens/log_viewer_screen.dart';
 import '../providers/new_user_guide_provider.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_update_dialog.dart';
@@ -144,6 +147,23 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
 
     if (!mounted) return;
     await _refreshStudyData(source: 'root-route-resume');
+  }
+
+  /// 打开不依赖数据库的日志页，确保本地数据启动失败时仍可上报根因。
+  void _openStartupLogs() {
+    unawaited(
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(builder: (_) => const LogViewerScreen()),
+      ),
+    );
+  }
+
+  /// 按社区入口的相同规则打开联系我们页面。
+  void _openContactUs() {
+    ref.read(analyticsServiceProvider).track(Events.communityInviteTapped);
+    final isZh = Localizations.localeOf(context).languageCode == 'zh';
+    final path = isZh ? '/zh-CN/social' : '/en/social';
+    unawaited(launchUrl(Uri.parse('$apiBaseUrl$path')));
   }
 
   /// 预热学习页首屏所需数据：音频列表 + 学习进度。
@@ -717,47 +737,9 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
     final l10n = AppLocalizations.of(context)!;
     final startup = ref.watch(localStartupProvider);
 
-    // 保持真实的 MaterialApp 与导航壳实例，但在本地数据尚未安全可读前不插入
-    // StatefulNavigationShell。默认学习页因此不会提前触发数据库查询。
+    // 本地数据初始化仍在加载时暂缓导航，避免与 Drift schema upgrade 并发。
     if (startup.isLoading) {
       return const StartupSplashScreen();
-    }
-    if (startup.hasError) {
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.error_outline,
-                  color: Theme.of(context).colorScheme.error,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  l10n.startupLocalDataErrorTitle,
-                  style: Theme.of(context).textTheme.titleLarge,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  l10n.startupLocalDataErrorMessage,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
-                  onPressed: () => unawaited(
-                    ref.read(localStartupProvider.notifier).retry(),
-                  ),
-                  icon: const Icon(Icons.refresh),
-                  label: Text(l10n.retry),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
     }
 
     return LayoutBuilder(
@@ -765,53 +747,60 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
         final isWideScreen = constraints.maxWidth > 600;
 
         return Scaffold(
-          body: Row(
+          body: Column(
             children: [
-              if (isWideScreen)
-                NavigationRail(
-                  extended: constraints.maxWidth >= 800,
-                  selectedIndex: widget.navigationShell.currentIndex,
-                  onDestinationSelected: _onTabSelected,
-                  destinations: [
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.library_music_outlined),
-                      selectedIcon: const Icon(
-                        Icons.library_music,
-                        color: AppTheme.navActiveColor,
+              if (startup.hasError) _buildStartupDegradedBanner(context, l10n),
+              Expanded(
+                child: Row(
+                  children: [
+                    if (isWideScreen)
+                      NavigationRail(
+                        extended: constraints.maxWidth >= 800,
+                        selectedIndex: widget.navigationShell.currentIndex,
+                        onDestinationSelected: _onTabSelected,
+                        destinations: [
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.library_music_outlined),
+                            selectedIcon: const Icon(
+                              Icons.library_music,
+                              color: AppTheme.navActiveColor,
+                            ),
+                            label: Text(l10n.library),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.school_outlined),
+                            selectedIcon: const Icon(
+                              Icons.school,
+                              color: AppTheme.navActiveColor,
+                            ),
+                            label: Text(l10n.study),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.bookmark_border),
+                            selectedIcon: const Icon(
+                              Icons.bookmark,
+                              color: AppTheme.navActiveColor,
+                            ),
+                            label: Text(l10n.favorites),
+                          ),
+                          NavigationRailDestination(
+                            icon: const Icon(Icons.person_outline),
+                            selectedIcon: const Icon(
+                              Icons.person,
+                              color: AppTheme.navActiveColor,
+                            ),
+                            label: Text(l10n.profile),
+                          ),
+                        ],
                       ),
-                      label: Text(l10n.library),
-                    ),
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.school_outlined),
-                      selectedIcon: const Icon(
-                        Icons.school,
-                        color: AppTheme.navActiveColor,
+                    Expanded(
+                      child: MainTabVisibilityScope(
+                        currentIndex: widget.navigationShell.currentIndex,
+                        rootRouteVisible: _rootRouteVisible,
+                        child: widget.navigationShell,
                       ),
-                      label: Text(l10n.study),
-                    ),
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.bookmark_border),
-                      selectedIcon: const Icon(
-                        Icons.bookmark,
-                        color: AppTheme.navActiveColor,
-                      ),
-                      label: Text(l10n.favorites),
-                    ),
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.person_outline),
-                      selectedIcon: const Icon(
-                        Icons.person,
-                        color: AppTheme.navActiveColor,
-                      ),
-                      label: Text(l10n.profile),
                     ),
                   ],
-                ),
-              Expanded(
-                child: MainTabVisibilityScope(
-                  currentIndex: widget.navigationShell.currentIndex,
-                  rootRouteVisible: _rootRouteVisible,
-                  child: widget.navigationShell,
                 ),
               ),
             ],
@@ -859,6 +848,75 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
                 ),
         );
       },
+    );
+  }
+
+  /// 本地数据失败只影响依赖数据库的功能，首页和诊断入口保持可用。
+  Widget _buildStartupDegradedBanner(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) {
+    final colors = Theme.of(context).colorScheme;
+    return Material(
+      color: colors.errorContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.error_outline, color: colors.onErrorContainer),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        l10n.startupLocalDataErrorTitle,
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: colors.onErrorContainer,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        l10n.startupLocalDataErrorMessage,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onErrorContainer,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton.icon(
+                  onPressed: () => unawaited(
+                    ref.read(localStartupProvider.notifier).retry(),
+                  ),
+                  icon: const Icon(Icons.refresh),
+                  label: Text(l10n.retry),
+                ),
+                TextButton.icon(
+                  onPressed: _openContactUs,
+                  icon: const Icon(Icons.group_outlined),
+                  label: Text(l10n.startupLocalDataContactUs),
+                ),
+                TextButton.icon(
+                  onPressed: _openStartupLogs,
+                  icon: const Icon(Icons.description_outlined),
+                  label: Text(l10n.startupLocalDataViewLogs),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

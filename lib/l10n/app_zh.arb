@@ -1,6 +1,8 @@
 {
-  "startupLocalDataErrorTitle": "无法准备本地学习数据",
-  "startupLocalDataErrorMessage": "你的学习数据未被修改，请重试后继续。",
+  "startupLocalDataErrorTitle": "抱歉，出错了",
+  "startupLocalDataErrorMessage": "数据暂时无法正常加载。请重试；如果问题持续，请联系我们。",
+  "startupLocalDataContactUs": "联系我们",
+  "startupLocalDataViewLogs": "查看日志",
   "playbackFailedTitle": "播放失败",
   "playbackFailedMessage": "请稍后重试。",
   "@@locale": "zh",

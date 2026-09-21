@@ -9,11 +9,17 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get startupLocalDataErrorTitle => 'Could not prepare local data';
+  String get startupLocalDataErrorTitle => 'Sorry, something went wrong';
 
   @override
   String get startupLocalDataErrorMessage =>
-      'Your learning data was not changed. Please retry to continue.';
+      'Your data couldn\'t load normally. Please retry. If the problem persists, contact us.';
+
+  @override
+  String get startupLocalDataContactUs => 'Contact us';
+
+  @override
+  String get startupLocalDataViewLogs => 'View logs';
 
   @override
   String get playbackFailedTitle => 'Playback failed';

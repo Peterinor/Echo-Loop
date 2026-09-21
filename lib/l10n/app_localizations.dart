@@ -101,14 +101,26 @@ abstract class AppLocalizations {
   /// No description provided for @startupLocalDataErrorTitle.
   ///
   /// In en, this message translates to:
-  /// **'Could not prepare local data'**
+  /// **'Sorry, something went wrong'**
   String get startupLocalDataErrorTitle;
 
   /// No description provided for @startupLocalDataErrorMessage.
   ///
   /// In en, this message translates to:
-  /// **'Your learning data was not changed. Please retry to continue.'**
+  /// **'Your data couldn\'t load normally. Please retry. If the problem persists, contact us.'**
   String get startupLocalDataErrorMessage;
+
+  /// No description provided for @startupLocalDataContactUs.
+  ///
+  /// In en, this message translates to:
+  /// **'Contact us'**
+  String get startupLocalDataContactUs;
+
+  /// No description provided for @startupLocalDataViewLogs.
+  ///
+  /// In en, this message translates to:
+  /// **'View logs'**
+  String get startupLocalDataViewLogs;
 
   /// No description provided for @playbackFailedTitle.
   ///

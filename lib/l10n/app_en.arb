@@ -1,6 +1,8 @@
 {
-  "startupLocalDataErrorTitle": "Could not prepare local data",
-  "startupLocalDataErrorMessage": "Your learning data was not changed. Please retry to continue.",
+  "startupLocalDataErrorTitle": "Sorry, something went wrong",
+  "startupLocalDataErrorMessage": "Your data couldn't load normally. Please retry. If the problem persists, contact us.",
+  "startupLocalDataContactUs": "Contact us",
+  "startupLocalDataViewLogs": "View logs",
   "playbackFailedTitle": "Playback failed",
   "playbackFailedMessage": "Please try again later.",
   "@@locale": "en",

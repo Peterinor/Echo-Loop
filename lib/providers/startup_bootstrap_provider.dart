@@ -1,8 +1,7 @@
 /// 标准化应用启动编排。
 ///
-/// 本地数据 gate 使用 Riverpod 的 [AsyncNotifier] 作为唯一状态来源：首帧后
-/// 执行关键本地任务，成功才允许业务导航树创建；可降级任务的失败会保留在
-/// [StartupReport] 中供日志与诊断使用，不会阻断本地学习。
+/// 本地数据初始化使用 Riverpod 的 [AsyncNotifier] 作为唯一状态来源：首帧后
+/// 执行关键本地任务，失败状态供首页降级提示、日志和重试使用，不阻断业务导航壳。
 library;
 
 import 'dart:async';
@@ -92,7 +91,7 @@ final startupBootstrapperProvider = Provider<StartupBootstrapper>((ref) {
   );
 });
 
-/// 本地数据唯一 gate。首次构建先等待首帧，再运行关键本地初始化。
+/// 本地数据初始化状态。首次构建先等待首帧，再运行关键本地初始化。
 final localStartupProvider =
     AsyncNotifierProvider<LocalStartupController, StartupReport>(
       LocalStartupController.new,
@@ -170,7 +169,7 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
   final bool _isDemoMode;
   final AnalyticsService _analyticsService;
 
-  /// 执行业务导航前必须完成的本地任务。
+  /// 执行本地数据初始化；失败会向上抛出，由首页以降级状态承接。
   @override
   Future<StartupReport> initializeLocal() async {
     final issues = <StartupIssue>[];
