@@ -7,7 +7,7 @@ part of 'monthly_study_records_provider.dart';
 // **************************************************************************
 
 String _$monthlyStudyRecordsHash() =>
-    r'2d882e241fd8aaf41c56f6f1a40e9b6fa2abe2ff';
+    r'a631f8f24ccbf00184ba59c4c3afe568be617279';
 
 /// Copied from Dart SDK
 class _SystemHash {

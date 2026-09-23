@@ -7,7 +7,7 @@ part of 'review_statistics_provider.dart';
 // **************************************************************************
 
 String _$reviewStatisticsNotifierHash() =>
-    r'85960f70b1d67fb44f4b8e6a6192ae6548e04b63';
+    r'156bf95798451cd3f095e2789e2b20cd7440825f';
 
 /// See also [ReviewStatisticsNotifier].
 @ProviderFor(ReviewStatisticsNotifier)

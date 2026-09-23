@@ -117,9 +117,9 @@ class AppTheme {
       ? _premiumStatusExpiringDark
       : _premiumStatusExpiringLight;
 
-  /// 语义色：官方合集角标（深橙金色，对应"认证/精选"的通用视觉）
+  /// 语义色：社区合集角标（深橙金色，对应社区内容的通用视觉）
   /// 选 Material Orange 800：白字对比足够，区别于品牌蓝、不会与封面同色系混淆
-  static const Color officialBadgeColor = Color(0xFFEF6C00);
+  static const Color communityBadgeColor = Color(0xFFEF6C00);
 
   /// 设置类底部弹窗的分组卡片背景色。
   ///

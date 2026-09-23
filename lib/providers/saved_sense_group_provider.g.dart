@@ -160,7 +160,7 @@ class _IsSenseGroupSavedProviderElement
 }
 
 String _$savedSenseGroupListHash() =>
-    r'222bfc6bb5bb1cb9990e6f226ae0fd0cd1fb092a';
+    r'd993a9c93877a195673990d5e7b6a6e399db19fd';
 
 /// 收藏意群列表 Provider（流式）
 ///

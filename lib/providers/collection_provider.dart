@@ -166,8 +166,8 @@ class CollectionList extends _$CollectionList {
         audioIdsMap[c.id] = await dao.getAudioIds(c.id);
       }
 
-      final localCount = collections.where((c) => !c.isOfficial).length;
-      final officialCount = collections.where((c) => c.isOfficial).length;
+      final localCount = collections.where((c) => !c.isCommunity).length;
+      final communityCount = collections.where((c) => c.isCommunity).length;
       final deprecatedCount = collections.where((c) => c.isDeprecated).length;
       final linkedAudioCount = audioIdsMap.values.fold<int>(
         0,
@@ -176,7 +176,7 @@ class CollectionList extends _$CollectionList {
       AppLogger.log(
         'StartupLoad',
         'collections mapped: visible=${collections.length}, local=$localCount, '
-            'official=$officialCount, deprecated=$deprecatedCount, '
+            'community=$communityCount, deprecated=$deprecatedCount, '
             'linkedAudios=$linkedAudioCount',
       );
 

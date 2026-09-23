@@ -39,7 +39,7 @@ class AudioRegistrationService {
       );
       if (existingResult != null) return existingResult;
     } else {
-      // 无原始内容指纹（老数据/官方音频）退回按名去重。
+      // 无原始内容指纹（老数据/社区音频）退回按名去重。
       final existingResult = await registerExistingAudioByName(
         name: input.name,
         audioLibraryState: audioLibraryState,

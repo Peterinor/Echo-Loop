@@ -45,12 +45,12 @@ class _CollectionDetailScreenState
   /// 多选模式下已选中的音频 id 集合。
   final Set<String> _selectedIds = {};
 
-  /// 官方合集的排序状态，页面内独立持有（不走全局 audioListSettingsProvider，
-  /// 避免污染资源库 / 用户自建合集的排序偏好）。首次打开默认「官方编排顺序」。
-  AudioSortType _officialSort = AudioSortType.custom;
+  /// 社区合集的排序状态，页面内独立持有（不走全局 audioListSettingsProvider，
+  /// 避免污染资源库 / 用户自建合集的排序偏好）。首次打开默认「社区编排顺序」。
+  AudioSortType _communitySort = AudioSortType.custom;
 
-  /// 官方合集排序菜单的可选项
-  static const _officialAllowedSorts = [
+  /// 社区合集排序菜单的可选项
+  static const _communityAllowedSorts = [
     AudioSortType.custom,
     AudioSortType.nameAsc,
     AudioSortType.nameDesc,
@@ -83,8 +83,8 @@ class _CollectionDetailScreenState
 
     final hasAudioItems = audioItems.isNotEmpty;
 
-    // 仅用户自建合集允许多选删除；官方 / 播客合集音频由后端 / RSS 管理，禁止增删。
-    final canMultiSelect = !collection.isOfficial && !collection.isPodcast;
+    // 仅用户自建合集允许多选删除；社区 / 播客合集音频由后端 / RSS 管理，禁止增删。
+    final canMultiSelect = !collection.isCommunity && !collection.isPodcast;
     // 当前列表的 id 集合，用于全选判断与剔除已失效选中项。
     final currentIds = audioItems.map((a) => a.id).toSet();
 
@@ -101,7 +101,7 @@ class _CollectionDetailScreenState
       flows: [
         GuideFlow(
           flowId: GuideFlowIds.collectionDetailUpload,
-          shouldRun: !collection.isOfficial && !collection.isPodcast,
+          shouldRun: !collection.isCommunity && !collection.isPodcast,
           steps: [stepUpload],
         ),
         GuideFlow(
@@ -122,18 +122,18 @@ class _CollectionDetailScreenState
               : AppBar(
                   title: Text(collection.name),
                   actions: [
-                    // 官方合集：独立 sort state + 5 项菜单（默认 / 名称×2 / 原始发布×2）
+                    // 社区合集：独立 sort state + 5 项菜单（默认 / 名称×2 / 原始发布×2）
                     // 用户合集：保持现状 —— 4 项默认菜单 + 全局 provider
-                    if (collection.isOfficial)
+                    if (collection.isCommunity)
                       AudioSortButton(
-                        allowedTypes: _officialAllowedSorts,
-                        current: _officialSort,
-                        onChanged: (t) => setState(() => _officialSort = t),
+                        allowedTypes: _communityAllowedSorts,
+                        current: _communitySort,
+                        onChanged: (t) => setState(() => _communitySort = t),
                       )
                     else
                       const AudioSortButton(),
-                    // 官方合集 / podcast 合集禁止手动添加/删除音频，按钮隐藏
-                    if (!collection.isOfficial && !collection.isPodcast)
+                    // 社区合集 / podcast 合集禁止手动添加/删除音频，按钮隐藏
+                    if (!collection.isCommunity && !collection.isPodcast)
                       GuideTarget(
                         step: stepUpload,
                         child: IconButton(
@@ -161,8 +161,8 @@ class _CollectionDetailScreenState
                   collectionId: widget.collectionId,
                   guideFirstAudioMenu: hasAudioItems,
                   menuGuideStep: stepAudioMenu,
-                  overrideSortType: collection.isOfficial
-                      ? _officialSort
+                  overrideSortType: collection.isCommunity
+                      ? _communitySort
                       : null,
                   // 仅用户自建合集启用多选删除。
                   selectionMode: canMultiSelect && _selectionMode,
@@ -173,14 +173,14 @@ class _CollectionDetailScreenState
                   onToggleSelection: canMultiSelect
                       ? (id) => _toggleSelect(id)
                       : null,
-                  emptyState: collection.isOfficial
+                  emptyState: collection.isCommunity
                       ? Center(
                           child: Text(
                             // 区分「已下架」vs「暂无音频」：前者是后端主动下线，后者
                             // 是合集刚建还没上内容，两种文案语义不同不能复用。
                             collection.isDeprecated
-                                ? l10n.officialCollectionDeprecated
-                                : l10n.officialCollectionEmpty,
+                                ? l10n.communityCollectionDeprecated
+                                : l10n.communityCollectionEmpty,
                             textAlign: TextAlign.center,
                           ),
                         )
@@ -399,7 +399,7 @@ class _PodcastCollectionBody extends StatelessWidget {
                     height: MediaQuery.of(context).size.height * 0.5,
                     child: Center(
                       child: Text(
-                        l10n.officialCollectionEmpty,
+                        l10n.communityCollectionEmpty,
                         textAlign: TextAlign.center,
                       ),
                     ),

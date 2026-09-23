@@ -543,8 +543,8 @@ class TranscriptionTaskManager extends _$TranscriptionTaskManager {
     // ── 转码（best-effort）──
     // 新流程：导入保留原始音频，转录上传原始；拿到字幕后顺带把原始转码为 m4a。
     // 转码失败静默处理：仍保存字幕、保留原始音频，避免转码 bug 把音频挡在学习外。
-    // 仅对「尚未转码的用户导入」执行：remoteAudioId==null（非官方）且
-    // audioSha256==originalAudioSha256（存的还是原始文件）。老数据/已转码/官方跳过。
+    // 仅对「尚未转码的用户导入」执行：remoteAudioId==null（非社区）且
+    // audioSha256==originalAudioSha256（存的还是原始文件）。老数据/已转码/社区跳过。
     //
     // 视频条目必须跳过：transcodeExisting 只保留音轨转 m4a，会把视频转成纯音频、
     // 丢掉画面并令 isVideo 派生失真。视频永远保留原始文件（后续要真实播放视频）。

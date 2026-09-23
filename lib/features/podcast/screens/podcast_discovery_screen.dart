@@ -1,7 +1,7 @@
 /// Podcast 搜索与订阅统一页（全屏）。
 ///
-/// 「发现精选合集」与「创建合集 → 订阅 Podcast」两个入口收敛到本页：
-/// - 搜索框为空 → 展示精选播客（[discoverPodcastsProvider]）。
+/// 「发现资源」与「创建合集 → 订阅 Podcast」两个入口收敛到本页：
+/// - 搜索框为空 → 展示精选 Podcast（[discoverPodcastsProvider]）；
 /// - 输入关键词 → Apple iTunes Search（[podcastSearchResultsProvider]，350ms 防抖）。
 /// - 粘贴 http/https 链接 → 解析该链接对应的播客并显示为可点 item（[podcastPreviewProvider]），
 ///   **不直接订阅**，点「+」才订阅。
@@ -23,8 +23,8 @@ import '../../../router/app_router.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/common/form_input_style.dart';
 import '../../auth/sign_in_required_dialog.dart';
-import '../../official_collections/data/trigger_official_sync.dart';
-import '../../official_collections/providers/discover_podcasts_provider.dart';
+import '../data/trigger_podcast_catalog_refresh.dart';
+import '../providers/discover_podcasts_provider.dart';
 import '../podcast_models.dart';
 import '../podcast_preview_provider.dart';
 import '../podcast_repository.dart';
@@ -43,14 +43,14 @@ class _PodcastDiscoveryScreenState
     extends ConsumerState<PodcastDiscoveryScreen> {
   final _searchController = TextEditingController();
 
-  /// 防抖后的查询词（已 trim）；驱动搜索/精选/链接模式切换。
+  /// 防抖后的查询词（已 trim）；驱动精选、搜索和链接模式切换。
   String _query = '';
   Timer? _debounce;
 
-  /// 精选 catalog 未初始化时惰性触发一次同步，避免重复触发。
-  bool _syncTriggered = false;
+  /// 精选 catalog 尚未初始化时只触发一次后台加载。
+  bool _catalogSyncTriggered = false;
 
-  /// 正在订阅中的列表项标识集合（CatalogPodcast.id / PodcastSearchResult.id /
+  /// 正在订阅中的列表项标识集合（PodcastSearchResult.id /
   /// 链接模式的 feedUrl），驱动对应 tile 的 loading 态，防竞态。
   final Set<String> _subscribingIds = <String>{};
 
@@ -194,14 +194,14 @@ class _PodcastDiscoveryScreenState
     );
   }
 
-  /// 精选播客列表：null=未初始化(转圈并触发同步)，空=空态，否则列表。
+  /// 精选 Podcast 列表：null 表示尚未初始化，空列表表示暂无精选内容。
   Widget _buildFeatured(AppLocalizations l10n) {
     final podcasts = ref.watch(discoverPodcastsProvider);
     if (podcasts == null) {
-      if (!_syncTriggered) {
-        _syncTriggered = true;
+      if (!_catalogSyncTriggered) {
+        _catalogSyncTriggered = true;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) triggerOfficialSync(ref);
+          if (mounted) triggerPodcastCatalogRefresh(ref);
         });
       }
       return const Center(child: CircularProgressIndicator());
@@ -209,6 +209,7 @@ class _PodcastDiscoveryScreenState
     if (podcasts.isEmpty) {
       return _PodcastListMessage(message: l10n.discoverPodcastEmpty);
     }
+
     final subscribed = _subscribedByFeed();
     return ListView.builder(
       padding: EdgeInsets.zero,
@@ -233,9 +234,7 @@ class _PodcastDiscoveryScreenState
             ),
           ),
           onSubscribe: () => _subscribe(
-            inputUrl: podcast.applePodcastUrl.trim().isNotEmpty
-                ? podcast.applePodcastUrl
-                : podcast.subscriptionInputUrl,
+            inputUrl: podcast.subscriptionInputUrl,
             id: podcast.id,
             knownFeedUrl: podcast.rssUrl,
           ),
@@ -322,7 +321,7 @@ class _PodcastDiscoveryScreenState
     final canEnroll = await ensureSignedInForAction(
       context: context,
       ref: ref,
-      title: l10n.officialCollectionSignInRequiredTitle,
+      title: l10n.communityCollectionSignInRequiredTitle,
       message: l10n.podcastCatalogSignInRequiredMessage,
     );
     if (!mounted || !canEnroll) return;

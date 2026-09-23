@@ -111,11 +111,11 @@ void main() {
       });
     });
 
-    group('官方合集字段', () {
-      test('默认 source=local，isOfficial=false', () {
+    group('社区合集字段', () {
+      test('默认 source=local，isCommunity=false', () {
         final col = createSample();
         expect(col.source, CollectionSource.local);
-        expect(col.isOfficial, isFalse);
+        expect(col.isCommunity, isFalse);
         expect(col.remoteId, isNull);
         expect(col.coverUrl, isNull);
         expect(col.description, isNull);
@@ -123,17 +123,17 @@ void main() {
         expect(col.isDeprecated, isFalse);
       });
 
-      test('官方合集字段齐备时 isOfficial=true', () {
+      test('社区合集字段齐备时 isCommunity=true', () {
         final col = Collection(
           id: 'col-1',
           name: 'TED 精选',
           createdDate: now,
-          source: CollectionSource.official,
+          source: CollectionSource.community,
           remoteId: 'remote-uuid-1',
           coverUrl: 'https://cdn/x.png',
           description: '精选演讲',
         );
-        expect(col.isOfficial, isTrue);
+        expect(col.isCommunity, isTrue);
         expect(col.remoteId, 'remote-uuid-1');
       });
 
@@ -142,7 +142,7 @@ void main() {
           id: 'col-1',
           name: 'TED 精选',
           createdDate: now,
-          source: CollectionSource.official,
+          source: CollectionSource.community,
           remoteId: 'remote-uuid-1',
           deprecatedAt: now,
         );
@@ -153,7 +153,7 @@ void main() {
         expect(CollectionSource.fromString(null), CollectionSource.local);
         expect(
           CollectionSource.fromString('official'),
-          CollectionSource.official,
+          CollectionSource.community,
         );
         expect(CollectionSource.fromString('local'), CollectionSource.local);
         expect(CollectionSource.fromString('unknown'), CollectionSource.local);
@@ -161,10 +161,10 @@ void main() {
 
       test('CollectionSource.storageValue 与后端/DB 字符串对齐', () {
         expect(CollectionSource.local.storageValue, 'local');
-        expect(CollectionSource.official.storageValue, 'official');
+        expect(CollectionSource.community.storageValue, 'community');
       });
 
-      test('fromJson 处理官方合集新字段', () {
+      test('fromJson 处理社区合集新字段', () {
         final json = {
           'id': 'col-1',
           'name': 'TED',
@@ -176,7 +176,7 @@ void main() {
           'deprecatedAt': now.toIso8601String(),
         };
         final col = Collection.fromJson(json);
-        expect(col.source, CollectionSource.official);
+        expect(col.source, CollectionSource.community);
         expect(col.remoteId, 'r1');
         expect(col.coverUrl, 'https://cdn/x.png');
         expect(col.description, 'desc');
@@ -193,15 +193,15 @@ void main() {
         expect(col.source, CollectionSource.local);
       });
 
-      test('copyWith 能独立覆盖官方合集字段', () {
+      test('copyWith 能独立覆盖社区合集字段', () {
         final col = createSample();
         final copied = col.copyWith(
-          source: CollectionSource.official,
+          source: CollectionSource.community,
           remoteId: 'r1',
           coverUrl: 'c',
           description: 'd',
         );
-        expect(copied.isOfficial, isTrue);
+        expect(copied.isCommunity, isTrue);
         expect(copied.remoteId, 'r1');
         expect(copied.coverUrl, 'c');
         expect(copied.description, 'd');

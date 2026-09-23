@@ -102,7 +102,7 @@ class PodcastSearchResult {
 
 /// 播客预览页入参（承载展示信息 + 订阅所需 URL）。
 ///
-/// 让「精选播客（CatalogPodcast）/ Apple 搜索结果（PodcastSearchResult）/
+/// 让「精选 Podcast / Apple 搜索结果（PodcastSearchResult）/
 /// 用户粘贴链接」三种来源共用同一预览页与订阅主干：
 /// - 展示字段（[title]/[imageUrl]/[description]/[author]）供 header 首帧渲染，
 ///   feed 拉取成功后再用 [PodcastFeedMeta] 覆盖。
@@ -114,10 +114,10 @@ class PodcastPreviewArg {
   final String? description;
   final String? author;
 
-  /// 已知 RSS feed 地址（catalog.rssUrl / search.feedUrl / 解析后的用户链接）。
+  /// 已知 RSS feed 地址（搜索结果或解析后的用户链接）。
   final String? feedUrl;
 
-  /// Apple Podcasts 网页地址（catalog / search），无 RSS 时用于解析。
+  /// Apple Podcasts 网页地址，无 RSS 时用于解析。
   final String? applePodcastUrl;
 
   const PodcastPreviewArg({

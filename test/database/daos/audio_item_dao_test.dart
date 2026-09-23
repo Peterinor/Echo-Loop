@@ -62,7 +62,7 @@ void main() {
       expect(row.wordCount, 20);
     });
 
-    test('keepAudioSha256=true 时保留 audioSha256（官方重下定位标识）', () async {
+    test('keepAudioSha256=true 时保留 audioSha256（社区重下定位标识）', () async {
       await insertDownloaded('a1', remoteAudioId: 'remote-1');
 
       await db.audioItemDao.clearDownloadState('a1', keepAudioSha256: true);

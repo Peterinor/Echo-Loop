@@ -78,6 +78,7 @@ class AudioLibrary extends _$AudioLibrary {
               ),
               remoteAudioId: row.remoteAudioId,
               originalDate: row.originalDate,
+              communityUnavailableAt: row.communityUnavailableAt,
               importSourceType: AudioImportSourceType.fromStorageValue(
                 row.importSourceType,
               ),
@@ -98,7 +99,7 @@ class AudioLibrary extends _$AudioLibrary {
       for (final item in allItems) {
         AudioItem processedItem = item;
 
-        // audioPath=null → 未就绪（官方合集未下载）；直接保留为合法条目
+        // audioPath=null → 未就绪（社区合集未下载）；直接保留为合法条目
         final currentAudioPath = item.audioPath;
         if (currentAudioPath == null) {
           validItems.add(processedItem);
@@ -296,7 +297,7 @@ class AudioLibrary extends _$AudioLibrary {
 
   /// 删除已下载的音频文件，但保留 item 本身（还原为「未下载」态）。
   ///
-  /// 用于官方/播客音频——item 由后端 / RSS 统一管理不可删除，仅回收本地下载占用。
+  /// 用于社区/播客音频——item 由后端 / RSS 统一管理不可删除，仅回收本地下载占用。
   /// 语义：清 DB 下载态（audioPath + 文件派生指纹/内容状态，见 [AudioItemDao.clearDownloadState]）
   /// → 同步内存 state → best-effort 删磁盘音频文件 + 波形缓存。
   /// **不触碰字幕与学习进度**（字幕单独管理，重新下载即恢复播放）。无需二次确认——
@@ -318,10 +319,10 @@ class AudioLibrary extends _$AudioLibrary {
       removedIds: {id},
     );
 
-    // 官方音频的 audioSha256 是重新下载定位文件路径的稳定标识，必须保留。
-    final isOfficial = item.remoteAudioId != null;
+    // 社区媒体的 audioSha256 是重新下载定位文件路径的稳定标识，必须保留。
+    final isCommunity = item.remoteAudioId != null;
     final dao = ref.read(audioItemDaoProvider);
-    await dao.clearDownloadState(id, keepAudioSha256: isOfficial);
+    await dao.clearDownloadState(id, keepAudioSha256: isCommunity);
 
     state = state.copyWith(
       audioItems: [
@@ -331,7 +332,7 @@ class AudioLibrary extends _$AudioLibrary {
               audioPath: null,
               contentStatus: null,
               originalAudioSha256: null,
-              audioSha256: isOfficial ? i.audioSha256 : null,
+              audioSha256: isCommunity ? i.audioSha256 : null,
             )
           else
             i,

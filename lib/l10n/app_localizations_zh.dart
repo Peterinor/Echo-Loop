@@ -847,7 +847,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get discoverEntrySubtitleA => '播客、托福、雅思、四六级、口译...';
 
   @override
-  String get officialCollectionEmpty => '该合集暂无音频';
+  String get communityCollectionEmpty => '该合集暂无文件';
 
   @override
   String get sortCollections => '排序';
@@ -3752,7 +3752,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resetOnboardingDone => 'Onboarding 已重置，请重启 App 以重新进入问卷';
 
   @override
-  String get discoverOfficialCollections => '发现精选合集';
+  String get discoverCommunityCollections => '发现社区合集';
 
   @override
   String get discoverEmpty => '暂无精选合集';
@@ -3809,20 +3809,20 @@ class AppLocalizationsZh extends AppLocalizations {
   String get podcastPreviewEmpty => '暂未获取到单集。';
 
   @override
-  String get officialBadge => '精选';
+  String get communityBadge => '社区';
 
   @override
-  String get officialDeprecatedBadge => '已下架';
+  String get communityDeprecatedBadge => '已下架';
 
   @override
   String get addToMyCollections => '添加到我的合集';
 
   @override
-  String get officialCollectionSignInRequiredTitle => '登录后添加合集';
+  String get communityCollectionSignInRequiredTitle => '登录后添加合集';
 
   @override
-  String get officialCollectionSignInRequiredMessage =>
-      '登录后可以将精选合集添加到我的合集，并同步后续学习内容。';
+  String get communityCollectionSignInRequiredMessage =>
+      '登录后可以将社区合集添加到我的合集，并同步后续内容。';
 
   @override
   String get goLearn => '去学习';
@@ -3843,18 +3843,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get enrollFailed => '添加失败，请检查网络后重试';
 
   @override
-  String removeOfficialConfirmTitle(String name) {
+  String removeCommunityConfirmTitle(String name) {
     return '移除《$name》？';
   }
 
   @override
-  String get removeOfficialConfirmMessage => '将删除本合集所有音频、字幕和相关学习记录，此操作不可恢复。';
+  String get removeCommunityConfirmMessage => '将删除本合集所有媒体、字幕和相关学习记录，此操作不可恢复。';
 
   @override
-  String get removeOfficialConfirmConfirm => '确认移除';
+  String get removeCommunityConfirmConfirm => '确认移除';
 
   @override
-  String get officialCollectionDeprecated => '该合集已下架，本地副本仍可继续使用。';
+  String get communityCollectionDeprecated => '该合集已移除，本地副本仍可继续使用。';
+
+  @override
+  String get communityFileUnavailable => '该文件已从社区合集移除';
+
+  @override
+  String communityFilesRemoved(int count) {
+    return '社区合集有 $count 个文件已移除';
+  }
 
   @override
   String get downloadCancel => '取消下载';
@@ -3873,19 +3881,20 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get updateOfficialSubtitle => '更新字幕';
+  String get updateCommunitySubtitle => '更新字幕';
 
   @override
-  String get updateOfficialSubtitleConfirm => '确定更新字幕？';
+  String get updateCommunitySubtitleConfirm => '确定更新字幕？';
 
   @override
-  String get updateOfficialSubtitleWarning => '更新字幕将替换本地字幕，并清空该音频的所有收藏句子和学习进度。';
+  String get updateCommunitySubtitleWarning =>
+      '更新字幕将替换本地字幕，并清空该媒体的所有收藏句子和学习进度。';
 
   @override
-  String get officialSubtitleUpdated => '字幕已更新';
+  String get communitySubtitleUpdated => '字幕已更新';
 
   @override
-  String get officialSubtitleUpdateFailed => '字幕更新失败，请重试';
+  String get communitySubtitleUpdateFailed => '字幕更新失败，请重试';
 
   @override
   String downloadInProgressSnackbar(String name) {
@@ -4678,9 +4687,6 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get podcastSubscribeThisLink => '订阅此链接';
-
-  @override
-  String get featuredPodcasts => '精选播客';
 
   @override
   String get podcastSubscribing => '正在获取 Podcast Feed…';

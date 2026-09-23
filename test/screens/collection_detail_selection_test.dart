@@ -56,11 +56,11 @@ void main() {
     createdDate: DateTime(2026, 1, 1),
   );
 
-  Collection officialCollection() => Collection(
+  Collection communityCollection() => Collection(
     id: 'c1',
     name: 'Official',
     createdDate: DateTime(2026, 1, 1),
-    source: CollectionSource.official,
+    source: CollectionSource.community,
     remoteId: 'remote-1',
   );
 
@@ -99,11 +99,7 @@ void main() {
   }
 
   testWidgets('空合集展示音视频导入入口并移除旧提示', (tester) async {
-    await pumpScreen(
-      tester,
-      collection: userCollection(),
-      items: const [],
-    );
+    await pumpScreen(tester, collection: userCollection(), items: const []);
 
     expect(find.byIcon(Icons.perm_media_outlined), findsOneWidget);
     expect(find.text('This collection has no content yet'), findsOneWidget);
@@ -229,10 +225,10 @@ void main() {
     expect(find.text('Select All'), findsNothing);
   });
 
-  testWidgets('官方合集不启用多选（长按无效）', (tester) async {
+  testWidgets('社区合集不启用多选（长按无效）', (tester) async {
     await pumpScreen(
       tester,
-      collection: officialCollection(),
+      collection: communityCollection(),
       items: [audio('a1')],
     );
 

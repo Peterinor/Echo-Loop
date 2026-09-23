@@ -11,10 +11,10 @@ const _audioSortTypeKey = 'audio_list_sort_type';
 
 /// 音频排序方式
 ///
-/// - [custom]：保持调用方传入的顺序（官方合集按 junction sortOrder 的情况下用）
+/// - [custom]：保持调用方传入的顺序（社区合集按 junction sortOrder 的情况下用）
 /// - [nameAsc] / [nameDesc]：按名称升降
 /// - [dateAsc] / [dateDesc]：按 `addedDate`（本地添加时间）升降 —— 用户自建场景
-/// - [originalDateAsc] / [originalDateDesc]：按 `originalDate`（官方原始发布日期）升降
+/// - [originalDateAsc] / [originalDateDesc]：按 `originalDate`（社区原始发布日期）升降
 enum AudioSortType {
   custom,
   nameAsc,

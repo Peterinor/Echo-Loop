@@ -441,7 +441,7 @@
   },
   "discoverEntryTitleA": "Discover Resources",
   "discoverEntrySubtitleA": "Podcasts, TOEFL, IELTS, CET-4/6, Interpreting...",
-  "officialCollectionEmpty": "This collection has no audio yet",
+  "communityCollectionEmpty": "This collection has no audio yet",
   "sortCollections": "Sort",
   "gridView": "Grid View",
   "listView": "List View",
@@ -2090,7 +2090,7 @@
   "resetOnboarding": "Reset Onboarding Survey",
   "resetOnboardingDone": "Onboarding reset; please restart the app to retake the survey",
 
-  "discoverOfficialCollections": "Discover Curated Collections",
+  "discoverCommunityCollections": "Discover Community Collections",
   "discoverEmpty": "No curated collections yet",
   "discoverLoadFailed": "Failed to load, tap to retry",
   "discoverRetry": "Retry",
@@ -2112,26 +2112,33 @@
   "podcastPreviewParseFailed": "This podcast feed format is not supported, so the episode list could not be read.",
   "podcastFeedBlocked": "This podcast source is blocking automated access on the current network. Try again later or switch to a different network.",
   "podcastPreviewEmpty": "No episodes were found yet.",
-  "officialBadge": "Curated",
-  "officialDeprecatedBadge": "Removed",
+  "communityBadge": "Community",
+  "communityDeprecatedBadge": "Removed",
   "addToMyCollections": "Add to My Collections",
-  "officialCollectionSignInRequiredTitle": "Sign in to add collections",
-  "officialCollectionSignInRequiredMessage": "Sign in to add any curated collections to My Collections and sync new episodes.",
+  "communityCollectionSignInRequiredTitle": "Sign in to add collections",
+  "communityCollectionSignInRequiredMessage": "Sign in to add community collections to My Collections and sync new files.",
   "goLearn": "Start Practicing",
   "removeFromMyCollections": "Remove from My Collections",
   "enrollNeededTitle": "Add Collection First",
   "enrollNeededMessage": "Add this collection to My Collection, then you can start practicing.",
   "enrollSucceeded": "Added to My Collections",
   "enrollFailed": "Failed to add, please check your network and retry",
-  "removeOfficialConfirmTitle": "Remove \"{name}\"?",
-  "@removeOfficialConfirmTitle": {
+  "removeCommunityConfirmTitle": "Remove \"{name}\"?",
+  "@removeCommunityConfirmTitle": {
     "placeholders": {
       "name": {"type": "String"}
     }
   },
-  "removeOfficialConfirmMessage": "All audio files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.",
-  "removeOfficialConfirmConfirm": "Remove",
-  "officialCollectionDeprecated": "This collection has been removed. You can still use the local copy.",
+  "removeCommunityConfirmMessage": "All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.",
+  "removeCommunityConfirmConfirm": "Remove",
+  "communityCollectionDeprecated": "This collection has been removed. You can still use the local copy.",
+  "communityFileUnavailable": "This file was removed from the community collection",
+  "communityFilesRemoved": "{count} files were removed from community collections",
+  "@communityFilesRemoved": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "downloadCancel": "Cancel Download",
   "downloadLater": "Later",
   "downloadCompleted": "{name} downloaded",
@@ -2146,11 +2153,11 @@
       "name": {"type": "String"}
     }
   },
-  "updateOfficialSubtitle": "Update Subtitles",
-  "updateOfficialSubtitleConfirm": "Update subtitles?",
-  "updateOfficialSubtitleWarning": "Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this audio.",
-  "officialSubtitleUpdated": "Subtitles updated",
-  "officialSubtitleUpdateFailed": "Subtitles update failed, please retry",
+  "updateCommunitySubtitle": "Update Subtitles",
+  "updateCommunitySubtitleConfirm": "Update subtitles?",
+  "updateCommunitySubtitleWarning": "Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this media.",
+  "communitySubtitleUpdated": "Subtitles updated",
+  "communitySubtitleUpdateFailed": "Subtitles update failed, please retry",
   "downloadInProgressSnackbar": "Downloading {name}, please wait",
   "@downloadInProgressSnackbar": {
     "placeholders": {
@@ -2463,7 +2470,6 @@
   "podcastSearchEmpty": "No podcasts found",
   "podcastSearchFailed": "Search failed, please try again",
   "podcastSubscribeThisLink": "Subscribe to this link",
-  "featuredPodcasts": "Featured Podcasts",
   "podcastSubscribing": "Fetching podcast feed…",
   "podcastSubscribeFailed": "Failed to subscribe: {error}",
   "@podcastSubscribeFailed": {

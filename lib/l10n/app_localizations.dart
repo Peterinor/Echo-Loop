@@ -1640,11 +1640,11 @@ abstract class AppLocalizations {
   /// **'Podcasts, TOEFL, IELTS, CET-4/6, Interpreting...'**
   String get discoverEntrySubtitleA;
 
-  /// No description provided for @officialCollectionEmpty.
+  /// No description provided for @communityCollectionEmpty.
   ///
   /// In en, this message translates to:
   /// **'This collection has no audio yet'**
-  String get officialCollectionEmpty;
+  String get communityCollectionEmpty;
 
   /// No description provided for @sortCollections.
   ///
@@ -6842,11 +6842,11 @@ abstract class AppLocalizations {
   /// **'Onboarding reset; please restart the app to retake the survey'**
   String get resetOnboardingDone;
 
-  /// No description provided for @discoverOfficialCollections.
+  /// No description provided for @discoverCommunityCollections.
   ///
   /// In en, this message translates to:
-  /// **'Discover Curated Collections'**
-  String get discoverOfficialCollections;
+  /// **'Discover Community Collections'**
+  String get discoverCommunityCollections;
 
   /// No description provided for @discoverEmpty.
   ///
@@ -6944,17 +6944,17 @@ abstract class AppLocalizations {
   /// **'No episodes were found yet.'**
   String get podcastPreviewEmpty;
 
-  /// No description provided for @officialBadge.
+  /// No description provided for @communityBadge.
   ///
   /// In en, this message translates to:
-  /// **'Curated'**
-  String get officialBadge;
+  /// **'Community'**
+  String get communityBadge;
 
-  /// No description provided for @officialDeprecatedBadge.
+  /// No description provided for @communityDeprecatedBadge.
   ///
   /// In en, this message translates to:
   /// **'Removed'**
-  String get officialDeprecatedBadge;
+  String get communityDeprecatedBadge;
 
   /// No description provided for @addToMyCollections.
   ///
@@ -6962,17 +6962,17 @@ abstract class AppLocalizations {
   /// **'Add to My Collections'**
   String get addToMyCollections;
 
-  /// No description provided for @officialCollectionSignInRequiredTitle.
+  /// No description provided for @communityCollectionSignInRequiredTitle.
   ///
   /// In en, this message translates to:
   /// **'Sign in to add collections'**
-  String get officialCollectionSignInRequiredTitle;
+  String get communityCollectionSignInRequiredTitle;
 
-  /// No description provided for @officialCollectionSignInRequiredMessage.
+  /// No description provided for @communityCollectionSignInRequiredMessage.
   ///
   /// In en, this message translates to:
-  /// **'Sign in to add any curated collections to My Collections and sync new episodes.'**
-  String get officialCollectionSignInRequiredMessage;
+  /// **'Sign in to add community collections to My Collections and sync new files.'**
+  String get communityCollectionSignInRequiredMessage;
 
   /// No description provided for @goLearn.
   ///
@@ -7010,29 +7010,41 @@ abstract class AppLocalizations {
   /// **'Failed to add, please check your network and retry'**
   String get enrollFailed;
 
-  /// No description provided for @removeOfficialConfirmTitle.
+  /// No description provided for @removeCommunityConfirmTitle.
   ///
   /// In en, this message translates to:
   /// **'Remove \"{name}\"?'**
-  String removeOfficialConfirmTitle(String name);
+  String removeCommunityConfirmTitle(String name);
 
-  /// No description provided for @removeOfficialConfirmMessage.
+  /// No description provided for @removeCommunityConfirmMessage.
   ///
   /// In en, this message translates to:
-  /// **'All audio files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.'**
-  String get removeOfficialConfirmMessage;
+  /// **'All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.'**
+  String get removeCommunityConfirmMessage;
 
-  /// No description provided for @removeOfficialConfirmConfirm.
+  /// No description provided for @removeCommunityConfirmConfirm.
   ///
   /// In en, this message translates to:
   /// **'Remove'**
-  String get removeOfficialConfirmConfirm;
+  String get removeCommunityConfirmConfirm;
 
-  /// No description provided for @officialCollectionDeprecated.
+  /// No description provided for @communityCollectionDeprecated.
   ///
   /// In en, this message translates to:
   /// **'This collection has been removed. You can still use the local copy.'**
-  String get officialCollectionDeprecated;
+  String get communityCollectionDeprecated;
+
+  /// No description provided for @communityFileUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'This file was removed from the community collection'**
+  String get communityFileUnavailable;
+
+  /// No description provided for @communityFilesRemoved.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} files were removed from community collections'**
+  String communityFilesRemoved(int count);
 
   /// No description provided for @downloadCancel.
   ///
@@ -7058,35 +7070,35 @@ abstract class AppLocalizations {
   /// **'{name} download failed, please retry'**
   String downloadFailed(String name);
 
-  /// No description provided for @updateOfficialSubtitle.
+  /// No description provided for @updateCommunitySubtitle.
   ///
   /// In en, this message translates to:
   /// **'Update Subtitles'**
-  String get updateOfficialSubtitle;
+  String get updateCommunitySubtitle;
 
-  /// No description provided for @updateOfficialSubtitleConfirm.
+  /// No description provided for @updateCommunitySubtitleConfirm.
   ///
   /// In en, this message translates to:
   /// **'Update subtitles?'**
-  String get updateOfficialSubtitleConfirm;
+  String get updateCommunitySubtitleConfirm;
 
-  /// No description provided for @updateOfficialSubtitleWarning.
+  /// No description provided for @updateCommunitySubtitleWarning.
   ///
   /// In en, this message translates to:
-  /// **'Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this audio.'**
-  String get updateOfficialSubtitleWarning;
+  /// **'Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this media.'**
+  String get updateCommunitySubtitleWarning;
 
-  /// No description provided for @officialSubtitleUpdated.
+  /// No description provided for @communitySubtitleUpdated.
   ///
   /// In en, this message translates to:
   /// **'Subtitles updated'**
-  String get officialSubtitleUpdated;
+  String get communitySubtitleUpdated;
 
-  /// No description provided for @officialSubtitleUpdateFailed.
+  /// No description provided for @communitySubtitleUpdateFailed.
   ///
   /// In en, this message translates to:
   /// **'Subtitles update failed, please retry'**
-  String get officialSubtitleUpdateFailed;
+  String get communitySubtitleUpdateFailed;
 
   /// No description provided for @downloadInProgressSnackbar.
   ///
@@ -8599,12 +8611,6 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Subscribe to this link'**
   String get podcastSubscribeThisLink;
-
-  /// No description provided for @featuredPodcasts.
-  ///
-  /// In en, this message translates to:
-  /// **'Featured Podcasts'**
-  String get featuredPodcasts;
 
   /// No description provided for @podcastSubscribing.
   ///

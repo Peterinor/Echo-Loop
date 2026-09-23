@@ -498,13 +498,13 @@ class _AddAudioDialogState extends ConsumerState<AddAudioDialog> {
 
   /// 构建合集下拉选择框
   ///
-  /// 精选/官方合集（[Collection.isOfficial]）由远端定义，用户不能向其中添加自有音频，
+  /// 社区合集（[Collection.isCommunity]）由远端定义，用户不能向其中添加自有音频，
   /// 因此下拉框只展示本地合集。
   Widget _buildCollectionDropdown(AppLocalizations l10n) {
     final collections = ref
         .watch(collectionListProvider)
         .rawCollections
-        .where((c) => !c.isOfficial)
+        .where((c) => !c.isCommunity)
         .toList();
     return DropdownButtonFormField<String?>(
       initialValue: _selectedCollectionId,

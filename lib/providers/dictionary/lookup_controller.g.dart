@@ -53,7 +53,7 @@ final dictionarySessionSourceProvider =
 
 typedef _$DictionarySessionSource = Notifier<String?>;
 String _$dictionaryLookupControllerHash() =>
-    r'77e5f1e3337f3ae41dc97ff80f8bf386df81312f';
+    r'bf09edc292f9118b3c4dd1eec1e0931e140054ac';
 
 /// Copied from Dart SDK
 class _SystemHash {

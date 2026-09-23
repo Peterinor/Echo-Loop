@@ -29,7 +29,7 @@ import '../database/migration/sp_to_drift_migration.dart';
 import '../database/providers.dart';
 import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
     show sharedPreferencesProvider;
-import '../features/official_collections/download/official_download_notifier.dart';
+import '../features/community_collections/download/community_download_notifier.dart';
 import '../firebase_options.dart';
 import '../services/app_logger.dart';
 import '../services/asr/asr_model_manager.dart';
@@ -348,7 +348,7 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
     unawaited(cleanupRecordingTempFiles());
     unawaited(cleanupStalePdfExportTemp());
     unawaited(cleanupStaleBaiduNetdiskTemp());
-    unawaited(cleanupOfficialDownloadTmp());
+    unawaited(cleanupCommunityDownloadTmp());
     Future<void>.delayed(const Duration(seconds: 8), () async {
       final cache = TtsCacheStore(
         resolveDao: () => _database.ttsCacheDao,

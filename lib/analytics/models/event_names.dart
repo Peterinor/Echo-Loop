@@ -155,16 +155,16 @@ abstract class Events {
   /// 查看今日学习时长明细
   static const studyTimeViewed = 'study_time_viewed';
 
-  // ── 精品合集 ──
+  // ── 社区合集 ──
   /// 点击发现精品合集入口
   static const discoverEntryTapped = 'discover_entry_tapped';
 
-  /// 成功添加官方合集
-  static const officialCollectionEnroll = 'official_collection_enroll';
+  /// 成功添加社区合集
+  static const communityCollectionEnroll = 'community_collection_enroll';
 
-  /// 查看官方合集详情
-  static const officialCollectionDetailViewed =
-      'official_collection_detail_viewed';
+  /// 查看社区合集详情
+  static const communityCollectionDetailViewed =
+      'community_collection_detail_viewed';
 
   // ── 学习 Tab ──
   /// 查看活动日历

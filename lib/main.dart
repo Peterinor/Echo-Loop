@@ -41,9 +41,10 @@ import 'services/app_update_migration.dart';
 import 'services/media_kit_debug_initializer.dart';
 import 'services/user_id_service.dart';
 import 'widgets/app_notice_presenter.dart';
-import 'features/official_collections/data/official_catalog_service.dart';
-import 'features/official_collections/data/trigger_official_sync.dart';
-import 'features/official_collections/download/official_download_notifier.dart';
+import 'features/community_collections/data/trigger_community_sync.dart';
+import 'features/community_collections/download/community_download_notifier.dart';
+import 'features/podcast/data/podcast_catalog_service.dart';
+import 'features/podcast/data/trigger_podcast_catalog_refresh.dart';
 import 'features/onboarding_survey/data/onboarding_survey_storage.dart';
 import 'features/onboarding_survey/providers/onboarding_survey_provider.dart';
 import 'features/auth/providers/auth_providers.dart';
@@ -299,17 +300,20 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
     ref.read(dictionaryProvider);
     ref.read(pronunciationLibraryProvider);
 
+    // Podcast catalog 与社区合集同步相互独立；先恢复本地精选缓存，再后台刷新，
+    // 避免社区合集 v2 的同步结果改变原有 Podcast 发现页行为。
     unawaited(
-      ref.read(officialCatalogServiceProvider).loadCachedCatalog().then((_) {
-        if (mounted) ref.invalidate(cachedCatalogProvider);
+      ref.read(podcastCatalogServiceProvider).loadCachedCatalog().then((_) {
+        if (mounted) ref.invalidate(cachedPodcastCatalogProvider);
       }),
     );
+
     final bridge = ref.read(notificationTapRouterBridgeProvider);
     _intentSubscription = bridge.intents.listen(_handleNotificationIntent);
     final pendingIntent = bridge.takePendingIntent();
     if (pendingIntent != null) _handleNotificationIntent(pendingIntent);
 
-    Future.delayed(const Duration(seconds: 3), _triggerCatalogSync);
+    Future.delayed(const Duration(seconds: 3), _triggerBackgroundSync);
   }
 
   /// 业务内容提交后再预热，不让原生播放器依赖阻塞进入学习页。
@@ -409,7 +413,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
     switch (state) {
       case AppLifecycleState.resumed:
         if (ref.read(localStartupProvider).hasValue) {
-          _triggerCatalogSync();
+          _triggerBackgroundSync();
         }
         // 回前台时条件重对账订阅权益（E8）。单一来源下每次刷新都是真实后端请求
         // （不再有 RC SDK 客户端缓存兜着），且退款/退订分歧主要靠 E6/E7 在后端
@@ -438,13 +442,22 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
     }
   }
 
-  /// 全局唯一同步入口；inflight + 2h 节流防止重复请求。
-  /// updated 时由 helper 自动 loadLibrary + loadCollections + invalidate catalog。
-  void _triggerCatalogSync({bool force = false}) {
+  /// 全局唯一社区合集同步入口；后台调用由 service 统一执行 2h 节流。
+  void _triggerCommunitySync({bool force = false}) {
     if (!mounted) return;
     unawaited(
-      triggerOfficialSync(ref, force: force).then((outcome) {
-        AppLogger.log('main', 'OfficialSync outcome=$outcome');
+      triggerCommunitySync(ref, force: force).then((outcome) {
+        AppLogger.log('main', 'CommunitySync outcome=${outcome.runtimeType}');
+      }),
+    );
+  }
+
+  /// 前台/启动后台刷新两个互不依赖的公共内容源；任一失败都不能阻塞另一方。
+  void _triggerBackgroundSync({bool force = false}) {
+    _triggerCommunitySync(force: force);
+    unawaited(
+      triggerPodcastCatalogRefresh(ref, force: force).then((outcome) {
+        AppLogger.log('main', 'PodcastCatalog outcome=${outcome?.runtimeType}');
       }),
     );
   }
@@ -490,7 +503,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
       routerConfig: router,
       builder: (context, child) =>
           AppNoticePresenter(child: child ?? const SizedBox.shrink()),
-      scaffoldMessengerKey: officialDownloadScaffoldMessengerKey,
+      scaffoldMessengerKey: communityDownloadScaffoldMessengerKey,
     );
   }
 }

@@ -19,7 +19,7 @@ import 'temp_cleanup_service.dart' show CleanupResult;
 
 /// 存放各类持久产物的目录（相对 app 数据根目录），递归扫描。
 ///
-/// `audios` 同时覆盖 `audios/imported`、`audios/official` 子目录，以及旧版本
+/// `audios` 同时覆盖 `audios/imported`、`audios/community` 子目录，以及旧版本
 /// 直接存于 `audios/` 根、用可读文件名的遗留音频（如内置示例与早期导入）。
 const _mediaDirs = <String>['audios', 'transcripts'];
 

@@ -17,8 +17,8 @@ import 'package:echo_loop/providers/settings_provider.dart';
 import 'package:echo_loop/providers/tag_provider.dart';
 import 'package:echo_loop/features/audio_import/audio_import_models.dart';
 import 'package:echo_loop/features/audio_import/audio_import_provider.dart';
-import 'package:echo_loop/features/official_collections/download/download_progress.dart';
-import 'package:echo_loop/features/official_collections/download/official_download_notifier.dart';
+import 'package:echo_loop/features/community_collections/download/download_progress.dart';
+import 'package:echo_loop/features/community_collections/download/community_download_notifier.dart';
 import 'package:echo_loop/features/auth/providers/auth_providers.dart';
 import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/audio_list_tile.dart';
@@ -51,15 +51,15 @@ class _DownloadingAudioImportController extends PodcastDownloadController {
   );
 }
 
-class _DownloadingOfficial extends OfficialDownload {
-  _DownloadingOfficial(this.audioItemId);
+class _DownloadingCommunity extends CommunityDownload {
+  _DownloadingCommunity(this.audioItemId);
 
   final String audioItemId;
 
   @override
   DownloadProgress build() => DownloadInProgress(
     audioItemId: audioItemId,
-    displayName: 'Official Audio',
+    displayName: 'Community Audio',
     progress: 0.42,
     receivedBytes: 42,
     totalBytes: 100,
@@ -308,7 +308,7 @@ void main() {
       );
     }
 
-    testWidgets('官方已下载音频菜单含「删除下载」', (tester) async {
+    testWidgets('社区已下载音频菜单含「删除下载」', (tester) async {
       final item = createTestAudioItem(
         name: 'Official Audio',
       ).copyWith(remoteAudioId: 'remote-1');
@@ -319,11 +319,11 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Delete Audio'), findsOneWidget);
-      // 官方音频不提供整条删除
+      // 社区音频不提供整条删除
       expect(find.text('Delete'), findsNothing);
     });
 
-    testWidgets('官方未下载音频菜单不含「删除下载」', (tester) async {
+    testWidgets('社区未下载音频菜单不含「删除下载」', (tester) async {
       final item = createTestAudioItem(
         name: 'Official Audio',
       ).copyWith(remoteAudioId: 'remote-1', audioPath: null);
@@ -372,7 +372,7 @@ void main() {
       );
     });
 
-    testWidgets('官方音频下载中菜单显示并支持取消下载', (tester) async {
+    testWidgets('社区音频下载中菜单显示并支持取消下载', (tester) async {
       final item = createTestAudioItem(
         name: 'Official Audio',
       ).copyWith(audioPath: null, remoteAudioId: 'remote-1');
@@ -384,8 +384,8 @@ void main() {
             audioLibraryProvider.overrideWith(
               () => TestAudioLibrary(AudioLibraryState(audioItems: [item])),
             ),
-            officialDownloadProvider.overrideWith(
-              () => _DownloadingOfficial(item.id),
+            communityDownloadProvider.overrideWith(
+              () => _DownloadingCommunity(item.id),
             ),
           ],
         ),
@@ -519,6 +519,31 @@ void main() {
         find.byKey(const Key('audio_list_tile_content_warning_badge')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('社区合集条目保存 totalDuration 后在列表显示时长', (tester) async {
+      final item = createTestAudioItem(
+        name: 'Community Audio',
+        totalDuration: 42,
+      ).copyWith(remoteAudioId: 'remote-file-1');
+
+      await tester.pumpWidget(buildTile(item));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Duration: 00:42'), findsOneWidget);
+      expect(find.textContaining('Added on:'), findsNothing);
+    });
+
+    testWidgets('社区合集条目 totalDuration=0 时不显示时长', (tester) async {
+      final item = createTestAudioItem(
+        name: 'Community Audio without duration',
+        totalDuration: 0,
+      ).copyWith(remoteAudioId: 'remote-file-2');
+
+      await tester.pumpWidget(buildTile(item));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Duration:'), findsNothing);
     });
 
     testWidgets('contentStatus=ok 时不显示警告徽章', (tester) async {
@@ -832,7 +857,7 @@ void main() {
       );
     });
 
-    testWidgets('未下载官方音频左侧显示下载图标而非进度环', (tester) async {
+    testWidgets('未下载社区音频左侧显示下载图标而非进度环', (tester) async {
       final item = createTestAudioItem(
         name: 'Official Audio',
         transcriptPath: null,
@@ -863,7 +888,7 @@ void main() {
       );
     });
 
-    testWidgets('官方音频下载中时左侧显示下载进度环', (tester) async {
+    testWidgets('社区音频下载中时左侧显示下载进度环', (tester) async {
       final item = createTestAudioItem(
         name: 'Official Audio',
         transcriptPath: null,
@@ -879,8 +904,8 @@ void main() {
             audioLibraryProvider.overrideWith(
               () => TestAudioLibrary(AudioLibraryState(audioItems: [item])),
             ),
-            officialDownloadProvider.overrideWith(
-              () => _DownloadingOfficial(item.id),
+            communityDownloadProvider.overrideWith(
+              () => _DownloadingCommunity(item.id),
             ),
           ],
         ),
@@ -895,7 +920,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_icon')),
         findsNothing,
       );
-      // 官方下载与播客一致：行内进度条（无弹窗）。
+      // 社区下载与播客一致：行内进度条（无弹窗）。
       expect(
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
@@ -903,7 +928,7 @@ void main() {
       expect(find.textContaining('Downloading audio 42%'), findsOneWidget);
     });
 
-    testWidgets('已下载官方音频左侧显示学习进度图标而非下载图标', (tester) async {
+    testWidgets('已下载社区音频左侧显示学习进度图标而非下载图标', (tester) async {
       final item =
           createTestAudioItem(
             name: 'Official Audio',
@@ -1197,13 +1222,13 @@ void main() {
       expect(find.text('Unpin'), findsOneWidget);
     });
 
-    testWidgets('官方音频菜单显示更新字幕，不显示管理字幕', (tester) async {
-      final officialItem = baseItem.copyWith(
+    testWidgets('社区音频菜单显示更新字幕，不显示管理字幕', (tester) async {
+      final communityItem = baseItem.copyWith(
         remoteAudioId: 'remote-audio-1',
         transcriptPath: null,
       );
       await tester.pumpWidget(
-        buildCompactTile(AudioLibraryState(audioItems: [officialItem])),
+        buildCompactTile(AudioLibraryState(audioItems: [communityItem])),
       );
       await tester.pumpAndSettle();
 
@@ -1285,13 +1310,13 @@ void main() {
       expect(find.byType(PopupMenuDivider), findsOneWidget);
     });
 
-    testWidgets('点击官方更新字幕先弹出清空进度确认框', (tester) async {
-      final officialItem = baseItem.copyWith(
+    testWidgets('点击社区更新字幕先弹出清空进度确认框', (tester) async {
+      final communityItem = baseItem.copyWith(
         remoteAudioId: 'remote-audio-1',
         transcriptPath: 'transcripts/official_x.srt',
       );
       await tester.pumpWidget(
-        buildCompactTile(AudioLibraryState(audioItems: [officialItem])),
+        buildCompactTile(AudioLibraryState(audioItems: [communityItem])),
       );
       await tester.pumpAndSettle();
 

@@ -4,7 +4,7 @@
 // 使用 IndexedStack 保持两个视图状态。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../features/official_collections/widgets/discover_entry_banner.dart';
+import '../features/community_collections/widgets/discover_entry_banner.dart';
 import '../providers/new_user_guide_provider.dart';
 import '../providers/collection_provider.dart';
 import '../l10n/app_localizations.dart';
@@ -144,7 +144,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
       return [
         // 合集排序
         const CollectionSortButton(),
-        // 「发现官方合集」入口已改为列表顶部的 DiscoverEntryBanner，更醒目；
+        // 「发现社区合集」入口已改为列表顶部的 DiscoverEntryBanner，更醒目；
         // AppBar 这里不再放 compass icon，避免重复。
         // 创建合集
         GuideTarget(

@@ -629,33 +629,33 @@ class _LearningPlanScreenState extends ConsumerState<LearningPlanScreen> {
   ///
   /// 承载对当前音频的重要操作：管理字幕、编辑字幕、导出音频、导出 PDF、重置进度。
   /// 与音频列表项菜单同源（复用 [showManageSubtitlesSheet]/[exportAudioItem]）。
-  /// 官方音频隐藏字幕/导出写操作，仅在有字幕时保留导出 PDF；无可用项时返回 null。
+  /// 社区音频隐藏字幕/导出写操作，仅在有字幕时保留导出 PDF；无可用项时返回 null。
   Widget? _buildPlanMenu(
     BuildContext context,
     AppLocalizations l10n,
     AudioItem audioItem,
     LearningProgress? progress,
   ) {
-    final isOfficial = audioItem.remoteAudioId != null;
+    final isCommunity = audioItem.remoteAudioId != null;
     final hasTranscript = audioItem.hasTranscript;
     final hasProgress = progress?.isStarted ?? false;
 
     final items = <PopupMenuEntry<String>>[
-      if (!isOfficial)
+      if (!isCommunity)
         appPopupMenuItem(
           context,
           value: 'manageSubtitles',
           icon: const Icon(Icons.subtitles_outlined, size: 20),
           label: l10n.manageSubtitles,
         ),
-      if (!isOfficial && hasTranscript)
+      if (!isCommunity && hasTranscript)
         appPopupMenuItem(
           context,
           value: 'editSubtitles',
           icon: const Icon(Icons.edit_note, size: 20),
           label: l10n.editSubtitles,
         ),
-      if (!isOfficial)
+      if (!isCommunity)
         appPopupMenuItem(
           context,
           value: 'export',

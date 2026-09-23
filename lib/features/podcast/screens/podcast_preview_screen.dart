@@ -1,7 +1,7 @@
 /// Podcast 内容预览页（只读单集列表 + 订阅 CTA）。
 ///
-/// 由 [PodcastPreviewArg] 驱动，供「精选播客 / Apple 搜索结果 / 用户粘贴链接」
-/// 三种来源共用。本页不写入 audio_items；只有用户明确订阅后才走
+/// 由 [PodcastPreviewArg] 驱动，供精选 Podcast、Apple 搜索结果和用户粘贴链接共用。
+/// 本页不写入 audio_items；只有用户明确订阅后才走
 /// [PodcastRepository.createAndFetch] 创建本地合集。
 ///
 /// 订阅后**停留在本页**（CTA 翻成「去学习」），与订阅列表页交互一致；
@@ -217,7 +217,7 @@ class _PodcastPreviewScreenState extends ConsumerState<PodcastPreviewScreen> {
     final canEnroll = await ensureSignedInForAction(
       context: context,
       ref: ref,
-      title: l10n.officialCollectionSignInRequiredTitle,
+      title: l10n.communityCollectionSignInRequiredTitle,
       message: l10n.podcastCatalogSignInRequiredMessage,
     );
     if (!mounted || !canEnroll) return;
@@ -276,7 +276,7 @@ class _PodcastPreviewScreenState extends ConsumerState<PodcastPreviewScreen> {
 ///
 /// meta 统一从 [podcastPreviewProvider] 读取（单一数据源）：feed 加载完成后
 /// 内联展示与「详情」弹窗都用 feed 的完整 meta（标题/作者/完整简介/封面），
-/// 加载中才回退到 catalog（[PodcastPreviewArg]）的精简信息，避免同一「详情」
+/// 加载中才回退到精选/搜索/链接参数（[PodcastPreviewArg]）的精简信息，避免同一「详情」
 /// 因打开时机不同而时而精简时而完整（时序不一致 bug）。
 class _PodcastPreviewHeader extends ConsumerWidget {
   final PodcastPreviewArg arg;
@@ -292,7 +292,7 @@ class _PodcastPreviewHeader extends ConsumerWidget {
         ?.meta;
     final description = meta?.description ?? arg.description;
     // RSS 加载完成后优先使用 feed 图，避免详情页和已订阅合集继续停在
-    // 搜索/catalog 占位图；RSS 缺图时再回退到入参图。
+    // 精选/搜索结果占位图；RSS 缺图时再回退到入参图。
     final imageUrl = (meta?.imageUrl?.isNotEmpty ?? false)
         ? meta?.imageUrl
         : arg.imageUrl;

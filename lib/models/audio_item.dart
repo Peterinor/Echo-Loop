@@ -70,8 +70,8 @@ MediaType mediaTypeForPath(String? filePath) {
 
 /// 用户导入音频的来源类型。
 ///
-/// 精选/官方合集不使用该字段，继续由 `remoteAudioId` 与合集 `source=official`
-/// 表达远端 catalog 身份。
+/// 社区合集不使用该字段，继续由 `remoteAudioId` 与合集 `source=community`
+/// 表达远端 v2 身份。
 enum AudioImportSourceType {
   /// 从设备本地文件导入。
   local,
@@ -111,7 +111,7 @@ class AudioItem {
 
   /// 主媒体文件相对路径（音频或视频）。
   ///
-  /// NULL 表示未就绪（官方合集加入后、下载完成前）；非 NULL 表示文件已在本地。
+  /// NULL 表示未就绪（社区合集加入后、下载完成前）；非 NULL 表示文件已在本地。
   /// 是「媒体是否可用」的单一真实来源 —— 播放入口据此判断「直接播」或「触发下载」，
   /// 也是 [mediaType]（video/audio）的派生依据。
   final String? audioPath;
@@ -145,17 +145,20 @@ class AudioItem {
   /// 转录前二次确认。
   final AudioContentStatus? contentStatus;
 
-  /// 官方合集中该音频在后端的 UUID；用户自建音频为 null。
+  /// 社区合集中该音频在后端的 UUID；用户自建音频为 null。
   /// 同步时按此反查本地行（复用 id）。
   final String? remoteAudioId;
 
-  /// 原始发布/播出日期（官方合集音频专用，如 VOA 某期节目日期）；
-  /// 用户自建音频为 null。供官方合集详情页「最早/最新发布」排序用。
+  /// 原始发布/播出日期（社区合集音频专用，如 VOA 某期节目日期）；
+  /// 用户自建音频为 null。供社区合集详情页「最早/最新发布」排序用。
   final DateTime? originalDate;
+
+  /// 社区合集文件从服务端消失的时间；文件恢复后清空。
+  final DateTime? communityUnavailableAt;
 
   /// 用户导入来源类型。
   ///
-  /// 仅用户导入音频使用；官方/精选合集音频保持 null，避免和 catalog 同步身份混淆。
+  /// 仅用户导入音频使用；社区合集音频保持 null，避免和 v2 同步身份混淆。
   final AudioImportSourceType? importSourceType;
 
   /// 用户导入来源 URL。
@@ -200,6 +203,7 @@ class AudioItem {
     this.contentStatus,
     this.remoteAudioId,
     this.originalDate,
+    this.communityUnavailableAt,
     this.importSourceType,
     this.importSourceUrl,
     this.podcastEpisodeGuid,
@@ -218,6 +222,12 @@ class AudioItem {
 
   /// 是否为视频条目
   bool get isVideo => mediaType == MediaType.video;
+
+  /// 社区文件是否已被服务端下架。
+  bool get isCommunityUnavailable => communityUnavailableAt != null;
+
+  /// 是否为社区合集媒体条目。
+  bool get isCommunity => remoteAudioId != null;
 
   /// 是否有字幕。
   ///
@@ -259,6 +269,7 @@ class AudioItem {
     'contentStatus': contentStatus?.index,
     'remoteAudioId': remoteAudioId,
     'originalDate': originalDate?.toIso8601String(),
+    'communityUnavailableAt': communityUnavailableAt?.toIso8601String(),
     'importSourceType': importSourceType?.storageValue,
     'importSourceUrl': importSourceUrl,
     'podcastEpisodeGuid': podcastEpisodeGuid,
@@ -288,6 +299,9 @@ class AudioItem {
     originalDate: json['originalDate'] == null
         ? null
         : DateTime.parse(json['originalDate'] as String),
+    communityUnavailableAt: json['communityUnavailableAt'] == null
+        ? null
+        : DateTime.parse(json['communityUnavailableAt'] as String),
     importSourceType: AudioImportSourceType.fromStorageValue(
       json['importSourceType'] as String?,
     ),
@@ -317,6 +331,7 @@ class AudioItem {
     Object? contentStatus = _sentinel,
     Object? remoteAudioId = _sentinel,
     Object? originalDate = _sentinel,
+    Object? communityUnavailableAt = _sentinel,
     Object? importSourceType = _sentinel,
     Object? importSourceUrl = _sentinel,
     Object? podcastEpisodeGuid = _sentinel,
@@ -359,6 +374,9 @@ class AudioItem {
       originalDate: originalDate == _sentinel
           ? this.originalDate
           : originalDate as DateTime?,
+      communityUnavailableAt: communityUnavailableAt == _sentinel
+          ? this.communityUnavailableAt
+          : communityUnavailableAt as DateTime?,
       importSourceType: importSourceType == _sentinel
           ? this.importSourceType
           : importSourceType as AudioImportSourceType?,

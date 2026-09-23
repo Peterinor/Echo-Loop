@@ -198,10 +198,10 @@ void main() {
         expect(item.isAudioReady, isTrue);
       });
 
-      test('audioPath=null → false（官方合集未下载占位行）', () {
+      test('audioPath=null → false（社区合集未下载占位行）', () {
         final item = AudioItem(
           id: 'oc-1',
-          name: '官方音频',
+          name: '社区音频',
           audioPath: null,
           transcriptPath: null,
           addedDate: now,
@@ -453,7 +453,7 @@ void main() {
       expect(item.transcriptLanguage, isNull);
     });
 
-    group('官方合集字段（remoteAudioId）+ audioPath nullable', () {
+    group('社区合集字段（remoteAudioId）+ audioPath nullable', () {
       test('默认 remoteAudioId=null（用户自建音频）', () {
         final item = AudioItem(
           id: 'audio-1',
@@ -465,7 +465,7 @@ void main() {
         expect(item.isAudioReady, isTrue);
       });
 
-      test('官方合集未下载音频：remoteAudioId 有值，audioPath=null', () {
+      test('社区合集未下载音频：remoteAudioId 有值，audioPath=null', () {
         final item = AudioItem(
           id: 'audio-1',
           name: 'Day 1',

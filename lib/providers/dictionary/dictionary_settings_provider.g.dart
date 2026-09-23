@@ -7,7 +7,7 @@ part of 'dictionary_settings_provider.dart';
 // **************************************************************************
 
 String _$dictionarySettingsNotifierHash() =>
-    r'93be0a637200f4b1d8c07e4fc1c306bdb373de88';
+    r'f0e734a51733e8741d9c8dced1a11ee91c8e3ebc';
 
 /// 词典设置 Notifier
 ///

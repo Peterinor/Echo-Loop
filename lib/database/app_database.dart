@@ -103,7 +103,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   /// 当前 schema 版本（静态访问，用于导入前版本检查）
-  static const currentSchemaVersion = 53;
+  static const currentSchemaVersion = 55;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -205,6 +205,51 @@ class AppDatabase extends _$AppDatabase {
                 AND output_time_seconds > 0
             ''');
           }
+        }
+        // v53→v54：合集命名统一为社区内容。旧数据库中的 source 值和索引都要
+        // 一次性迁移，确保已订阅合集继续通过同一个 remoteId 被 v2 API 更新。
+        if (from < 54) {
+          await _addColumnIfNotExists(
+            'collections',
+            'source',
+            "TEXT NOT NULL DEFAULT 'local'",
+          );
+          // 某些开发版数据库虽然 user_version 已经较新，但表是由历史 fixture
+          // 重建的。这里幂等补齐 v29/v31 的身份列，保证这些数据库也能继续打开。
+          await _addColumnIfNotExists('collections', 'remote_id', 'TEXT');
+          await _addColumnIfNotExists('collections', 'cover_url', 'TEXT');
+          await _addColumnIfNotExists('collections', 'description', 'TEXT');
+          await _addColumnIfNotExists(
+            'collections',
+            'deprecated_at',
+            'INTEGER',
+          );
+          await _addColumnIfNotExists('audio_items', 'remote_audio_id', 'TEXT');
+          await _addColumnIfNotExists(
+            'audio_items',
+            'original_date',
+            'INTEGER',
+          );
+          await customStatement(
+            'DROP INDEX IF EXISTS idx_collections_remote_id_official',
+          );
+          await customStatement(
+            "UPDATE collections SET source = 'community' WHERE source = 'official'",
+          );
+          await customStatement('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_remote_id_community
+            ON collections(remote_id)
+            WHERE source = 'community' AND remote_id IS NOT NULL AND deleted_at IS NULL
+          ''');
+        }
+        // v54→v55：保留已有学习记录的社区文件下架状态，避免媒体被删除后再次
+        // 自动下载，并允许文件重新出现在 v2 列表时恢复。
+        if (from < 55) {
+          await _addColumnIfNotExists(
+            'audio_items',
+            'community_unavailable_at',
+            'INTEGER',
+          );
         }
         // v49→v50：为收藏单词/意群补稳定的记忆主体 ID，并把收藏句专属的每日
         // 入队去重表泛化为带 namespace 的通用表，供词汇复习共用同一张表。
@@ -598,10 +643,10 @@ class AppDatabase extends _$AppDatabase {
             'ALTER TABLE collections RENAME COLUMN is_starred TO is_pinned',
           );
         }
-        // v28→v29：官方合集支持字段
+        // v28→v29：社区合集支持字段
         // - collections 加：source / remoteId / coverUrl / description / deprecatedAt
         // - audio_items 加：remoteAudioId / isAudioDownloaded（默认 true 兼容老数据）
-        // - 唯一索引：(remote_id) WHERE source='official' AND remote_id IS NOT NULL
+        // - 唯一索引：(remote_id) WHERE source='community' AND remote_id IS NOT NULL
         if (from < 29) {
           await _addColumnIfNotExists(
             'collections',
@@ -622,11 +667,11 @@ class AppDatabase extends _$AppDatabase {
             'is_audio_downloaded',
             'INTEGER NOT NULL DEFAULT 1',
           );
-          // 避免并发 enroll 写入重复的官方合集行
+          // 避免并发 enroll 写入重复的社区合集行
           await customStatement('''
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_remote_id_official
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_remote_id_community
             ON collections(remote_id)
-            WHERE source = 'official' AND remote_id IS NOT NULL
+            WHERE source = 'community' AND remote_id IS NOT NULL
           ''');
           // 同步时按 remoteAudioId 反查
           await customStatement('''
@@ -635,7 +680,7 @@ class AppDatabase extends _$AppDatabase {
             WHERE remote_audio_id IS NOT NULL
           ''');
         }
-        // v30→v31：audio_items 加 original_date（音频原始发布/播出日期，官方合集用）
+        // v30→v31：audio_items 加 original_date（音频原始发布/播出日期，社区合集用）
         //
         // 注意：这里必须在 v29→v30 的 alterTable 之前执行。Drift 的
         // TableMigration 会按当前表定义重建 audio_items，当前表已包含
@@ -1424,11 +1469,11 @@ class AppDatabase extends _$AppDatabase {
       WHERE is_pinned = 0
     ''');
 
-    // 官方合集 remoteId 唯一（防并发 enroll 重复）
+    // 社区合集 remoteId 唯一（防并发 enroll 重复）
     await customStatement('''
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_remote_id_official
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_remote_id_community
       ON collections(remote_id)
-      WHERE source = 'official'
+      WHERE source = 'community'
         AND remote_id IS NOT NULL
         AND deleted_at IS NULL
     ''');

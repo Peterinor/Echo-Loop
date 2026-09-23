@@ -243,13 +243,13 @@ void main() {
       expect(find.text('https://example.com/ep1.mp3'), findsOneWidget);
     });
 
-    testWidgets('详情用已加载 feed meta（完整简介/作者），不受 catalog 精简信息影响', (tester) async {
+    testWidgets('详情用已加载 feed meta（完整简介/作者），不受搜索摘要影响', (tester) async {
       await tester.pumpWidget(
         createTestApp(
           const PodcastPreviewScreen(
             arg: PodcastPreviewArg(
               title: '6 Minute English',
-              description: 'Short catalog summary',
+              description: 'Short search summary',
               feedUrl: _feedUrl,
             ),
           ),
@@ -280,8 +280,8 @@ void main() {
 
       // AppBar 已显示标题，头部封面右侧不再重复展示标题。
       expect(find.text('6 Minute English'), findsOneWidget);
-      // feed 加载后内联头图已用完整简介，catalog 精简信息不再出现。
-      expect(find.text('Short catalog summary'), findsNothing);
+      // feed 加载后内联头图已用完整简介，搜索摘要不再出现。
+      expect(find.text('Short search summary'), findsNothing);
       expect(
         find.textContaining('Full feed description. More', findRichText: true),
         findsOneWidget,

@@ -42,19 +42,38 @@ class CollectionDao extends DatabaseAccessor<AppDatabase>
     )..where((t) => t.id.equals(id))).getSingleOrNull();
   }
 
-  /// 根据官方合集 remoteId 反查本地行（供 enroll 防重入和 sync 使用）。
+  /// 根据社区合集 remoteId 反查本地行（供 enroll 防重入和 sync 使用）。
   ///
-  /// 仅匹配未软删且 source='official' 的行，避免与本地合集的意外碰撞。
+  /// 兼容 v54 迁移前的 `official` 值，避免用户重新订阅已有合集。
   Future<Collection?> getByRemoteId(String remoteId) {
     return (select(collections)
           ..where(
             (t) =>
                 t.remoteId.equals(remoteId) &
-                t.source.equals('official') &
+                t.source.equals('community') &
                 t.deletedAt.isNull(),
           )
           ..limit(1))
         .getSingleOrNull();
+  }
+
+  /// 根据本地媒体项反查社区合集的远端 ID，供 v2 文件/字幕请求使用。
+  Future<String?> getCommunityRemoteIdForAudio(String audioItemId) async {
+    final query =
+        select(collections).join([
+            innerJoin(
+              collectionAudioItems,
+              collectionAudioItems.collectionId.equalsExp(collections.id),
+            ),
+          ])
+          ..where(
+            collectionAudioItems.audioItemId.equals(audioItemId) &
+                collections.source.equals('community') &
+                collections.deletedAt.isNull(),
+          )
+          ..limit(1);
+    final row = await query.getSingleOrNull();
+    return row?.readTable(collections).remoteId;
   }
 
   /// 插入或更新合集

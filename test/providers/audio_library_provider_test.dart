@@ -256,7 +256,7 @@ void main() {
       expect(it.contentStatus, isNull);
     });
 
-    test('官方：保留 audioSha256（重下定位标识），清空其余文件派生元数据', () async {
+    test('社区：保留 audioSha256（重下定位标识），清空其余文件派生元数据', () async {
       final audioFile = File('${tempDir.path}/audios/official/a.m4a');
       await audioFile.create(recursive: true);
       await audioFile.writeAsString('audio');
@@ -278,7 +278,7 @@ void main() {
       expect(await audioFile.exists(), isFalse);
       final it = container.read(audioLibraryProvider).audioItems.single;
       expect(it.audioPath, isNull);
-      // 官方 sha 保留，供重新下载定位 audios/official/<sha>.m4a
+      // 社区 sha 保留，供重新下载定位 audios/official/<sha>.m4a
       expect(it.audioSha256, 'sha-official');
       expect(it.contentStatus, isNull);
     });

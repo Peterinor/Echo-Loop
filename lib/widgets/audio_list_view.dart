@@ -100,7 +100,7 @@ class AudioListView extends ConsumerStatefulWidget {
   final bool guideEnabled;
 
   /// 覆盖全局 [audioListSettingsProvider] 的排序类型。
-  /// 非 null 时：使用此值排序，不再 watch provider（适用于官方合集详情页等
+  /// 非 null 时：使用此值排序，不再 watch provider（适用于社区合集详情页等
   /// 需要独立 sort state 的场景）。
   final AudioSortType? overrideSortType;
 
@@ -150,7 +150,7 @@ class _AudioListViewState extends ConsumerState<AudioListView> {
         ref.watch(audioLibraryProvider.select((s) => s.audioItems));
 
     // 受控模式（overrideSortType 非 null）下不再 watch provider，避免全局排序
-    // 变化把官方合集详情页的独立 sort state 误刷。
+    // 变化把社区合集详情页的独立 sort state 误刷。
     final AudioSortType sortType =
         widget.overrideSortType ??
         ref.watch(audioListSettingsProvider).sortType;
@@ -532,7 +532,7 @@ class _DefaultEmptyState extends StatelessWidget {
 ///
 /// **受控模式**（`allowedTypes` + `current` + `onChanged` 三者非 null）：
 /// 菜单内容完全由调用方决定，状态也由调用方管理，provider 不参与。
-/// 官方合集详情页用此模式避免全局 sort 被污染。
+/// 社区合集详情页用此模式避免全局 sort 被污染。
 class AudioSortButton extends ConsumerWidget {
   /// 受控模式：显示的选项子集（按数组顺序）。为 null 走默认模式。
   final List<AudioSortType>? allowedTypes;

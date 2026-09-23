@@ -872,7 +872,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Podcasts, TOEFL, IELTS, CET-4/6, Interpreting...';
 
   @override
-  String get officialCollectionEmpty => 'This collection has no audio yet';
+  String get communityCollectionEmpty => 'This collection has no audio yet';
 
   @override
   String get sortCollections => 'Sort';
@@ -3925,7 +3925,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Onboarding reset; please restart the app to retake the survey';
 
   @override
-  String get discoverOfficialCollections => 'Discover Curated Collections';
+  String get discoverCommunityCollections => 'Discover Community Collections';
 
   @override
   String get discoverEmpty => 'No curated collections yet';
@@ -3985,21 +3985,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get podcastPreviewEmpty => 'No episodes were found yet.';
 
   @override
-  String get officialBadge => 'Curated';
+  String get communityBadge => 'Community';
 
   @override
-  String get officialDeprecatedBadge => 'Removed';
+  String get communityDeprecatedBadge => 'Removed';
 
   @override
   String get addToMyCollections => 'Add to My Collections';
 
   @override
-  String get officialCollectionSignInRequiredTitle =>
+  String get communityCollectionSignInRequiredTitle =>
       'Sign in to add collections';
 
   @override
-  String get officialCollectionSignInRequiredMessage =>
-      'Sign in to add any curated collections to My Collections and sync new episodes.';
+  String get communityCollectionSignInRequiredMessage =>
+      'Sign in to add community collections to My Collections and sync new files.';
 
   @override
   String get goLearn => 'Start Practicing';
@@ -4022,20 +4022,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Failed to add, please check your network and retry';
 
   @override
-  String removeOfficialConfirmTitle(String name) {
+  String removeCommunityConfirmTitle(String name) {
     return 'Remove \"$name\"?';
   }
 
   @override
-  String get removeOfficialConfirmMessage =>
-      'All audio files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.';
+  String get removeCommunityConfirmMessage =>
+      'All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.';
 
   @override
-  String get removeOfficialConfirmConfirm => 'Remove';
+  String get removeCommunityConfirmConfirm => 'Remove';
 
   @override
-  String get officialCollectionDeprecated =>
+  String get communityCollectionDeprecated =>
       'This collection has been removed. You can still use the local copy.';
+
+  @override
+  String get communityFileUnavailable =>
+      'This file was removed from the community collection';
+
+  @override
+  String communityFilesRemoved(int count) {
+    return '$count files were removed from community collections';
+  }
 
   @override
   String get downloadCancel => 'Cancel Download';
@@ -4054,20 +4063,20 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get updateOfficialSubtitle => 'Update Subtitles';
+  String get updateCommunitySubtitle => 'Update Subtitles';
 
   @override
-  String get updateOfficialSubtitleConfirm => 'Update subtitles?';
+  String get updateCommunitySubtitleConfirm => 'Update subtitles?';
 
   @override
-  String get updateOfficialSubtitleWarning =>
-      'Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this audio.';
+  String get updateCommunitySubtitleWarning =>
+      'Updating subtitles means replacing the local subtitles and clearing all saved sentences and learning progress of this media.';
 
   @override
-  String get officialSubtitleUpdated => 'Subtitles updated';
+  String get communitySubtitleUpdated => 'Subtitles updated';
 
   @override
-  String get officialSubtitleUpdateFailed =>
+  String get communitySubtitleUpdateFailed =>
       'Subtitles update failed, please retry';
 
   @override
@@ -4902,9 +4911,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get podcastSubscribeThisLink => 'Subscribe to this link';
-
-  @override
-  String get featuredPodcasts => 'Featured Podcasts';
 
   @override
   String get podcastSubscribing => 'Fetching podcast feed…';

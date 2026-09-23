@@ -1,7 +1,7 @@
 /// 播客订阅列表项（公共组件）
 ///
-/// 精选播客全屏页与「订阅 Podcast」弹窗共用。接收原始展示字段与回调，
-/// 不感知具体数据模型（CatalogPodcast / PodcastSearchResult 皆可），
+/// Podcast 精选/搜索页与「订阅 Podcast」弹窗共用。接收原始展示字段与回调，
+/// 不感知具体数据模型（Podcast catalog / PodcastSearchResult 等皆可），
 /// 保持纯展示 + 回调分发，业务逻辑留在调用方。
 library;
 

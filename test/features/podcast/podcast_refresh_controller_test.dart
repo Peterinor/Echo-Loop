@@ -24,11 +24,11 @@ void main() {
   Collection localCollection(String id) =>
       Collection(id: id, name: 'Local $id', createdDate: DateTime(2026, 7, 13));
 
-  Collection officialCollection(String id) => Collection(
+  Collection communityCollection(String id) => Collection(
     id: id,
-    name: 'Official $id',
+    name: 'Community $id',
     createdDate: DateTime(2026, 7, 13),
-    source: CollectionSource.official,
+    source: CollectionSource.community,
     remoteId: 'remote-$id',
   );
 
@@ -45,7 +45,7 @@ void main() {
               rawCollections: [
                 podcastCollection('podcast-1'),
                 localCollection('local-1'),
-                officialCollection('official-1'),
+                communityCollection('community-1'),
                 podcastCollection('podcast-2'),
               ],
             ),

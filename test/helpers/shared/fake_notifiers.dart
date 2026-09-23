@@ -199,12 +199,12 @@ class FakeAudioLibrary extends AudioLibrary {
     final index = items.indexWhere((item) => item.id == id);
     if (index != -1 && items[index].isAudioReady) {
       final item = items[index];
-      final isOfficial = item.remoteAudioId != null;
+      final isCommunity = item.remoteAudioId != null;
       items[index] = item.copyWith(
         audioPath: null,
         contentStatus: null,
         originalAudioSha256: null,
-        audioSha256: isOfficial ? item.audioSha256 : null,
+        audioSha256: isCommunity ? item.audioSha256 : null,
       );
       state = state.copyWith(audioItems: items);
     }

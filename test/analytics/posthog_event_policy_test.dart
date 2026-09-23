@@ -8,7 +8,7 @@ void main() {
       expect(PostHogEventPolicy.shouldCapture(Events.learningStart), isTrue);
       expect(PostHogEventPolicy.shouldCapture(Events.collectionCreate), isTrue);
       expect(
-        PostHogEventPolicy.shouldCapture(Events.officialCollectionEnroll),
+        PostHogEventPolicy.shouldCapture(Events.communityCollectionEnroll),
         isTrue,
       );
       expect(PostHogEventPolicy.shouldCapture(Events.audioUpload), isFalse);

@@ -23,23 +23,23 @@ class Collections extends Table {
   /// 同步状态
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
 
-  /// 合集来源：`local`（用户自建）| `official`（从后端加入的官方合集）
+  /// 合集来源：`local`（用户自建）| `community`（从后端加入的社区合集）
   ///
-  /// 老数据默认 `local`。不可变 —— 决定了 UI 是否显示官方 badge、
+  /// 老数据默认 `local`。不可变 —— 决定了 UI 是否显示社区 badge、
   /// 长按菜单是否允许重命名/删除音频、移除流程是否彻底清空等。
   TextColumn get source => text().withDefault(const Constant('local'))();
 
-  /// 官方合集在后端的 UUID；仅 source='official' 时有值。
-  /// 与 [source]=official 联合唯一（见 v29 迁移里的唯一索引）。
+  /// 社区合集在后端的 UUID；仅 source='community' 时有值。
+  /// 与 [source]=community 联合唯一。
   TextColumn get remoteId => text().nullable()();
 
-  /// 合集封面图 URL；用户自建合集目前为 null。
+  /// 社区合集封面图 URL；用户自建合集目前为 null。
   TextColumn get coverUrl => text().nullable()();
 
-  /// 合集描述；用户自建合集目前为 null。
+  /// 社区合集描述；用户自建合集目前为 null。
   TextColumn get description => text().nullable()();
 
-  /// 官方合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
+  /// 社区合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
   /// source='local' 永远为 null。
   DateTimeColumn get deprecatedAt => dateTime().nullable()();
 

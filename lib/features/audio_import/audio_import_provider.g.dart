@@ -46,7 +46,7 @@ final audioImportControllerProvider =
 
 typedef _$AudioImportController = AutoDisposeNotifier<AudioImportState>;
 String _$podcastDownloadControllerHash() =>
-    r'b46124a5752c9fc177fb1f605ba6ce3d5f8f67fd';
+    r'88234a3bc2f04eff53a77c9ef8a6acdda0702706';
 
 /// Podcast 单集懒下载控制器。
 ///

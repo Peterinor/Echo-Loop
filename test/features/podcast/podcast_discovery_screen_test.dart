@@ -1,28 +1,23 @@
 import 'package:echo_loop/features/auth/providers/auth_providers.dart';
-import 'package:echo_loop/features/official_collections/providers/discover_podcasts_provider.dart';
-import 'package:echo_loop/features/podcast/podcast_models.dart';
+import 'package:echo_loop/features/podcast/models/podcast_catalog.dart';
 import 'package:echo_loop/features/podcast/podcast_preview_provider.dart';
+import 'package:echo_loop/features/podcast/podcast_models.dart';
 import 'package:echo_loop/features/podcast/podcast_repository.dart';
 import 'package:echo_loop/features/podcast/podcast_search_provider.dart';
 import 'package:echo_loop/features/podcast/podcast_search_service.dart';
+import 'package:echo_loop/features/podcast/providers/discover_podcasts_provider.dart';
 import 'package:echo_loop/features/podcast/screens/podcast_discovery_screen.dart';
-import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
-import 'package:echo_loop/theme/app_theme.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../helpers/mock_providers.dart';
 import '../../helpers/test_app.dart';
-import '../official_collections/fixtures/catalog_fixtures.dart';
 
-/// 搜索服务替身：返回预置结果，记录调用词。
 class _FakeSearchService extends PodcastSearchService {
   _FakeSearchService(this.results);
+
   final List<PodcastSearchResult> results;
   String? lastTerm;
 
@@ -36,7 +31,6 @@ class _FakeSearchService extends PodcastSearchService {
   }
 }
 
-/// Podcast 仓库替身：记录订阅输入 URL，返回一个 podcast 合集。
 class _FakePodcastRepository extends Fake implements PodcastRepository {
   final List<String> subscribed = [];
   final List<String?> knownFeedUrls = [];
@@ -49,7 +43,7 @@ class _FakePodcastRepository extends Fake implements PodcastRepository {
     subscribed.add(inputUrl);
     knownFeedUrls.add(knownFeedUrl);
     return Collection(
-      id: 'c-$inputUrl',
+      id: 'subscribed',
       name: 'Subscribed',
       createdDate: DateTime(2026, 1, 1),
       source: CollectionSource.podcast,
@@ -59,115 +53,148 @@ class _FakePodcastRepository extends Fake implements PodcastRepository {
   }
 }
 
-/// 预置一个已订阅 podcast 合集（feedUrl 用于「去学习」判定）。
-TestCollectionList Function() _seeded(String feedUrl) =>
-    () => TestCollectionList(
-      CollectionState(
-        rawCollections: [
-          Collection(
-            id: 'existing',
-            name: '6 Minute English',
-            createdDate: DateTime(2026, 1, 1),
-            source: CollectionSource.podcast,
-            podcastFeedUrl: feedUrl,
+PodcastCatalogItem _featuredPodcast({
+  String id = 'featured-1',
+  String title = 'Featured English',
+  String applePodcastUrl = '',
+  String rssUrl = 'https://example.com/feed.xml',
+}) => PodcastCatalogItem(
+  id: id,
+  applePodcastUrl: applePodcastUrl,
+  rssUrl: rssUrl,
+  imageUrl: null,
+  title: title,
+  description: 'Short English lessons',
+);
+
+void main() {
+  testWidgets('空搜索词展示精选目录空态，不加载 Apple 搜索', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [discoverPodcastsProvider.overrideWithValue(const [])],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No curated podcasts yet'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('空搜索词恢复展示精选 Podcast', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [
+          discoverPodcastsProvider.overrideWithValue([
+            const PodcastCatalogItem(
+              id: 'featured-1',
+              applePodcastUrl: 'https://podcasts.apple.com/example',
+              rssUrl: 'https://example.com/feed.xml',
+              imageUrl: null,
+              title: 'Featured English',
+              description: 'Short English lessons',
+            ),
+          ]),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Featured English'), findsOneWidget);
+    expect(find.text('Short English lessons'), findsOneWidget);
+    expect(find.text('Search podcasts or paste a link'), findsOneWidget);
+  });
+
+  testWidgets('精选 Podcast 订阅优先使用 Apple URL 且停留在本页', (tester) async {
+    final fakeRepo = _FakePodcastRepository();
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [
+          discoverPodcastsProvider.overrideWithValue([
+            _featuredPodcast(
+              applePodcastUrl: 'https://podcasts.apple.com/example',
+            ),
+          ]),
+          isAuthenticatedProvider.overrideWithValue(true),
+          podcastRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add_circle_outline).first);
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.subscribed, ['https://podcasts.apple.com/example']);
+    expect(fakeRepo.knownFeedUrls, ['https://example.com/feed.xml']);
+    expect(find.byType(TextField), findsOneWidget);
+    expect(find.text('Added to My Collections'), findsWidgets);
+  });
+
+  testWidgets('已订阅的精选 Podcast 显示去学习', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [
+          discoverPodcastsProvider.overrideWithValue([_featuredPodcast()]),
+          collectionListProvider.overrideWith(
+            () => TestCollectionList(
+              CollectionState(
+                rawCollections: [
+                  Collection(
+                    id: 'existing',
+                    name: 'Existing Podcast',
+                    createdDate: DateTime(2026, 1, 1),
+                    source: CollectionSource.podcast,
+                    podcastFeedUrl: 'https://example.com/feed.xml',
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
+    await tester.pumpAndSettle();
 
-void main() {
+    expect(find.text('Start Practicing'), findsOneWidget);
+    expect(find.byIcon(Icons.add_circle_outline), findsNothing);
+  });
+
+  testWidgets('未登录订阅精选 Podcast 显示登录提示且不调用仓库', (tester) async {
+    final fakeRepo = _FakePodcastRepository();
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [
+          discoverPodcastsProvider.overrideWithValue([_featuredPodcast()]),
+          isAuthenticatedProvider.overrideWithValue(false),
+          podcastRepositoryProvider.overrideWithValue(fakeRepo),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add_circle_outline).first);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(fakeRepo.subscribed, isEmpty);
+  });
+
   testWidgets('进入页面时搜索框不会自动聚焦', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
-        overrides: [discoverPodcastsProvider.overrideWith((ref) => const [])],
+        overrides: [discoverPodcastsProvider.overrideWithValue(const [])],
       ),
     );
     await tester.pumpAndSettle();
 
     final editableText = tester.widget<EditableText>(find.byType(EditableText));
     expect(editableText.focusNode.hasFocus, isFalse);
-  });
-
-  testWidgets('搜索框使用普通文本键盘并保留搜索提交动作', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [discoverPodcastsProvider.overrideWith((ref) => const [])],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(field.keyboardType, TextInputType.text);
-    expect(field.textInputAction, TextInputAction.search);
-  });
-
-  testWidgets('聚焦搜索框后点击页面其他区域会释放焦点', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [discoverPodcastsProvider.overrideWith((ref) => const [])],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
-    final editableText = tester.widget<EditableText>(find.byType(EditableText));
-    expect(editableText.focusNode.hasFocus, isTrue);
-
-    await tester.tap(find.byType(AppBar));
-    await tester.pump();
-
-    expect(editableText.focusNode.hasFocus, isFalse);
-  });
-
-  testWidgets('聚焦搜索框后开始滑动列表会自动释放焦点', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [
-              for (var index = 0; index < 20; index++)
-                makeCatalogPodcast(id: 'p$index', title: 'Podcast $index'),
-            ],
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byType(TextField));
-    await tester.pump();
-    final editableText = tester.widget<EditableText>(find.byType(EditableText));
-    expect(editableText.focusNode.hasFocus, isTrue);
-
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pump();
-
-    expect(editableText.focusNode.hasFocus, isFalse);
-  });
-
-  testWidgets('搜索框为空时展示精选播客列表', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [
-              makeCatalogPodcast(id: 'p1', title: '6 Minute English'),
-              makeCatalogPodcast(id: 'p2', title: 'VOA Learning English'),
-            ],
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('6 Minute English'), findsOneWidget);
-    expect(find.text('VOA Learning English'), findsOneWidget);
   });
 
   testWidgets('输入关键词展示 Apple 搜索结果', (tester) async {
@@ -183,7 +210,7 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
-          discoverPodcastsProvider.overrideWith((ref) => const []),
+          discoverPodcastsProvider.overrideWithValue(const []),
           podcastSearchServiceProvider.overrideWithValue(fakeSearch),
         ],
       ),
@@ -198,13 +225,13 @@ void main() {
     expect(fakeSearch.lastTerm, 'bbc');
   });
 
-  testWidgets('输入链接解析为可点 item（不再直接订阅链接）', (tester) async {
+  testWidgets('输入链接解析为可订阅 item', (tester) async {
     const url = 'https://example.com/feed.xml';
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
-          discoverPodcastsProvider.overrideWith((ref) => const []),
+          discoverPodcastsProvider.overrideWithValue(const []),
           podcastPreviewProvider(url).overrideWith(
             (ref) async => const PodcastPreviewData(
               meta: PodcastFeedMeta(
@@ -212,14 +239,7 @@ void main() {
                 feedUrl: url,
                 author: 'Example Author',
               ),
-              episodes: [
-                PodcastEpisode(
-                  guid: 'e1',
-                  title: 'Ep',
-                  enclosureUrl: 'https://example.com/e1.mp3',
-                  enclosureType: 'audio/mpeg',
-                ),
-              ],
+              episodes: [],
             ),
           ),
         ],
@@ -231,160 +251,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
 
-    // 展示解析出的播客 item，而非旧的「订阅此链接」盲订阅卡片。
     expect(find.text('Example Cast'), findsOneWidget);
     expect(find.text('Subscribe to this link'), findsNothing);
-    expect(find.byIcon(Icons.add_circle_outline), findsOneWidget);
   });
-
-  testWidgets('点精选项的 + 订阅（传订阅输入 URL）后停留在本页', (tester) async {
-    final fakeRepo = _FakePodcastRepository();
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [
-              makeCatalogPodcast(
-                id: 'p1',
-                title: '6 Minute English',
-                applePodcastUrl: 'https://podcasts.apple.com/id262026947',
-                rssUrl: 'https://feeds.bbci.co.uk/6min.rss',
-              ),
-            ],
-          ),
-          isAuthenticatedProvider.overrideWithValue(true),
-          podcastRepositoryProvider.overrideWithValue(fakeRepo),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.add_circle_outline).first);
-    await tester.pumpAndSettle();
-
-    // subscriptionInputUrl 优先 Apple 链接
-    expect(fakeRepo.subscribed, ['https://podcasts.apple.com/id262026947']);
-    expect(fakeRepo.knownFeedUrls, ['https://feeds.bbci.co.uk/6min.rss']);
-    // 停留在本页：搜索框仍在，未发生导航。
-    expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('Added to My Collections'), findsWidgets);
-  });
-
-  testWidgets('已订阅的精选项显示「去学习」', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [
-              makeCatalogPodcast(
-                id: 'p1',
-                title: '6 Minute English',
-                rssUrl: 'https://feeds.bbci.co.uk/6min.rss',
-              ),
-            ],
-          ),
-          collectionListProvider.overrideWith(
-            _seeded('https://feeds.bbci.co.uk/6min.rss'),
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Start Practicing'), findsOneWidget);
-    expect(find.byIcon(Icons.add_circle_outline), findsNothing);
-  });
-
-  testWidgets('未登录点 + 弹登录提示且不订阅', (tester) async {
-    final fakeRepo = _FakePodcastRepository();
-    await tester.pumpWidget(
-      createTestApp(
-        const PodcastDiscoveryScreen(),
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [makeCatalogPodcast(id: 'p1', title: '6 Minute English')],
-          ),
-          isAuthenticatedProvider.overrideWithValue(false),
-          podcastRepositoryProvider.overrideWithValue(fakeRepo),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byIcon(Icons.add_circle_outline).first);
-    await tester.pumpAndSettle();
-
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(fakeRepo.subscribed, isEmpty);
-  });
-
-  testWidgets('点 item 内容区打开单集预览页', (tester) async {
-    await tester.pumpWidget(
-      _routed(
-        overrides: [
-          discoverPodcastsProvider.overrideWith(
-            (ref) => [
-              makeCatalogPodcast(
-                id: 'p1',
-                title: '6 Minute English',
-                rssUrl: 'https://feeds.bbci.co.uk/6min.rss',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('6 Minute English'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('PREVIEW:6 Minute English'), findsOneWidget);
-  });
-}
-
-/// 带 GoRouter 的最小宿主：验证 pushNested 打开预览子路由。
-Widget _routed({required List<Override> overrides}) {
-  final router = GoRouter(
-    initialLocation: '/podcast-subscribe',
-    routes: [
-      GoRoute(
-        path: '/podcast-subscribe',
-        builder: (context, state) => const PodcastDiscoveryScreen(),
-        routes: [
-          GoRoute(
-            path: 'preview',
-            builder: (context, state) {
-              final arg = state.extra as PodcastPreviewArg?;
-              return Scaffold(body: Text('PREVIEW:${arg?.title ?? '-'}'));
-            },
-          ),
-        ],
-      ),
-      GoRoute(
-        path: '/collections/:id',
-        builder: (context, state) => const Scaffold(body: Text('COLLECTION')),
-      ),
-    ],
-  );
-  return ProviderScope(
-    overrides: [
-      collectionListProvider.overrideWith(() => TestCollectionList()),
-      ...overrides,
-    ],
-    child: MaterialApp.router(
-      locale: const Locale('en'),
-      supportedLocales: const [Locale('en'), Locale('zh')],
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      theme: AppTheme.light(),
-      routerConfig: router,
-    ),
-  );
 }

@@ -365,7 +365,7 @@
   },
   "discoverEntryTitleA": "发现资源",
   "discoverEntrySubtitleA": "播客、托福、雅思、四六级、口译...",
-  "officialCollectionEmpty": "该合集暂无音频",
+  "communityCollectionEmpty": "该合集暂无文件",
   "sortCollections": "排序",
   "gridView": "文件夹视图",
   "listView": "列表视图",
@@ -1614,7 +1614,7 @@
   "resetOnboarding": "重置 Onboarding 问卷",
   "resetOnboardingDone": "Onboarding 已重置，请重启 App 以重新进入问卷",
 
-  "discoverOfficialCollections": "发现精选合集",
+  "discoverCommunityCollections": "发现社区合集",
   "discoverEmpty": "暂无精选合集",
   "discoverLoadFailed": "加载失败，点击重试",
   "discoverRetry": "重试",
@@ -1636,26 +1636,33 @@
   "podcastPreviewParseFailed": "播客源格式暂不支持，无法读取单集列表。",
   "podcastFeedBlocked": "该播客源在当前网络下拦截了自动访问。请稍后重试，或切换到其他网络。",
   "podcastPreviewEmpty": "暂未获取到单集。",
-  "officialBadge": "精选",
-  "officialDeprecatedBadge": "已下架",
+  "communityBadge": "社区",
+  "communityDeprecatedBadge": "已下架",
   "addToMyCollections": "添加到我的合集",
-  "officialCollectionSignInRequiredTitle": "登录后添加合集",
-  "officialCollectionSignInRequiredMessage": "登录后可以将精选合集添加到我的合集，并同步后续学习内容。",
+  "communityCollectionSignInRequiredTitle": "登录后添加合集",
+  "communityCollectionSignInRequiredMessage": "登录后可以将社区合集添加到我的合集，并同步后续内容。",
   "goLearn": "去学习",
   "removeFromMyCollections": "从我的合集移除",
   "enrollNeededTitle": "需要先添加合集",
   "enrollNeededMessage": "添加到我的合集后，就可以开始学习这条音频。",
   "enrollSucceeded": "已添加到我的合集",
   "enrollFailed": "添加失败，请检查网络后重试",
-  "removeOfficialConfirmTitle": "移除《{name}》？",
-  "@removeOfficialConfirmTitle": {
+  "removeCommunityConfirmTitle": "移除《{name}》？",
+  "@removeCommunityConfirmTitle": {
     "placeholders": {
       "name": {"type": "String"}
     }
   },
-  "removeOfficialConfirmMessage": "将删除本合集所有音频、字幕和相关学习记录，此操作不可恢复。",
-  "removeOfficialConfirmConfirm": "确认移除",
-  "officialCollectionDeprecated": "该合集已下架，本地副本仍可继续使用。",
+  "removeCommunityConfirmMessage": "将删除本合集所有媒体、字幕和相关学习记录，此操作不可恢复。",
+  "removeCommunityConfirmConfirm": "确认移除",
+  "communityCollectionDeprecated": "该合集已移除，本地副本仍可继续使用。",
+  "communityFileUnavailable": "该文件已从社区合集移除",
+  "communityFilesRemoved": "社区合集有 {count} 个文件已移除",
+  "@communityFilesRemoved": {
+    "placeholders": {
+      "count": {"type": "int"}
+    }
+  },
   "downloadCancel": "取消下载",
   "downloadLater": "先不管",
   "downloadCompleted": "《{name}》下载完成",
@@ -1670,11 +1677,11 @@
       "name": {"type": "String"}
     }
   },
-  "updateOfficialSubtitle": "更新字幕",
-  "updateOfficialSubtitleConfirm": "确定更新字幕？",
-  "updateOfficialSubtitleWarning": "更新字幕将替换本地字幕，并清空该音频的所有收藏句子和学习进度。",
-  "officialSubtitleUpdated": "字幕已更新",
-  "officialSubtitleUpdateFailed": "字幕更新失败，请重试",
+  "updateCommunitySubtitle": "更新字幕",
+  "updateCommunitySubtitleConfirm": "确定更新字幕？",
+  "updateCommunitySubtitleWarning": "更新字幕将替换本地字幕，并清空该媒体的所有收藏句子和学习进度。",
+  "communitySubtitleUpdated": "字幕已更新",
+  "communitySubtitleUpdateFailed": "字幕更新失败，请重试",
   "downloadInProgressSnackbar": "正在下载《{name}》，完成后再开始这条",
   "@downloadInProgressSnackbar": {
     "placeholders": {
@@ -1987,7 +1994,6 @@
   "podcastSearchEmpty": "没有找到相关播客",
   "podcastSearchFailed": "搜索失败，请重试",
   "podcastSubscribeThisLink": "订阅此链接",
-  "featuredPodcasts": "精选播客",
   "podcastSubscribing": "正在获取 Podcast Feed…",
   "podcastSubscribeFailed": "订阅失败：{error}",
   "@podcastSubscribeFailed": {

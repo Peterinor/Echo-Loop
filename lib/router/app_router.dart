@@ -18,8 +18,8 @@ import '../features/auth/screens/email_sign_in_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/password_sign_in_screen.dart';
 import '../features/auth/providers/auth_providers.dart';
-import '../features/official_collections/screens/discover_collections_screen.dart';
-import '../features/official_collections/screens/official_collection_detail_screen.dart';
+import '../features/community_collections/screens/discover_collections_screen.dart';
+import '../features/community_collections/screens/community_collection_detail_screen.dart';
 import '../features/podcast/podcast_models.dart';
 import '../features/podcast/screens/podcast_discovery_screen.dart';
 import '../features/podcast/screens/podcast_preview_screen.dart';
@@ -542,18 +542,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const ReviewStatisticsScreen(),
       ),
-      // 发现官方合集（全屏）
+      // 发现社区合集（全屏）
       GoRoute(
         path: '/discover',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const DiscoverCollectionsScreen(),
+        builder: (context, state) => const DiscoverCommunityCollectionsScreen(),
         routes: [
           GoRoute(
             path: ':remoteId',
             parentNavigatorKey: rootNavigatorKey,
             builder: (context, state) {
               final remoteId = state.pathParameters['remoteId']!;
-              return OfficialCollectionDetailScreen(remoteId: remoteId);
+              return CommunityCollectionDetailScreen(remoteId: remoteId);
             },
           ),
         ],

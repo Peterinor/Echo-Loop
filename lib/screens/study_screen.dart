@@ -171,7 +171,7 @@ class _StudyScreenState extends ConsumerState<StudyScreen> {
           actions: [GuideTarget(step: stepStreakChip, child: streakChip)],
         ),
         // 仅在「正在预热且尚无任何任务可展示」时显示骨架，避免冷启动闪空态；
-        // 已有任务时即使触发运行期 reload（如官方合集后台同步）也保留任务，不闪骨架。
+        // 已有任务时即使触发运行期 reload（如社区合集后台同步）也保留任务，不闪骨架。
         body: (isBootstrappingStudy && !hasAnyTask)
             ? const _StudyLoadingSkeleton()
             : !hasAnyTask

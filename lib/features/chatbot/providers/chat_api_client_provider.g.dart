@@ -6,7 +6,7 @@ part of 'chat_api_client_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$chatApiClientHash() => r'd62687865b98c6d110d23357427be2fdd75dabbf';
+String _$chatApiClientHash() => r'3cac787f0bc350e5c5ab0a107fd0680416edd41f';
 
 /// ChatApi 单例（keepAlive）。
 ///

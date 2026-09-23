@@ -24,7 +24,7 @@ class EditCollectionMembershipSheet extends ConsumerWidget {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final collectionState = ref.watch(collectionListProvider);
-    // 只显示用户自建合集，官方精选合集不允许用户添加音频
+    // 只显示用户自建合集，社区合集不允许用户添加音频
     final collections = collectionState.collections
         .where((c) => c.source == CollectionSource.local)
         .toList();

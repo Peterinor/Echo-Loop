@@ -26,7 +26,7 @@ void main() {
     await db.audioItemDao.upsert(
       AudioItemsCompanion(
         id: const Value('oc-1'),
-        name: const Value('官方占位'),
+        name: const Value('社区占位'),
         addedDate: Value(now),
         updatedAt: Value(now),
         remoteAudioId: const Value('r-1'),
@@ -46,7 +46,7 @@ void main() {
     await db.audioItemDao.upsert(
       AudioItemsCompanion(
         id: const Value('oc-1'),
-        name: const Value('官方占位'),
+        name: const Value('社区占位'),
         addedDate: Value(now),
         updatedAt: Value(now),
         remoteAudioId: const Value('r-1'),

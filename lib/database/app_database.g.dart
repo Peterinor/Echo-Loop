@@ -243,6 +243,17 @@ class $AudioItemsTable extends AudioItems
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _communityUnavailableAtMeta =
+      const VerificationMeta('communityUnavailableAt');
+  @override
+  late final GeneratedColumn<DateTime> communityUnavailableAt =
+      GeneratedColumn<DateTime>(
+        'community_unavailable_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _importSourceTypeMeta = const VerificationMeta(
     'importSourceType',
   );
@@ -354,6 +365,7 @@ class $AudioItemsTable extends AudioItems
     syncStatus,
     remoteAudioId,
     originalDate,
+    communityUnavailableAt,
     importSourceType,
     importSourceUrl,
     podcastEpisodeGuid,
@@ -542,6 +554,15 @@ class $AudioItemsTable extends AudioItems
         ),
       );
     }
+    if (data.containsKey('community_unavailable_at')) {
+      context.handle(
+        _communityUnavailableAtMeta,
+        communityUnavailableAt.isAcceptableOrUnknown(
+          data['community_unavailable_at']!,
+          _communityUnavailableAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('import_source_type')) {
       context.handle(
         _importSourceTypeMeta,
@@ -707,6 +728,10 @@ class $AudioItemsTable extends AudioItems
         DriftSqlType.dateTime,
         data['${effectivePrefix}original_date'],
       ),
+      communityUnavailableAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}community_unavailable_at'],
+      ),
       importSourceType: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}import_source_type'],
@@ -757,7 +782,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
 
   /// 主媒体文件相对路径（音频或视频，音频落 `audios/`、视频落 `videos/`）。
   ///
-  /// NULL 表示媒体尚未就绪（官方合集加入后、下载完成前）；非 NULL 表示文件已在本地。
+  /// NULL 表示媒体尚未就绪（社区合集加入后、下载完成前）；非 NULL 表示文件已在本地。
   /// 是「媒体是否可用」的单一真实来源，同时是媒体类型判定依据（按扩展名派生 video/audio）。
   final String? audioPath;
 
@@ -820,17 +845,23 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
   /// 同步状态：0=synced, 1=pendingUpload, 2=pendingDelete
   final int syncStatus;
 
-  /// 官方合集中该音频在后端的 UUID；仅官方合集音频有值。
+  /// 社区合集中该音频在后端的 UUID；仅社区合集音频有值。
   /// 用于同步比对（通过 remoteAudioId 反查本地行）。
   final String? remoteAudioId;
 
-  /// 原始发布/播出日期。官方合集音频从后端 catalog 同步（如 VOA 某期的播出日期）；
-  /// 用户自建音频保持 NULL。用于官方合集详情页「最早/最新发布」排序。
+  /// 原始发布/播出日期。社区合集音频从后端 catalog 同步（如 VOA 某期的播出日期）；
+  /// 用户自建音频保持 NULL。用于社区合集详情页「最早/最新发布」排序。
   final DateTime? originalDate;
+
+  /// 社区合集文件从服务端消失的时间。
+  ///
+  /// 非 NULL 时表示该条目仍保留本地学习记录，但远端文件已不可用；
+  /// 文件重新出现在 v2 列表后由同步清空。
+  final DateTime? communityUnavailableAt;
 
   /// 用户导入来源类型：local / direct_url / cloud_drive。
   ///
-  /// 官方/精选合集不使用该字段，继续由 remoteAudioId 和 collections.source 标识。
+  /// 社区合集不使用该字段，继续由 remoteAudioId 和 collections.source 标识。
   final String? importSourceType;
 
   /// 用户导入来源 URL。直链导入记录原始 URL；本地文件导入保持 NULL。
@@ -876,6 +907,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
     required this.syncStatus,
     this.remoteAudioId,
     this.originalDate,
+    this.communityUnavailableAt,
     this.importSourceType,
     this.importSourceUrl,
     this.podcastEpisodeGuid,
@@ -932,6 +964,11 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
     }
     if (!nullToAbsent || originalDate != null) {
       map['original_date'] = Variable<DateTime>(originalDate);
+    }
+    if (!nullToAbsent || communityUnavailableAt != null) {
+      map['community_unavailable_at'] = Variable<DateTime>(
+        communityUnavailableAt,
+      );
     }
     if (!nullToAbsent || importSourceType != null) {
       map['import_source_type'] = Variable<String>(importSourceType);
@@ -1007,6 +1044,9 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
       originalDate: originalDate == null && nullToAbsent
           ? const Value.absent()
           : Value(originalDate),
+      communityUnavailableAt: communityUnavailableAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(communityUnavailableAt),
       importSourceType: importSourceType == null && nullToAbsent
           ? const Value.absent()
           : Value(importSourceType),
@@ -1067,6 +1107,9 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
       syncStatus: serializer.fromJson<int>(json['syncStatus']),
       remoteAudioId: serializer.fromJson<String?>(json['remoteAudioId']),
       originalDate: serializer.fromJson<DateTime?>(json['originalDate']),
+      communityUnavailableAt: serializer.fromJson<DateTime?>(
+        json['communityUnavailableAt'],
+      ),
       importSourceType: serializer.fromJson<String?>(json['importSourceType']),
       importSourceUrl: serializer.fromJson<String?>(json['importSourceUrl']),
       podcastEpisodeGuid: serializer.fromJson<String?>(
@@ -1110,6 +1153,9 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
       'syncStatus': serializer.toJson<int>(syncStatus),
       'remoteAudioId': serializer.toJson<String?>(remoteAudioId),
       'originalDate': serializer.toJson<DateTime?>(originalDate),
+      'communityUnavailableAt': serializer.toJson<DateTime?>(
+        communityUnavailableAt,
+      ),
       'importSourceType': serializer.toJson<String?>(importSourceType),
       'importSourceUrl': serializer.toJson<String?>(importSourceUrl),
       'podcastEpisodeGuid': serializer.toJson<String?>(podcastEpisodeGuid),
@@ -1143,6 +1189,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
     int? syncStatus,
     Value<String?> remoteAudioId = const Value.absent(),
     Value<DateTime?> originalDate = const Value.absent(),
+    Value<DateTime?> communityUnavailableAt = const Value.absent(),
     Value<String?> importSourceType = const Value.absent(),
     Value<String?> importSourceUrl = const Value.absent(),
     Value<String?> podcastEpisodeGuid = const Value.absent(),
@@ -1189,6 +1236,9 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
         ? remoteAudioId.value
         : this.remoteAudioId,
     originalDate: originalDate.present ? originalDate.value : this.originalDate,
+    communityUnavailableAt: communityUnavailableAt.present
+        ? communityUnavailableAt.value
+        : this.communityUnavailableAt,
     importSourceType: importSourceType.present
         ? importSourceType.value
         : this.importSourceType,
@@ -1261,6 +1311,9 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
       originalDate: data.originalDate.present
           ? data.originalDate.value
           : this.originalDate,
+      communityUnavailableAt: data.communityUnavailableAt.present
+          ? data.communityUnavailableAt.value
+          : this.communityUnavailableAt,
       importSourceType: data.importSourceType.present
           ? data.importSourceType.value
           : this.importSourceType,
@@ -1312,6 +1365,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
           ..write('syncStatus: $syncStatus, ')
           ..write('remoteAudioId: $remoteAudioId, ')
           ..write('originalDate: $originalDate, ')
+          ..write('communityUnavailableAt: $communityUnavailableAt, ')
           ..write('importSourceType: $importSourceType, ')
           ..write('importSourceUrl: $importSourceUrl, ')
           ..write('podcastEpisodeGuid: $podcastEpisodeGuid, ')
@@ -1347,6 +1401,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
     syncStatus,
     remoteAudioId,
     originalDate,
+    communityUnavailableAt,
     importSourceType,
     importSourceUrl,
     podcastEpisodeGuid,
@@ -1381,6 +1436,7 @@ class AudioItem extends DataClass implements Insertable<AudioItem> {
           other.syncStatus == this.syncStatus &&
           other.remoteAudioId == this.remoteAudioId &&
           other.originalDate == this.originalDate &&
+          other.communityUnavailableAt == this.communityUnavailableAt &&
           other.importSourceType == this.importSourceType &&
           other.importSourceUrl == this.importSourceUrl &&
           other.podcastEpisodeGuid == this.podcastEpisodeGuid &&
@@ -1413,6 +1469,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
   final Value<int> syncStatus;
   final Value<String?> remoteAudioId;
   final Value<DateTime?> originalDate;
+  final Value<DateTime?> communityUnavailableAt;
   final Value<String?> importSourceType;
   final Value<String?> importSourceUrl;
   final Value<String?> podcastEpisodeGuid;
@@ -1444,6 +1501,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
     this.syncStatus = const Value.absent(),
     this.remoteAudioId = const Value.absent(),
     this.originalDate = const Value.absent(),
+    this.communityUnavailableAt = const Value.absent(),
     this.importSourceType = const Value.absent(),
     this.importSourceUrl = const Value.absent(),
     this.podcastEpisodeGuid = const Value.absent(),
@@ -1476,6 +1534,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
     this.syncStatus = const Value.absent(),
     this.remoteAudioId = const Value.absent(),
     this.originalDate = const Value.absent(),
+    this.communityUnavailableAt = const Value.absent(),
     this.importSourceType = const Value.absent(),
     this.importSourceUrl = const Value.absent(),
     this.podcastEpisodeGuid = const Value.absent(),
@@ -1511,6 +1570,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
     Expression<int>? syncStatus,
     Expression<String>? remoteAudioId,
     Expression<DateTime>? originalDate,
+    Expression<DateTime>? communityUnavailableAt,
     Expression<String>? importSourceType,
     Expression<String>? importSourceUrl,
     Expression<String>? podcastEpisodeGuid,
@@ -1546,6 +1606,8 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
       if (syncStatus != null) 'sync_status': syncStatus,
       if (remoteAudioId != null) 'remote_audio_id': remoteAudioId,
       if (originalDate != null) 'original_date': originalDate,
+      if (communityUnavailableAt != null)
+        'community_unavailable_at': communityUnavailableAt,
       if (importSourceType != null) 'import_source_type': importSourceType,
       if (importSourceUrl != null) 'import_source_url': importSourceUrl,
       if (podcastEpisodeGuid != null)
@@ -1583,6 +1645,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
     Value<int>? syncStatus,
     Value<String?>? remoteAudioId,
     Value<DateTime?>? originalDate,
+    Value<DateTime?>? communityUnavailableAt,
     Value<String?>? importSourceType,
     Value<String?>? importSourceUrl,
     Value<String?>? podcastEpisodeGuid,
@@ -1615,6 +1678,8 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
       syncStatus: syncStatus ?? this.syncStatus,
       remoteAudioId: remoteAudioId ?? this.remoteAudioId,
       originalDate: originalDate ?? this.originalDate,
+      communityUnavailableAt:
+          communityUnavailableAt ?? this.communityUnavailableAt,
       importSourceType: importSourceType ?? this.importSourceType,
       importSourceUrl: importSourceUrl ?? this.importSourceUrl,
       podcastEpisodeGuid: podcastEpisodeGuid ?? this.podcastEpisodeGuid,
@@ -1695,6 +1760,11 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
     if (originalDate.present) {
       map['original_date'] = Variable<DateTime>(originalDate.value);
     }
+    if (communityUnavailableAt.present) {
+      map['community_unavailable_at'] = Variable<DateTime>(
+        communityUnavailableAt.value,
+      );
+    }
     if (importSourceType.present) {
       map['import_source_type'] = Variable<String>(importSourceType.value);
     }
@@ -1753,6 +1823,7 @@ class AudioItemsCompanion extends UpdateCompanion<AudioItem> {
           ..write('syncStatus: $syncStatus, ')
           ..write('remoteAudioId: $remoteAudioId, ')
           ..write('originalDate: $originalDate, ')
+          ..write('communityUnavailableAt: $communityUnavailableAt, ')
           ..write('importSourceType: $importSourceType, ')
           ..write('importSourceUrl: $importSourceUrl, ')
           ..write('podcastEpisodeGuid: $podcastEpisodeGuid, ')
@@ -2231,23 +2302,23 @@ class Collection extends DataClass implements Insertable<Collection> {
   /// 同步状态
   final int syncStatus;
 
-  /// 合集来源：`local`（用户自建）| `official`（从后端加入的官方合集）
+  /// 合集来源：`local`（用户自建）| `community`（从后端加入的社区合集）
   ///
-  /// 老数据默认 `local`。不可变 —— 决定了 UI 是否显示官方 badge、
+  /// 老数据默认 `local`。不可变 —— 决定了 UI 是否显示社区 badge、
   /// 长按菜单是否允许重命名/删除音频、移除流程是否彻底清空等。
   final String source;
 
-  /// 官方合集在后端的 UUID；仅 source='official' 时有值。
-  /// 与 [source]=official 联合唯一（见 v29 迁移里的唯一索引）。
+  /// 社区合集在后端的 UUID；仅 source='community' 时有值。
+  /// 与 [source]=community 联合唯一。
   final String? remoteId;
 
-  /// 合集封面图 URL；用户自建合集目前为 null。
+  /// 社区合集封面图 URL；用户自建合集目前为 null。
   final String? coverUrl;
 
-  /// 合集描述；用户自建合集目前为 null。
+  /// 社区合集描述；用户自建合集目前为 null。
   final String? description;
 
-  /// 官方合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
+  /// 社区合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
   /// source='local' 永远为 null。
   final DateTime? deprecatedAt;
 
@@ -10591,7 +10662,7 @@ class DailyStudyRecord extends DataClass
   /// 日期（唯一），只保留年月日
   final DateTime date;
 
-  /// 当日累计学习时长（秒）
+  /// 旧版当日累计学习时长（秒）。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int studyTimeSeconds;
 
   /// 当日累计学习时长（毫秒）；新统计写入的真实精度来源。
@@ -10603,13 +10674,13 @@ class DailyStudyRecord extends DataClass
   /// 当日输出词数（跟读/复述了多少词）
   final int outputWords;
 
-  /// 当日输入时间（秒）— 音频播放时间
+  /// 旧版当日输入时间（秒）。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int inputTimeSeconds;
 
   /// 当日累计输入时间（毫秒）。
   final int inputTimeMilliseconds;
 
-  /// 当日输出时间（秒）— 跟读/复述暂停时间
+  /// 旧版当日输出时间（秒）。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int outputTimeSeconds;
 
   /// 当日累计输出时间（毫秒）。
@@ -11221,19 +11292,19 @@ class DailyStageStudyRecord extends DataClass
   /// 学习阶段（intEnum，按 StudyStage.index 存储）
   final StudyStage stage;
 
-  /// 当日该阶段累计学习时长（秒）
+  /// 旧版当日该阶段累计学习时长（秒）。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int studyTimeSeconds;
 
   /// 当日该阶段累计学习时长（毫秒）。
   final int studyTimeMilliseconds;
 
-  /// 当日该阶段输入时间（秒）— 音频播放时间
+  /// 旧版当日该阶段输入时间（秒）— 音频播放时间。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int inputTimeSeconds;
 
   /// 当日该阶段累计输入时间（毫秒）。
   final int inputTimeMilliseconds;
 
-  /// 当日该阶段输出时间（秒）— 跟读/复述时间
+  /// 旧版当日该阶段输出时间（秒）— 跟读/复述时间。仅保留用于旧备份/历史迁移兼容，业务不读取。
   final int outputTimeSeconds;
 
   /// 当日该阶段累计输出时间（毫秒）。
@@ -14969,6 +15040,7 @@ typedef $$AudioItemsTableCreateCompanionBuilder =
       Value<int> syncStatus,
       Value<String?> remoteAudioId,
       Value<DateTime?> originalDate,
+      Value<DateTime?> communityUnavailableAt,
       Value<String?> importSourceType,
       Value<String?> importSourceUrl,
       Value<String?> podcastEpisodeGuid,
@@ -15002,6 +15074,7 @@ typedef $$AudioItemsTableUpdateCompanionBuilder =
       Value<int> syncStatus,
       Value<String?> remoteAudioId,
       Value<DateTime?> originalDate,
+      Value<DateTime?> communityUnavailableAt,
       Value<String?> importSourceType,
       Value<String?> importSourceUrl,
       Value<String?> podcastEpisodeGuid,
@@ -15311,6 +15384,11 @@ class $$AudioItemsTableFilterComposer
 
   ColumnFilters<DateTime> get originalDate => $composableBuilder(
     column: $table.originalDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get communityUnavailableAt => $composableBuilder(
+    column: $table.communityUnavailableAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -15669,6 +15747,11 @@ class $$AudioItemsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get communityUnavailableAt => $composableBuilder(
+    column: $table.communityUnavailableAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get importSourceType => $composableBuilder(
     column: $table.importSourceType,
     builder: (column) => ColumnOrderings(column),
@@ -15805,6 +15888,11 @@ class $$AudioItemsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get originalDate => $composableBuilder(
     column: $table.originalDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get communityUnavailableAt => $composableBuilder(
+    column: $table.communityUnavailableAt,
     builder: (column) => column,
   );
 
@@ -16109,6 +16197,7 @@ class $$AudioItemsTableTableManager
                 Value<int> syncStatus = const Value.absent(),
                 Value<String?> remoteAudioId = const Value.absent(),
                 Value<DateTime?> originalDate = const Value.absent(),
+                Value<DateTime?> communityUnavailableAt = const Value.absent(),
                 Value<String?> importSourceType = const Value.absent(),
                 Value<String?> importSourceUrl = const Value.absent(),
                 Value<String?> podcastEpisodeGuid = const Value.absent(),
@@ -16140,6 +16229,7 @@ class $$AudioItemsTableTableManager
                 syncStatus: syncStatus,
                 remoteAudioId: remoteAudioId,
                 originalDate: originalDate,
+                communityUnavailableAt: communityUnavailableAt,
                 importSourceType: importSourceType,
                 importSourceUrl: importSourceUrl,
                 podcastEpisodeGuid: podcastEpisodeGuid,
@@ -16173,6 +16263,7 @@ class $$AudioItemsTableTableManager
                 Value<int> syncStatus = const Value.absent(),
                 Value<String?> remoteAudioId = const Value.absent(),
                 Value<DateTime?> originalDate = const Value.absent(),
+                Value<DateTime?> communityUnavailableAt = const Value.absent(),
                 Value<String?> importSourceType = const Value.absent(),
                 Value<String?> importSourceUrl = const Value.absent(),
                 Value<String?> podcastEpisodeGuid = const Value.absent(),
@@ -16204,6 +16295,7 @@ class $$AudioItemsTableTableManager
                 syncStatus: syncStatus,
                 remoteAudioId: remoteAudioId,
                 originalDate: originalDate,
+                communityUnavailableAt: communityUnavailableAt,
                 importSourceType: importSourceType,
                 importSourceUrl: importSourceUrl,
                 podcastEpisodeGuid: podcastEpisodeGuid,

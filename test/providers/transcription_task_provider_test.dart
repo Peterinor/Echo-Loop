@@ -1145,7 +1145,7 @@ void main() {
       container.dispose();
     });
 
-    test('官方音频 AI 字幕不会尝试自动校准', () async {
+    test('社区音频 AI 字幕不会尝试自动校准', () async {
       final audioItem = _testAudioItem(
         audioSha256: 'abc123',
       ).copyWith(remoteAudioId: 'remote-1');

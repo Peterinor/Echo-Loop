@@ -19,7 +19,7 @@ class AudioItems extends Table {
 
   /// 主媒体文件相对路径（音频或视频，音频落 `audios/`、视频落 `videos/`）。
   ///
-  /// NULL 表示媒体尚未就绪（官方合集加入后、下载完成前）；非 NULL 表示文件已在本地。
+  /// NULL 表示媒体尚未就绪（社区合集加入后、下载完成前）；非 NULL 表示文件已在本地。
   /// 是「媒体是否可用」的单一真实来源，同时是媒体类型判定依据（按扩展名派生 video/audio）。
   TextColumn get audioPath => text().nullable()();
 
@@ -82,17 +82,23 @@ class AudioItems extends Table {
   /// 同步状态：0=synced, 1=pendingUpload, 2=pendingDelete
   IntColumn get syncStatus => integer().withDefault(const Constant(0))();
 
-  /// 官方合集中该音频在后端的 UUID；仅官方合集音频有值。
+  /// 社区合集中该音频在后端的 UUID；仅社区合集音频有值。
   /// 用于同步比对（通过 remoteAudioId 反查本地行）。
   TextColumn get remoteAudioId => text().nullable()();
 
-  /// 原始发布/播出日期。官方合集音频从后端 catalog 同步（如 VOA 某期的播出日期）；
-  /// 用户自建音频保持 NULL。用于官方合集详情页「最早/最新发布」排序。
+  /// 原始发布/播出日期。社区合集音频从后端 catalog 同步（如 VOA 某期的播出日期）；
+  /// 用户自建音频保持 NULL。用于社区合集详情页「最早/最新发布」排序。
   DateTimeColumn get originalDate => dateTime().nullable()();
+
+  /// 社区合集文件从服务端消失的时间。
+  ///
+  /// 非 NULL 时表示该条目仍保留本地学习记录，但远端文件已不可用；
+  /// 文件重新出现在 v2 列表后由同步清空。
+  DateTimeColumn get communityUnavailableAt => dateTime().nullable()();
 
   /// 用户导入来源类型：local / direct_url / cloud_drive。
   ///
-  /// 官方/精选合集不使用该字段，继续由 remoteAudioId 和 collections.source 标识。
+  /// 社区合集不使用该字段，继续由 remoteAudioId 和 collections.source 标识。
   TextColumn get importSourceType => text().nullable()();
 
   /// 用户导入来源 URL。直链导入记录原始 URL；本地文件导入保持 NULL。

@@ -230,7 +230,7 @@ void main() {
 
     test('batchInsert 更新已有行不会级联删除合集 junction / 书签等子表', () async {
       final now = DateTime.now();
-      // 音频 + 合集 + junction + 书签（模拟官方合集中已下载并加书签的音频）
+      // 音频 + 合集 + junction + 书签（模拟社区合集中已下载并加书签的音频）
       await db.collectionDao.upsert(
         CollectionsCompanion(
           id: const Value('col-1'),

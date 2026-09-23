@@ -7,8 +7,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import '../features/official_collections/providers/official_enrollment_provider.dart';
-import '../features/official_collections/widgets/official_badge.dart';
+import '../features/community_collections/providers/community_enrollment_provider.dart';
+import '../features/community_collections/widgets/community_badge.dart';
 import '../features/podcast/podcast_info_sheet.dart';
 import '../models/collection.dart';
 import '../providers/collection_provider.dart';
@@ -622,8 +622,8 @@ class _CollectionListTile extends ConsumerWidget {
                             l10n,
                             theme,
                           )
-                        : collection.isOfficial
-                        ? _buildOfficialMenuItems(
+                        : collection.isCommunity
+                        ? _buildCommunityMenuItems(
                             context,
                             collection,
                             l10n,
@@ -644,8 +644,8 @@ class _CollectionListTile extends ConsumerWidget {
                         _showRenameCollectionDialog(context, ref, collection);
                       } else if (value == 'delete') {
                         _showDeleteConfirmDialog(context, ref, collection);
-                      } else if (value == 'removeOfficial') {
-                        _showRemoveOfficialConfirmDialog(
+                      } else if (value == 'removeCommunity') {
+                        _showRemoveCommunityConfirmDialog(
                           context,
                           ref,
                           collection,
@@ -679,10 +679,10 @@ class _CollectionListTile extends ConsumerWidget {
   }
 
   /// 左侧 leading（尺寸 / 样式与 Discover 卡片完全一致）：
-  /// - 官方合集且有 coverUrl：网络封面图（BoxFit.contain）
+  /// - 社区合集且有 coverUrl：网络封面图（BoxFit.contain）
   /// - 其它情况：渐变背景 + 合集名首字母
   ///
-  /// 官方合集会在右上角叠加 [OfficialCornerBadge] 角标（已下架则换成灰色 block 角标）。
+  /// 社区合集会在右上角叠加社区角标（已下架则换成灰色 block 角标）。
   Widget _buildLeadingIcon(ThemeData theme) {
     const size = 56.0;
     final coverUrl = collection.coverUrl;
@@ -710,7 +710,7 @@ class _CollectionListTile extends ConsumerWidget {
     }
 
     final Widget icon =
-        (collection.isOfficial && coverUrl != null && coverUrl.isNotEmpty)
+        (collection.isCommunity && coverUrl != null && coverUrl.isNotEmpty)
         ? ClipRRect(
             borderRadius: BorderRadius.circular(8),
             child: CachedNetworkImage(
@@ -728,7 +728,7 @@ class _CollectionListTile extends ConsumerWidget {
           )
         : _letterPlaceholder(theme, size);
 
-    if (!collection.isOfficial) return icon;
+    if (!collection.isCommunity) return icon;
 
     // Stack 不裁剪溢出，让角标向外偏移 4px，营造贴在图标外缘的"app 角标"观感
     return SizedBox(
@@ -741,7 +741,7 @@ class _CollectionListTile extends ConsumerWidget {
           Positioned(
             top: -4,
             right: -4,
-            child: OfficialCornerBadge(isDeprecated: collection.isDeprecated),
+            child: CommunityCornerBadge(isDeprecated: collection.isDeprecated),
           ),
         ],
       ),
@@ -765,7 +765,7 @@ class _CollectionListTile extends ConsumerWidget {
     );
   }
 
-  /// 渐变背景 + 合集名首字母占位（与官方合集卡片 `_coverPlaceholder` 同款）。
+  /// 渐变背景 + 合集名首字母占位（与社区合集卡片 `_coverPlaceholder` 同款）。
   Widget _letterPlaceholder(ThemeData theme, double size) {
     final letter = collection.name.isEmpty
         ? '?'
@@ -964,8 +964,8 @@ class _DeleteCollectionDialogState extends State<_DeleteCollectionDialog> {
   }
 }
 
-/// 从我的合集移除官方合集（彻底清空音频/字幕/学习记录）
-void _showRemoveOfficialConfirmDialog(
+/// 从我的合集移除社区合集（彻底清空音频/字幕/学习记录）
+void _showRemoveCommunityConfirmDialog(
   BuildContext context,
   WidgetRef ref,
   Collection collection,
@@ -974,16 +974,16 @@ void _showRemoveOfficialConfirmDialog(
 
   final confirmed = await showConfirmDialog(
     context: context,
-    title: l10n.removeOfficialConfirmTitle(collection.name),
-    message: l10n.removeOfficialConfirmMessage,
+    title: l10n.removeCommunityConfirmTitle(collection.name),
+    message: l10n.removeCommunityConfirmMessage,
     icon: Icons.warning_amber_rounded,
     isDestructive: true,
-    confirmLabel: l10n.removeOfficialConfirmConfirm,
+    confirmLabel: l10n.removeCommunityConfirmConfirm,
     cancelLabel: l10n.cancel,
   );
 
   if (confirmed == true) {
-    await ref.read(officialEnrollmentProvider.notifier).remove(collection.id);
+    await ref.read(communityEnrollmentProvider.notifier).remove(collection.id);
   }
 }
 
@@ -1018,9 +1018,9 @@ List<PopupMenuEntry<String>> _buildLocalMenuItems(
   ];
 }
 
-/// 官方合集菜单项：pin（允许）/ 从我的合集移除（彻底清空）；
+/// 社区合集菜单项：pin（允许）/ 从我的合集移除（彻底清空）；
 /// 不允许重命名、不允许删除合集内的音频。
-List<PopupMenuEntry<String>> _buildOfficialMenuItems(
+List<PopupMenuEntry<String>> _buildCommunityMenuItems(
   BuildContext context,
   Collection collection,
   AppLocalizations l10n,
@@ -1036,7 +1036,7 @@ List<PopupMenuEntry<String>> _buildOfficialMenuItems(
     const PopupMenuDivider(height: 10),
     appPopupMenuItem(
       context,
-      value: 'removeOfficial',
+      value: 'removeCommunity',
       icon: Icon(
         Icons.remove_circle_outline,
         size: 20,

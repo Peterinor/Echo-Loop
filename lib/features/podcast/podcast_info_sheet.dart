@@ -105,7 +105,7 @@ String podcastRefreshFailedLabel(AppLocalizations l10n) {
 
 /// 展示通用 Podcast 信息弹窗。
 ///
-/// 发现页精选播客预览和本地已订阅 Podcast 合集共用同一套详情布局，
+/// 发现页 Podcast 预览和本地已订阅 Podcast 合集共用同一套详情布局，
 /// 避免同一类内容在不同入口呈现不一致。
 void showPodcastInfoSheet(
   BuildContext context, {

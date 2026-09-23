@@ -1,7 +1,7 @@
 /// 播客内容预览（只读）：拉取 RSS 并解析 episode 列表，不写入本地库。
 ///
-/// 由订阅输入 URL 驱动（RSS 或 Apple Podcasts 链接），供「精选播客 / Apple
-/// 搜索结果 / 用户粘贴链接」三种来源共用。只有用户明确订阅后才进入
+/// 由订阅输入 URL 驱动（RSS 或 Apple Podcasts 链接），供精选 Podcast、Apple
+/// 搜索结果和用户粘贴链接共用。只有用户明确订阅后才进入
 /// [PodcastRepository.createAndFetch] 创建本地合集。
 library;
 
