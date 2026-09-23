@@ -117,9 +117,14 @@ class AppTheme {
       ? _premiumStatusExpiringDark
       : _premiumStatusExpiringLight;
 
-  /// 语义色：社区合集角标（深橙金色，对应社区内容的通用视觉）
-  /// 选 Material Orange 800：白字对比足够，区别于品牌蓝、不会与封面同色系混淆
-  static const Color communityBadgeColor = Color(0xFFEF6C00);
+  /// 语义色：本地合集角标（深蓝，配白字）。
+  static const Color localCollectionBadgeColor = Color(0xFF1565C0);
+
+  /// 语义色：社区合集角标（深橙，配白字）。
+  static const Color communityBadgeColor = Color(0xFFBF360C);
+
+  /// 语义色：Podcast 合集角标（深紫，配白字）。
+  static const Color podcastCollectionBadgeColor = Color(0xFF6A1B9A);
 
   /// 设置类底部弹窗的分组卡片背景色。
   ///

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_models.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_paging.dart';
 import 'package:echo_loop/features/community_collections/providers/discover_community_collections_provider.dart';
@@ -9,6 +10,33 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/test_app.dart';
 
 void main() {
+  testWidgets('中文发现页标题显示发现资源', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        const DiscoverCommunityCollectionsScreen(),
+        locale: const Locale('zh'),
+        overrides: [
+          discoverCommunityCollectionsProvider.overrideWith(
+            () => _TestDiscoverCommunityCollections(
+              PublicCollectionSummary(
+                id: 'collection-1',
+                name: '共享合集',
+                description: null,
+                coverUrl: null,
+                fileCount: 1,
+                publishedAt: DateTime(2026, 1, 1),
+              ),
+            ),
+          ),
+          discoverPodcastsProvider.overrideWithValue(const []),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('发现资源'), findsOneWidget);
+  });
+
   testWidgets('/discover 始终显示 Podcast 搜索入口', (tester) async {
     await tester.pumpWidget(
       createTestApp(
@@ -41,6 +69,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Discover Resources'), findsOneWidget);
     expect(find.text('Apple Podcasts'), findsOneWidget);
     expect(find.text('Search podcasts'), findsNothing);
   });

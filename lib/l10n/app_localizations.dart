@@ -6845,7 +6845,7 @@ abstract class AppLocalizations {
   /// No description provided for @discoverCommunityCollections.
   ///
   /// In en, this message translates to:
-  /// **'Discover Community Collections'**
+  /// **'Discover Shared Collections'**
   String get discoverCommunityCollections;
 
   /// No description provided for @discoverEmpty.
@@ -6944,10 +6944,16 @@ abstract class AppLocalizations {
   /// **'No episodes were found yet.'**
   String get podcastPreviewEmpty;
 
+  /// No description provided for @localCollectionBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get localCollectionBadge;
+
   /// No description provided for @communityBadge.
   ///
   /// In en, this message translates to:
-  /// **'Community'**
+  /// **'Shared'**
   String get communityBadge;
 
   /// No description provided for @communityDeprecatedBadge.
@@ -6955,6 +6961,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Removed'**
   String get communityDeprecatedBadge;
+
+  /// No description provided for @podcastCollectionBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcast'**
+  String get podcastCollectionBadge;
 
   /// No description provided for @addToMyCollections.
   ///
@@ -6971,7 +6983,7 @@ abstract class AppLocalizations {
   /// No description provided for @communityCollectionSignInRequiredMessage.
   ///
   /// In en, this message translates to:
-  /// **'Sign in to add community collections to My Collections and sync new files.'**
+  /// **'Sign in to add shared collections to My Collections and sync new files.'**
   String get communityCollectionSignInRequiredMessage;
 
   /// No description provided for @goLearn.
@@ -7037,13 +7049,13 @@ abstract class AppLocalizations {
   /// No description provided for @communityFileUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'This file was removed from the community collection'**
+  /// **'This file was removed from the shared collection'**
   String get communityFileUnavailable;
 
   /// No description provided for @communityFilesRemoved.
   ///
   /// In en, this message translates to:
-  /// **'{count} files were removed from community collections'**
+  /// **'{count} files were removed from shared collections'**
   String communityFilesRemoved(int count);
 
   /// No description provided for @downloadCancel.

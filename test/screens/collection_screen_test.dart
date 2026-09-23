@@ -165,6 +165,122 @@ void main() {
         expect(find.textContaining('Added'), findsNothing);
       });
 
+      testWidgets('每个来源的用户合集都显示对应角标', (tester) async {
+        final local = createTestCollection(id: 'local', name: 'Local Lessons');
+        final community = createTestCollection(
+          id: 'community',
+          name: 'Community Lessons',
+        ).copyWith(source: CollectionSource.community);
+        final podcast = createTestCollection(
+          id: 'podcast',
+          name: 'Podcast Lessons',
+        ).copyWith(source: CollectionSource.podcast);
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const LibraryScreen(),
+            overrides: [
+              collectionListProvider.overrideWith(
+                () => TestCollectionList(
+                  CollectionState(rawCollections: [local, community, podcast]),
+                ),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Local'), findsOneWidget);
+        expect(find.text('Shared'), findsOneWidget);
+        expect(find.text('Podcast'), findsOneWidget);
+      });
+
+      testWidgets('来源角标位于合集 meta 信息下方', (tester) async {
+        final collection = createTestCollection(
+          id: 'local',
+          name: 'Local Lessons',
+        );
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const LibraryScreen(),
+            overrides: [
+              collectionListProvider.overrideWith(
+                () => TestCollectionList(
+                  CollectionState(rawCollections: [collection]),
+                ),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final metaRect = tester.getRect(find.textContaining('0 items'));
+        final badgeRect = tester.getRect(find.text('Local'));
+        expect(badgeRect.top, greaterThan(metaRect.bottom));
+      });
+
+      testWidgets('中文环境显示三种来源角标', (tester) async {
+        final collections = [
+          createTestCollection(id: 'local', name: '本地课程'),
+          createTestCollection(
+            id: 'community',
+            name: '社区课程',
+          ).copyWith(source: CollectionSource.community),
+          createTestCollection(
+            id: 'podcast',
+            name: '播客课程',
+          ).copyWith(source: CollectionSource.podcast),
+        ];
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const LibraryScreen(),
+            locale: const Locale('zh'),
+            overrides: [
+              collectionListProvider.overrideWith(
+                () => TestCollectionList(
+                  CollectionState(rawCollections: collections),
+                ),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('本地'), findsOneWidget);
+        expect(find.text('共享'), findsOneWidget);
+        expect(find.text('播客'), findsOneWidget);
+      });
+
+      testWidgets('社区合集下架时显示状态角标', (tester) async {
+        final deprecated =
+            createTestCollection(
+              id: 'deprecated-community',
+              name: 'Removed Community',
+            ).copyWith(
+              source: CollectionSource.community,
+              deprecatedAt: DateTime(2026, 1, 2),
+            );
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const LibraryScreen(),
+            overrides: [
+              collectionListProvider.overrideWith(
+                () => TestCollectionList(
+                  CollectionState(rawCollections: [deprecated]),
+                ),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Removed'), findsOneWidget);
+        expect(find.text('Shared'), findsNothing);
+      });
+
       testWidgets('置顶合集使用淡背景色标记', (tester) async {
         final c = createTestCollection(
           id: '1',
@@ -238,10 +354,7 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('New Collection'), findsOneWidget);
-        expect(
-          find.text('Add audio or video'),
-          findsOneWidget,
-        );
+        expect(find.text('Add audio or video'), findsOneWidget);
         expect(find.text('Subscribe Podcast'), findsOneWidget);
         expect(find.text('Add with Apple Podcasts or RSS'), findsOneWidget);
 
