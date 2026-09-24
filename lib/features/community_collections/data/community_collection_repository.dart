@@ -35,6 +35,16 @@ class CommunityCollectionNotFoundError implements Exception {
   const CommunityCollectionNotFoundError(this.remoteId);
 }
 
+class _CommunityCollectionSnapshot {
+  final PublicCollectionCatalogEntry collection;
+  final List<CommunityCollectionFile> files;
+
+  const _CommunityCollectionSnapshot({
+    required this.collection,
+    required this.files,
+  });
+}
+
 /// 社区合集与本地 Drift 数据的协调层。
 class CommunityCollectionRepository {
   final db.AppDatabase _db;
@@ -59,9 +69,8 @@ class CommunityCollectionRepository {
       );
     }
 
-    final summary = await _findCollection(remoteId);
-    if (summary == null) throw CommunityCollectionNotFoundError(remoteId);
-    final files = await _fetchAllFiles(remoteId);
+    final snapshot = await _fetchCollection(remoteId);
+    final catalogEntry = snapshot.collection;
     final localCollectionId = const Uuid().v4();
     final now = DateTime.now();
 
@@ -69,18 +78,18 @@ class CommunityCollectionRepository {
       await _db.collectionDao.upsert(
         db.CollectionsCompanion(
           id: Value(localCollectionId),
-          name: Value(summary.name),
+          name: Value(catalogEntry.name),
           createdDate: Value(now),
-          updatedAt: Value(now),
+          updatedAt: Value(catalogEntry.updatedAt),
           source: const Value('community'),
-          remoteId: Value(summary.id),
-          coverUrl: Value(summary.coverUrl),
-          description: Value(summary.description),
-          authorNickname: Value(summary.authorNickname),
-          publishedAt: Value(summary.publishedAt),
+          remoteId: Value(catalogEntry.id),
+          coverUrl: Value(catalogEntry.coverUrl),
+          description: Value(catalogEntry.description),
+          authorNickname: Value(catalogEntry.authorNickname),
+          publishedAt: Value(catalogEntry.publishedAt),
         ),
       );
-      for (final file in files) {
+      for (final file in snapshot.files) {
         final audioId = const Uuid().v4();
         await _db.audioItemDao.upsert(
           db.AudioItemsCompanion(
@@ -147,27 +156,25 @@ class CommunityCollectionRepository {
     await _deleteLocalFiles(audioRows);
   }
 
-  Future<PublicCollectionSummary?> _findCollection(String remoteId) async {
-    String? cursor;
-    do {
-      final page = await _api.getCollections(cursor: cursor);
-      for (final item in page.items) {
-        if (item.id == remoteId) return item;
-      }
-      cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return null;
-  }
-
-  Future<List<CommunityCollectionFile>> _fetchAllFiles(String remoteId) async {
+  Future<_CommunityCollectionSnapshot> _fetchCollection(String remoteId) async {
     final files = <CommunityCollectionFile>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollectionFiles(remoteId, cursor: cursor);
+    CommunityCollectionDetailPage firstPage;
+    try {
+      firstPage = await _api.getCollectionDetail(remoteId);
+    } on CommunityCollectionNotFound {
+      throw CommunityCollectionNotFoundError(remoteId);
+    }
+    files.addAll(firstPage.items);
+    var cursor = firstPage.nextCursor;
+    while (cursor?.isNotEmpty ?? false) {
+      final page = await _api.getCollectionDetail(remoteId, cursor: cursor);
       files.addAll(page.items);
       cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return files;
+    }
+    return _CommunityCollectionSnapshot(
+      collection: firstPage.collection,
+      files: files,
+    );
   }
 
   Future<void> _deleteLocalFiles(List<db.AudioItem> rows) async {

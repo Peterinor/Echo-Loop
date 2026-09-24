@@ -16,7 +16,7 @@ class _FakeCommunityApi extends CommunityCollectionApi {
   }) async {
     return PublicCollectionPage(
       items: [
-        PublicCollectionSummary(
+        PublicCollectionCatalogEntry(
           id: 'remote-1',
           name: 'Community English',
           description: 'A community collection.',
@@ -31,12 +31,38 @@ class _FakeCommunityApi extends CommunityCollectionApi {
   }
 
   @override
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
+  Future<CommunityCollectionDetailPage> getCollectionDetail(
     String collectionId, {
     String? cursor,
     CancelToken? cancelToken,
   }) async {
-    return const CommunityCollectionFilesPage(items: [], nextCursor: null);
+    return CommunityCollectionDetailPage(
+      collection: PublicCollectionCatalogEntry(
+        id: 'remote-1',
+        name: 'Community English',
+        description: 'A community collection.',
+        coverUrl: null,
+        authorNickname: 'Echo Studio',
+        fileCount: 1,
+        publishedAt: DateTime(2026, 9, 22),
+        updatedAt: DateTime(2026, 9, 23),
+      ),
+      items: [
+        CommunityCollectionFile(
+          id: 'file-1',
+          title: 'Episode 1',
+          description: null,
+          mediaType: CommunityMediaType.audio,
+          durationSec: 45,
+          fileSizeBytes: null,
+          difficulty: null,
+          publishedAt: DateTime(2026, 9, 21),
+          sortOrder: 3,
+          mediaUrl: 'https://example.com/episode-1.m4a',
+        ),
+      ],
+      nextCursor: null,
+    );
   }
 }
 
@@ -61,10 +87,22 @@ void main() {
 
       final localId = await repository.enroll('remote-1');
       final collection = await database.collectionDao.getById(localId);
+      final audioId = (await database.collectionDao.getAudioIds(
+        localId,
+      )).single;
+      final audio = await database.audioItemDao.getById(audioId);
+      final junction = await (database.select(
+        database.collectionAudioItems,
+      )..where((row) => row.audioItemId.equals(audioId))).getSingle();
 
       expect(collection?.authorNickname, 'Echo Studio');
       expect(collection?.description, 'A community collection.');
       expect(collection?.publishedAt, DateTime(2026, 9, 22));
+      expect(collection?.updatedAt, DateTime(2026, 9, 23));
+      expect(audio?.name, 'Episode 1');
+      expect(audio?.totalDuration, 45);
+      expect(audio?.originalDate, DateTime(2026, 9, 21));
+      expect(junction.sortOrder, 3);
     },
   );
 }

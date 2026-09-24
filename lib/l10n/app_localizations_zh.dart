@@ -3856,6 +3856,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get goLearn => '去学习';
 
   @override
+  String get communityCollectionAdded => '已添加';
+
+  @override
   String get removeFromMyCollections => '从我的合集移除';
 
   @override

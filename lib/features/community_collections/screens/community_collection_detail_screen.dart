@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/audio_item.dart';
+import '../../../models/collection.dart';
 import '../../../providers/audio_library_provider.dart';
 import '../../../providers/collection_provider.dart';
 import '../../../router/app_router.dart';
@@ -33,7 +34,7 @@ class _CommunityCollectionDetailScreenState
     extends ConsumerState<CommunityCollectionDetailScreen> {
   @override
   Widget build(BuildContext context) {
-    final summary = ref
+    final listedCatalogEntry = ref
         .watch(discoverCommunityCollectionsProvider)
         .whenOrNull(
           data: (page) => page.items
@@ -41,38 +42,48 @@ class _CommunityCollectionDetailScreenState
               .firstOrNull,
         );
     final collectionState = ref.watch(collectionListProvider);
-    final localId = _localId(collectionState);
+    final localCollection = _localCollection(collectionState);
+    final localId = localCollection?.id;
 
     // 已加入合集时，列表真相在本地数据库；不要为了渲染本地列表再等待远端
     // catalog 请求，避免重新进入详情页被网络加载阻塞。
-    if (localId != null && summary != null) {
+    if (localCollection != null) {
+      final catalogEntry = _catalogEntryFromLocal(
+        localCollection,
+        collectionState.getAudioCount(localCollection.id),
+      );
       return Scaffold(
-        appBar: AppBar(title: Text(summary.name)),
+        appBar: AppBar(title: Text(catalogEntry.name)),
         body: _Content(
-          summary: summary,
+          catalogEntry: catalogEntry,
           remotePage: null,
-          fileCount: collectionState.getAudioCount(localId),
+          fileCount: collectionState.getAudioCount(localCollection.id),
           localId: localId,
           onLoadMore: () {},
           onEnroll: () => _enroll(context, ref),
           onPreviewFileTap: (_) => _showEnrollDialog(context, ref),
           onLearn: () {
-            context.go(AppRoutes.collectionDetail(localId));
+            context.go(AppRoutes.collectionDetail(localCollection.id));
           },
         ),
       );
     }
 
     final files = ref.watch(communityCollectionFilesProvider(widget.remoteId));
+    final catalogEntry = files.valueOrNull?.collection ?? listedCatalogEntry;
     return Scaffold(
-      appBar: AppBar(title: Text(summary?.name ?? '')),
+      appBar: AppBar(
+        title: Text(
+          files.valueOrNull?.collection?.name ?? catalogEntry?.name ?? '',
+        ),
+      ),
       body: files.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('$error')),
         data: (page) => _Content(
-          summary: summary,
+          catalogEntry: catalogEntry,
           remotePage: page,
-          fileCount: summary?.fileCount ?? page.items.length,
+          fileCount: catalogEntry?.fileCount ?? page.items.length,
           localId: localId,
           onLoadMore: () => unawaited(
             ref
@@ -93,13 +104,29 @@ class _CommunityCollectionDetailScreenState
     );
   }
 
-  String? _localId(CollectionState state) {
+  Collection? _localCollection(CollectionState state) {
     for (final collection in state.collections) {
       if (collection.isCommunity && collection.remoteId == widget.remoteId) {
-        return collection.id;
+        return collection;
       }
     }
     return null;
+  }
+
+  PublicCollectionCatalogEntry _catalogEntryFromLocal(
+    Collection collection,
+    int count,
+  ) {
+    return PublicCollectionCatalogEntry(
+      id: collection.remoteId ?? widget.remoteId,
+      name: collection.name,
+      description: collection.description,
+      coverUrl: collection.coverUrl,
+      authorNickname: collection.authorNickname,
+      fileCount: count,
+      publishedAt: collection.publishedAt ?? collection.createdDate,
+      updatedAt: collection.updatedAt,
+    );
   }
 
   /// 未加入合集时，点击预览素材先提示用户添加合集。
@@ -156,7 +183,7 @@ class _CommunityCollectionDetailScreenState
 }
 
 class _Content extends StatelessWidget {
-  final PublicCollectionSummary? summary;
+  final PublicCollectionCatalogEntry? catalogEntry;
   final CommunityCollectionPagedState<CommunityCollectionFile>? remotePage;
   final int fileCount;
   final String? localId;
@@ -166,7 +193,7 @@ class _Content extends StatelessWidget {
   final VoidCallback onLearn;
 
   const _Content({
-    required this.summary,
+    required this.catalogEntry,
     required this.remotePage,
     required this.fileCount,
     required this.localId,
@@ -179,14 +206,14 @@ class _Content extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final collection = summary;
+    final collection = catalogEntry;
     if (collection == null) {
       return Center(child: Text(l10n.communityCollectionDeprecated));
     }
     final header = CommunityCollectionHeader(
       description: collection.description,
       authorNickname: collection.authorNickname,
-      publishedAt: collection.publishedAt,
+      updatedAt: collection.updatedAt,
       fileCount: fileCount,
     );
     final audioList = switch (localId) {

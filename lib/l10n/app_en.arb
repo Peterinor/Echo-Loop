@@ -2136,6 +2136,7 @@
   "communityCollectionSignInRequiredTitle": "Sign in to add collections",
   "communityCollectionSignInRequiredMessage": "Sign in to add shared collections to My Collections and sync new files.",
   "goLearn": "Start Practicing",
+  "communityCollectionAdded": "Added",
   "removeFromMyCollections": "Remove from My Collections",
   "enrollNeededTitle": "Add Collection First",
   "enrollNeededMessage": "Add this collection to My Collection, then you can start practicing.",

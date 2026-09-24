@@ -7028,6 +7028,12 @@ abstract class AppLocalizations {
   /// **'Start Practicing'**
   String get goLearn;
 
+  /// No description provided for @communityCollectionAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get communityCollectionAdded;
+
   /// No description provided for @removeFromMyCollections.
   ///
   /// In en, this message translates to:

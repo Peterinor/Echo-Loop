@@ -169,7 +169,7 @@ class _CollectionDetailScreenState
                       ? CommunityCollectionHeader(
                           description: collection.description,
                           authorNickname: collection.authorNickname,
-                          publishedAt: collection.publishedAt,
+                          updatedAt: collection.updatedAt,
                           fileCount: collectionState.getAudioCount(
                             collection.id,
                           ),

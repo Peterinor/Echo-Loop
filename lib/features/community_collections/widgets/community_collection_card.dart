@@ -3,17 +3,18 @@ import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../services/app_network_image_cache.dart';
+import '../../../theme/app_theme.dart';
 import '../models/community_collection_models.dart';
 
 /// Discover 页的合集卡片。
 ///
-/// 点击卡片主体 [onOpenDetail] 进入详情页；右侧 trailing 按回调切换：
+/// 点击卡片主体 [onOpenDetail] 进入详情页；右侧 trailing 按状态切换：
 /// - 未加入：`+` 图标 → [onEnroll]
-/// - 已加入：`去学习` 文字按钮 → [onGoLearn]
+/// - 已加入：不可点击的绿色圆形对勾图标
 ///
-/// 数据源是 v2 的 [PublicCollectionSummary]，卡片只展示摘要信息。
+/// 数据源是 v2 的 [PublicCollectionCatalogEntry]，卡片只展示目录信息。
 class CommunityCollectionCard extends StatelessWidget {
-  final PublicCollectionSummary item;
+  final PublicCollectionCatalogEntry item;
 
   /// 是否已加入（由父层根据 `collectionListProvider` 判断）
   final bool enrolled;
@@ -23,7 +24,6 @@ class CommunityCollectionCard extends StatelessWidget {
 
   final VoidCallback onOpenDetail;
   final VoidCallback onEnroll;
-  final VoidCallback onGoLearn;
 
   const CommunityCollectionCard({
     super.key,
@@ -32,7 +32,6 @@ class CommunityCollectionCard extends StatelessWidget {
     required this.enrolling,
     required this.onOpenDetail,
     required this.onEnroll,
-    required this.onGoLearn,
   });
 
   @override
@@ -96,7 +95,7 @@ class CommunityCollectionCard extends StatelessWidget {
                 ),
               ),
             ),
-            // 右侧：trailing 区全高可点击（enroll / goLearn / spinner）
+            // 右侧：未加入时提供加入操作；已加入时仅显示静态状态。
             _buildTrailing(context, l10n, theme),
           ],
         ),
@@ -155,8 +154,7 @@ class CommunityCollectionCard extends StatelessWidget {
     );
   }
 
-  /// 右侧 trailing 区。三种态共用一个固定宽度的 InkWell 卡槽，
-  /// 整个卡片高度都是点击区（与 collection_screen 里的 `...` 菜单同 pattern）。
+  /// 右侧 trailing 区。已加入时用不可点击的对勾图标替代学习按钮。
   Widget _buildTrailing(
     BuildContext context,
     AppLocalizations l10n,
@@ -177,16 +175,13 @@ class CommunityCollectionCard extends StatelessWidget {
     }
     if (enrolled) {
       return SizedBox(
-        width: trailingWidth + 16, // "去学习" 文字宽度富余
-        child: InkWell(
-          onTap: onGoLearn,
-          child: Center(
-            child: Text(
-              l10n.goLearn,
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
+        width: trailingWidth,
+        child: Semantics(
+          label: l10n.communityCollectionAdded,
+          child: const Center(
+            child: Icon(
+              Icons.check_circle_outline_rounded,
+              color: AppTheme.successColor,
             ),
           ),
         ),

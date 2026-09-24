@@ -1,7 +1,7 @@
 import '../../../models/word_timestamp.dart';
 
-/// v2 社区合集摘要。
-class PublicCollectionSummary {
+/// v2 社区合集目录。
+class PublicCollectionCatalogEntry {
   final String id;
   final String name;
   final String? description;
@@ -9,8 +9,9 @@ class PublicCollectionSummary {
   final String? authorNickname;
   final int fileCount;
   final DateTime publishedAt;
+  final DateTime updatedAt;
 
-  const PublicCollectionSummary({
+  const PublicCollectionCatalogEntry({
     required this.id,
     required this.name,
     required this.description,
@@ -18,10 +19,11 @@ class PublicCollectionSummary {
     this.authorNickname,
     required this.fileCount,
     required this.publishedAt,
-  });
+    DateTime? updatedAt,
+  }) : updatedAt = updatedAt ?? publishedAt;
 
-  factory PublicCollectionSummary.fromJson(Map<String, Object?> json) {
-    return PublicCollectionSummary(
+  factory PublicCollectionCatalogEntry.fromJson(Map<String, Object?> json) {
+    return PublicCollectionCatalogEntry(
       id: _requiredString(json, 'id'),
       name: _requiredString(json, 'name'),
       description: _nullableString(json, 'description'),
@@ -29,6 +31,9 @@ class PublicCollectionSummary {
       authorNickname: _nullableString(json, 'authorNickname'),
       fileCount: _requiredInt(json, 'fileCount'),
       publishedAt: _requiredDateTime(json, 'publishedAt'),
+      updatedAt:
+          _nullableDateTime(json, 'updatedAt') ??
+          _requiredDateTime(json, 'publishedAt'),
     );
   }
 
@@ -41,6 +46,7 @@ class PublicCollectionSummary {
     'authorNickname': authorNickname,
     'fileCount': fileCount,
     'publishedAt': publishedAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
   };
 }
 
@@ -147,40 +153,47 @@ class CommunityCollectionFile {
 
 /// 分页结果。
 class PublicCollectionPage {
-  final List<PublicCollectionSummary> items;
+  final List<PublicCollectionCatalogEntry> items;
   final String? nextCursor;
 
   const PublicCollectionPage({required this.items, required this.nextCursor});
 }
 
 /// 合集文件分页结果。
-class CommunityCollectionFilesPage {
+class CommunityCollectionDetailPage {
+  final PublicCollectionCatalogEntry collection;
   final List<CommunityCollectionFile> items;
   final String? nextCursor;
 
-  const CommunityCollectionFilesPage({
+  const CommunityCollectionDetailPage({
+    required this.collection,
     required this.items,
     required this.nextCursor,
   });
 }
 
+/// 单个社区文件的元数据和字幕详情。
+class CommunityCollectionFileDetail {
+  final CommunityCollectionFile file;
+  final CommunitySubtitle subtitle;
+
+  const CommunityCollectionFileDetail({
+    required this.file,
+    required this.subtitle,
+  });
+}
+
 /// 单个文件字幕响应。
 class CommunitySubtitle {
-  final String fileId;
   final List<CommunitySubtitleSentence> sentences;
   final List<WordTimestamp> words;
 
-  const CommunitySubtitle({
-    required this.fileId,
-    required this.sentences,
-    required this.words,
-  });
+  const CommunitySubtitle({required this.sentences, required this.words});
 
   factory CommunitySubtitle.fromJson(Map<String, Object?> json) {
     final sentenceValues = _requiredList(json, 'sentences');
     final wordValues = _requiredList(json, 'words');
     return CommunitySubtitle(
-      fileId: _requiredString(json, 'fileId'),
       sentences: sentenceValues
           .map(_asObjectMap)
           .map(CommunitySubtitleSentence.fromJson)

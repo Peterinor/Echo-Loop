@@ -61,6 +61,16 @@ class CommunitySyncFailed extends CommunitySyncOutcome {
   const CommunitySyncFailed(this.error);
 }
 
+class _CommunityCollectionSnapshot {
+  final PublicCollectionCatalogEntry collection;
+  final List<CommunityCollectionFile> files;
+
+  const _CommunityCollectionSnapshot({
+    required this.collection,
+    required this.files,
+  });
+}
+
 /// 社区合集本地缓存与 v2 远端数据的协调层。
 class CommunitySyncService {
   final db.AppDatabase _db;
@@ -129,8 +139,6 @@ class CommunitySyncService {
     if (locals.isEmpty) return const CommunitySyncSkipped();
 
     try {
-      final summaries = await _fetchAllCollections();
-      final byRemoteId = {for (final item in summaries) item.id: item};
       var deprecated = 0;
       var undeprecated = 0;
       var added = 0;
@@ -142,8 +150,17 @@ class CommunitySyncService {
       for (final local in locals) {
         try {
           final remoteId = local.remoteId;
-          final summary = remoteId == null ? null : byRemoteId[remoteId];
-          if (summary == null) {
+          if (remoteId == null) {
+            if (local.deprecatedAt == null) {
+              await _markDeprecated(local.id);
+              deprecated++;
+            }
+            continue;
+          }
+
+          // 只同步本地已加入的合集；详情第一页的 404 才代表合集已下架。
+          final snapshot = await _fetchCollection(remoteId);
+          if (snapshot == null) {
             if (local.deprecatedAt == null) {
               await _markDeprecated(local.id);
               deprecated++;
@@ -154,8 +171,11 @@ class CommunitySyncService {
             await _restore(local.id);
             undeprecated++;
           }
-          final files = await _fetchAllFiles(summary.id);
-          final result = await _applyCollection(local, summary, files);
+          final result = await _applyCollection(
+            local,
+            snapshot.collection,
+            snapshot.files,
+          );
           added += result.added;
           removed += result.removed;
           unavailable += result.unavailable;
@@ -187,28 +207,28 @@ class CommunitySyncService {
     }
   }
 
-  Future<List<PublicCollectionSummary>> _fetchAllCollections() async {
-    final result = <PublicCollectionSummary>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollections(cursor: cursor);
-      result.addAll(page.items);
-      cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return result;
-  }
-
-  Future<List<CommunityCollectionFile>> _fetchAllFiles(
+  /// 拉取单个已加入合集的全部详情页；第一页 404 返回 null 表示合集已下架。
+  Future<_CommunityCollectionSnapshot?> _fetchCollection(
     String collectionId,
   ) async {
     final result = <CommunityCollectionFile>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollectionFiles(collectionId, cursor: cursor);
+    late final CommunityCollectionDetailPage firstPage;
+    try {
+      firstPage = await _api.getCollectionDetail(collectionId);
+    } on CommunityCollectionNotFound {
+      return null;
+    }
+    result.addAll(firstPage.items);
+    var cursor = firstPage.nextCursor;
+    while (cursor?.isNotEmpty ?? false) {
+      final page = await _api.getCollectionDetail(collectionId, cursor: cursor);
       result.addAll(page.items);
       cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return result;
+    }
+    return _CommunityCollectionSnapshot(
+      collection: firstPage.collection,
+      files: result,
+    );
   }
 
   Future<void> _markDeprecated(String localId) async {
@@ -234,7 +254,7 @@ class CommunitySyncService {
 
   Future<_CollectionDiff> _applyCollection(
     db.Collection local,
-    PublicCollectionSummary summary,
+    PublicCollectionCatalogEntry catalogEntry,
     List<CommunityCollectionFile> files,
   ) async {
     final junctions = await (_db.select(
@@ -323,12 +343,12 @@ class CommunitySyncService {
       )..where((t) => t.id.equals(local.id))).write(
         db.CollectionsCompanion(
           source: const Value('community'),
-          name: Value(summary.name),
-          description: Value(summary.description),
-          coverUrl: Value(summary.coverUrl),
-          authorNickname: Value(summary.authorNickname),
-          publishedAt: Value(summary.publishedAt),
-          updatedAt: Value(_now()),
+          name: Value(catalogEntry.name),
+          description: Value(catalogEntry.description),
+          coverUrl: Value(catalogEntry.coverUrl),
+          authorNickname: Value(catalogEntry.authorNickname),
+          publishedAt: Value(catalogEntry.publishedAt),
+          updatedAt: Value(catalogEntry.updatedAt),
         ),
       );
     });

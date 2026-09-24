@@ -24,12 +24,12 @@ class _MissingFileApi extends CommunityCollectionApi {
   _MissingFileApi() : super.withDio(Dio());
 
   @override
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
-    String collectionId, {
-    String? cursor,
+  Future<CommunityCollectionFileDetail> getFileDetail(
+    String collectionId,
+    String fileId, {
     CancelToken? cancelToken,
   }) async {
-    return const CommunityCollectionFilesPage(items: [], nextCursor: null);
+    throw CommunityFileNotFound(fileId);
   }
 }
 
@@ -37,46 +37,34 @@ class _AvailableFileApi extends CommunityCollectionApi {
   _AvailableFileApi() : super.withDio(Dio());
 
   @override
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
-    String collectionId, {
-    String? cursor,
-    CancelToken? cancelToken,
-  }) async {
-    return const CommunityCollectionFilesPage(
-      items: [
-        CommunityCollectionFile(
-          id: 'file-1',
-          title: 'Episode',
-          description: null,
-          mediaType: CommunityMediaType.audio,
-          durationSec: 12,
-          fileSizeBytes: 999,
-          difficulty: null,
-          publishedAt: null,
-          sortOrder: 0,
-          mediaUrl: 'https://example.invalid/episode.mp3',
-        ),
-      ],
-      nextCursor: null,
-    );
-  }
-
-  @override
-  Future<CommunitySubtitle> getSubtitle(
+  Future<CommunityCollectionFileDetail> getFileDetail(
     String collectionId,
     String fileId, {
     CancelToken? cancelToken,
   }) async {
-    return const CommunitySubtitle(
-      fileId: 'file-1',
-      sentences: [
-        CommunitySubtitleSentence(
-          text: 'Hello world',
-          startTime: Duration.zero,
-          endTime: Duration(seconds: 2),
-        ),
-      ],
-      words: [],
+    return const CommunityCollectionFileDetail(
+      file: CommunityCollectionFile(
+        id: 'file-1',
+        title: 'Episode',
+        description: null,
+        mediaType: CommunityMediaType.audio,
+        durationSec: 12,
+        fileSizeBytes: 999,
+        difficulty: null,
+        publishedAt: null,
+        sortOrder: 0,
+        mediaUrl: 'https://example.invalid/episode.mp3',
+      ),
+      subtitle: CommunitySubtitle(
+        sentences: [
+          CommunitySubtitleSentence(
+            text: 'Hello world',
+            startTime: Duration.zero,
+            endTime: Duration(seconds: 2),
+          ),
+        ],
+        words: [],
+      ),
     );
   }
 }
@@ -239,6 +227,8 @@ void main() {
     );
     expect(await notifier.awaitCompletion(), isTrue);
     final item = await database.audioItemDao.getById('audio-1');
+    expect(item?.name, 'Episode');
+    expect(item?.totalDuration, 12);
     expect(item?.audioPath, 'audios/community/audio-1.mp3');
     expect(await File('${dataDirectory.path}/${item?.audioPath}').length(), 3);
   });

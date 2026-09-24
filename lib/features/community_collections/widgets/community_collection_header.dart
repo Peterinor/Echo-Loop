@@ -8,14 +8,14 @@ import '../../../l10n/app_localizations.dart';
 class CommunityCollectionHeader extends StatefulWidget {
   final String? description;
   final String? authorNickname;
-  final DateTime? publishedAt;
+  final DateTime? updatedAt;
   final int fileCount;
 
   const CommunityCollectionHeader({
     super.key,
     required this.description,
     required this.authorNickname,
-    required this.publishedAt,
+    this.updatedAt,
     required this.fileCount,
   });
 
@@ -54,14 +54,33 @@ class _CommunityCollectionHeaderState extends State<CommunityCollectionHeader> {
     final author = authorNickname == null || authorNickname.isEmpty
         ? l10n.communityCollectionUnknownAuthor
         : authorNickname;
-    final locale = Localizations.localeOf(context).toString();
-    final publishedAt = widget.publishedAt;
-    final publicationDate = publishedAt == null
-        ? l10n.communityCollectionUnknownPublishDate
-        : DateFormat.yMd(locale).format(publishedAt);
+    final updatedAt = widget.updatedAt;
+    final updateDate = updatedAt == null
+        ? null
+        : DateFormat('yyyy-MM-dd HH:mm').format(updatedAt);
+    final authorItem = _MetadataItem(
+      key: const ValueKey('community-collection-author-metadata'),
+      icon: Icons.person_outline_rounded,
+      label: author,
+      semanticLabel: l10n.communityCollectionAuthor(author),
+    );
+    final updateItem = updateDate == null
+        ? null
+        : _MetadataItem(
+            key: const ValueKey('community-collection-updated-metadata'),
+            icon: Icons.update_rounded,
+            label: updateDate,
+            semanticLabel: updateDate,
+          );
+    final countItem = _MetadataItem(
+      key: const ValueKey('community-collection-count-metadata'),
+      icon: Icons.library_music_outlined,
+      label: l10n.audioCount(widget.fileCount),
+      semanticLabel: l10n.audioCount(widget.fileCount),
+    );
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
+      margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
@@ -146,37 +165,19 @@ class _CommunityCollectionHeaderState extends State<CommunityCollectionHeader> {
             ),
           if (description != null && description.isNotEmpty)
             const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _MetadataItem(
-                  icon: Icons.person_outline_rounded,
-                  label: author,
-                  semanticLabel: l10n.communityCollectionAuthor(author),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Center(
-                  child: _MetadataItem(
-                    icon: Icons.calendar_today_outlined,
-                    label: publicationDate,
-                    semanticLabel: l10n.publishedOn(publicationDate),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _MetadataItem(
-                    icon: Icons.library_music_outlined,
-                    label: l10n.audioCount(widget.fileCount),
-                    semanticLabel: l10n.audioCount(widget.fileCount),
-                  ),
-                ),
-              ),
-            ],
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              key: const ValueKey('community-collection-metadata-row'),
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                authorItem,
+                if (updateItem != null) updateItem,
+                countItem,
+              ],
+            ),
           ),
         ],
       ),
@@ -234,6 +235,7 @@ class _MetadataItem extends StatelessWidget {
   final String semanticLabel;
 
   const _MetadataItem({
+    super.key,
     required this.icon,
     required this.label,
     required this.semanticLabel,
@@ -242,37 +244,47 @@ class _MetadataItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Semantics(
-      label: semanticLabel,
-      excludeSemantics: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ExcludeSemantics(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 1),
-              child: Icon(
-                icon,
-                size: 16,
-                color: theme.colorScheme.onSurfaceVariant,
+    final metadataColor =
+        Color.lerp(
+          theme.colorScheme.onSurfaceVariant,
+          theme.colorScheme.surfaceContainerLow,
+          0.20,
+        ) ??
+        theme.colorScheme.onSurfaceVariant;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final labelMaxWidth = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth - 21).clamp(0.0, 240.0).toDouble()
+            : 240.0;
+        return Semantics(
+          label: semanticLabel,
+          excludeSemantics: true,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ExcludeSemantics(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(icon, size: 16, color: metadataColor),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 5),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+              const SizedBox(width: 5),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: labelMaxWidth),
+                child: Text(
+                  label,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: metadataColor,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

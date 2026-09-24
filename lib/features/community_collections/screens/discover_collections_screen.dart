@@ -80,16 +80,16 @@ class _DiscoverCommunityCollectionsScreenState
 
   Widget _buildList(
     BuildContext context,
-    CommunityCollectionPagedState<PublicCollectionSummary> page,
+    CommunityCollectionPagedState<PublicCollectionCatalogEntry> page,
     List<PodcastCatalogItem>? podcasts,
   ) {
     final items = page.items;
     final collectionState = ref.watch(collectionListProvider);
-    final enrolled = <String, String>{};
+    final enrolledRemoteIds = <String>{};
     for (final collection in collectionState.collections) {
       final remoteId = collection.remoteId;
       if (collection.isCommunity && remoteId != null) {
-        enrolled[remoteId] = collection.id;
+        enrolledRemoteIds.add(remoteId);
       }
     }
     final hasPodcastEntry = podcasts?.isNotEmpty ?? false;
@@ -134,18 +134,12 @@ class _DiscoverCommunityCollectionsScreenState
             return const _PodcastDiscoverEntry();
           }
           final item = items[index - (hasPodcastEntry ? 1 : 0)];
-          final localId = enrolled[item.id];
           return CommunityCollectionCard(
             item: item,
-            enrolled: localId != null,
+            enrolled: enrolledRemoteIds.contains(item.id),
             enrolling: _enrolling.contains(item.id),
             onOpenDetail: () => context.push('/discover/${item.id}'),
             onEnroll: () => _enroll(item),
-            onGoLearn: () {
-              if (localId != null) {
-                context.go(AppRoutes.collectionDetail(localId));
-              }
-            },
           );
         },
       ),
@@ -161,7 +155,7 @@ class _DiscoverCommunityCollectionsScreenState
     ]);
   }
 
-  Future<void> _enroll(PublicCollectionSummary item) async {
+  Future<void> _enroll(PublicCollectionCatalogEntry item) async {
     final l10n = AppLocalizations.of(context)!;
     final canEnroll = await ensureSignedInForAction(
       context: context,

@@ -12,7 +12,7 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
   int _operationToken = 0;
 
   @override
-  Future<CommunityCollectionPagedState<PublicCollectionSummary>> build() {
+  Future<CommunityCollectionPagedState<PublicCollectionCatalogEntry>> build() {
     ref.onDispose(() => _operationToken++);
     return _loadFirstPage();
   }
@@ -29,17 +29,17 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
 
     switch (outcome) {
       case CommunityCollectionRefreshUpdated<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final items,
       ):
         state = AsyncData(CommunityCollectionPagedState.fromFirstPage(items));
       case CommunityCollectionRefreshThrottled<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >():
         break;
       case CommunityCollectionRefreshFailed<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final error,
         :final stackTrace,
@@ -77,7 +77,7 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
     latest = state.valueOrNull ?? latest;
     switch (outcome) {
       case CommunityCollectionRefreshUpdated<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final items,
       ):
@@ -86,13 +86,13 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
               .copyWith(isLoadingMore: false, clearLoadMoreError: true),
         );
       case CommunityCollectionRefreshThrottled<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >():
         state = AsyncData(
           latest.copyWith(isLoadingMore: false, clearLoadMoreError: true),
         );
       case CommunityCollectionRefreshFailed<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final error,
       ):
@@ -106,7 +106,7 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
     }
   }
 
-  Future<CommunityCollectionPagedState<PublicCollectionSummary>>
+  Future<CommunityCollectionPagedState<PublicCollectionCatalogEntry>>
   _loadFirstPage() async {
     final token = ++_operationToken;
     final service = ref.read(communityCollectionCatalogServiceProvider);
@@ -116,7 +116,7 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
           const CommunityCollectionPagedState(pages: []);
     }
 
-    CommunityCollectionPagedState<PublicCollectionSummary>? cachedState;
+    CommunityCollectionPagedState<PublicCollectionCatalogEntry>? cachedState;
     if (cached != null) {
       cachedState = CommunityCollectionPagedState.fromFirstPage(cached);
       state = AsyncData(cachedState);
@@ -130,17 +130,17 @@ class DiscoverCommunityCollections extends _$DiscoverCommunityCollections {
     }
     switch (outcome) {
       case CommunityCollectionRefreshUpdated<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final items,
       ):
         return CommunityCollectionPagedState.fromFirstPage(items);
       case CommunityCollectionRefreshThrottled<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >():
         return cachedState ?? const CommunityCollectionPagedState(pages: []);
       case CommunityCollectionRefreshFailed<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(
         :final error,
         :final stackTrace,

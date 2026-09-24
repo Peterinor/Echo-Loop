@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -103,10 +103,20 @@ class CommunityDownload extends _$CommunityDownload {
     if (remoteId == null || collectionId == null) {
       return SubtitleUpdateResult.notCommunity;
     }
+    final collection = await database.collectionDao.getByRemoteId(collectionId);
+    if (collection == null) return SubtitleUpdateResult.notCommunity;
     final subtitle = await ref
         .read(communityCollectionApiProvider)
-        .getSubtitle(collectionId, remoteId);
-    final srt = _toSrt(subtitle);
+        .getFileDetail(collectionId, remoteId);
+    await _persistFileMetadata(
+      database,
+      audioItemId: audioItemId,
+      localCollectionId: collection.id,
+      file: subtitle.file,
+    );
+    await ref.read(audioLibraryProvider.notifier).loadLibrary();
+    await ref.read(collectionListProvider.notifier).loadCollections();
+    final srt = _toSrt(subtitle.subtitle);
     if (srt.isEmpty) throw CommunitySubtitleUnavailable(remoteId);
     final stats = await getTranscriptStatsFromSrt(srt);
     await (database.update(
@@ -115,7 +125,9 @@ class CommunityDownload extends _$CommunityDownload {
       db.AudioItemsCompanion(
         transcriptPath: const Value(null),
         transcriptSrt: Value(srt),
-        wordTimestampsJson: Value(encodeWordTimestamps(subtitle.words)),
+        wordTimestampsJson: Value(
+          encodeWordTimestamps(subtitle.subtitle.words),
+        ),
         transcriptSource: const Value(1),
         sentenceCount: Value(stats.$1),
         wordCount: Value(stats.$2),
@@ -145,14 +157,37 @@ class CommunityDownload extends _$CommunityDownload {
       if (remoteAudioId == null) {
         throw StateError('Community download is missing remoteAudioId');
       }
-      final file = await _findFile(collectionId, remoteAudioId);
-      if (file == null) {
+      late final CommunityCollectionFileDetail detail;
+      try {
+        detail = await ref
+            .read(communityCollectionApiProvider)
+            .getFileDetail(
+              collectionId,
+              remoteAudioId,
+              cancelToken: cancelToken,
+            );
+      } on CommunityFileNotFound {
         await _markFileUnavailable(item.id, collectionId);
         throw CommunityFileUnavailable(remoteAudioId);
       }
-      final subtitle = await ref
-          .read(communityCollectionApiProvider)
-          .getSubtitle(collectionId, file.id, cancelToken: cancelToken);
+      final file = detail.file;
+      final subtitle = detail.subtitle;
+      if (sessionId != _sessionId) return false;
+      final database = ref.read(appDatabaseProvider);
+      final localCollection = await database.collectionDao.getByRemoteId(
+        collectionId,
+      );
+      if (localCollection == null) {
+        throw StateError('Community collection was removed during download');
+      }
+      await _persistFileMetadata(
+        database,
+        audioItemId: item.id,
+        localCollectionId: localCollection.id,
+        file: file,
+      );
+      await ref.read(audioLibraryProvider.notifier).loadLibrary();
+      await ref.read(collectionListProvider.notifier).loadCollections();
       final srt = _toSrt(subtitle);
       if (srt.isEmpty) throw CommunitySubtitleUnavailable(file.id);
       final extension = _safeExtension(file.mediaUrl, file.mediaType);
@@ -178,7 +213,6 @@ class CommunityDownload extends _$CommunityDownload {
       if (sessionId != _sessionId) return false;
       await tempFile.rename(finalFile.path);
 
-      final database = ref.read(appDatabaseProvider);
       final hasTranscript = item.transcriptSrt?.isNotEmpty ?? false;
       final companion = hasTranscript
           ? db.AudioItemsCompanion(
@@ -228,21 +262,36 @@ class CommunityDownload extends _$CommunityDownload {
     }
   }
 
-  Future<CommunityCollectionFile?> _findFile(
-    String collectionId,
-    String fileId,
-  ) async {
-    String? cursor;
-    do {
-      final page = await ref
-          .read(communityCollectionApiProvider)
-          .getCollectionFiles(collectionId, cursor: cursor);
-      for (final file in page.items) {
-        if (file.id == fileId) return file;
-      }
-      cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return null;
+  Future<void> _persistFileMetadata(
+    db.AppDatabase database, {
+    required String audioItemId,
+    required String localCollectionId,
+    required CommunityCollectionFile file,
+  }) async {
+    final duration = file.durationSec;
+    await database.transaction(() async {
+      await (database.update(
+        database.audioItems,
+      )..where((table) => table.id.equals(audioItemId))).write(
+        db.AudioItemsCompanion(
+          name: Value(file.title),
+          totalDuration: duration == null
+              ? const Value.absent()
+              : Value(duration),
+          originalDate: Value(file.publishedAt),
+          communityUnavailableAt: const Value(null),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await (database.update(database.collectionAudioItems)..where(
+            (table) =>
+                table.collectionId.equals(localCollectionId) &
+                table.audioItemId.equals(audioItemId),
+          ))
+          .write(
+            db.CollectionAudioItemsCompanion(sortOrder: Value(file.sortOrder)),
+          );
+    });
   }
 
   Future<void> _markFileUnavailable(

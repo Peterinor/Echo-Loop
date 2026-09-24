@@ -19,7 +19,7 @@ class _FakeCommunityApi extends CommunityCollectionApi {
 
   final Future<PublicCollectionPage> Function(String? cursor)?
   collectionsResponse;
-  final Future<CommunityCollectionFilesPage> Function(String? cursor)?
+  final Future<CommunityCollectionDetailPage> Function(String? cursor)?
   filesResponse;
   var collectionsCalls = 0;
   var filesCalls = 0;
@@ -37,7 +37,7 @@ class _FakeCommunityApi extends CommunityCollectionApi {
     if (response != null) return response(cursor);
     return PublicCollectionPage(
       items: [
-        _summary(
+        _catalogEntry(
           'collection-$collectionsCalls',
           'Collection $collectionsCalls',
         ),
@@ -47,7 +47,7 @@ class _FakeCommunityApi extends CommunityCollectionApi {
   }
 
   @override
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
+  Future<CommunityCollectionDetailPage> getCollectionDetail(
     String collectionId, {
     String? cursor,
     CancelToken? cancelToken,
@@ -56,7 +56,8 @@ class _FakeCommunityApi extends CommunityCollectionApi {
     fileCursors.add(cursor);
     final response = filesResponse;
     if (response != null) return response(cursor);
-    return CommunityCollectionFilesPage(
+    return CommunityCollectionDetailPage(
+      collection: _catalogEntry('collection-1', 'Cached collection'),
       items: [_file('file-$filesCalls', 'Lesson $filesCalls')],
       nextCursor: cursor == null ? 'files-next' : null,
     );
@@ -77,19 +78,21 @@ void main() {
     final api = _FakeCommunityApi(
       collectionsResponse: (cursor) async => cursor == null
           ? PublicCollectionPage(
-              items: [_summary('collection-1', 'First page')],
+              items: [_catalogEntry('collection-1', 'First page')],
               nextCursor: 'collections-next',
             )
           : PublicCollectionPage(
-              items: [_summary('collection-2', 'Second page')],
+              items: [_catalogEntry('collection-2', 'Second page')],
               nextCursor: null,
             ),
       filesResponse: (cursor) async => cursor == null
-          ? CommunityCollectionFilesPage(
+          ? CommunityCollectionDetailPage(
+              collection: _catalogEntry('collection-1', 'Cached collection'),
               items: [_file('file-1', 'First lesson')],
               nextCursor: 'files-next',
             )
-          : CommunityCollectionFilesPage(
+          : CommunityCollectionDetailPage(
+              collection: _catalogEntry('collection-1', 'Cached collection'),
               items: [_file('file-2', 'Second lesson')],
               nextCursor: null,
             ),
@@ -131,6 +134,13 @@ void main() {
       ))?.items.single.title,
       'Second lesson',
     );
+    expect(
+      (await service.loadCachedFilesPage(
+        'collection-1',
+        cursor: null,
+      ))?.collection?.name,
+      'Cached collection',
+    );
 
     final readerApi = _FakeCommunityApi();
     final reader = CommunityCollectionCatalogService(
@@ -150,15 +160,15 @@ void main() {
     expect(readerApi.filesCalls, 0);
   });
 
-  test('旧版 SharedPreferences 摘要缓存迁移为 stale 首页面', () async {
-    final summary = _summary('collection-1', 'Migrated collection');
+  test('旧版 SharedPreferences 目录缓存迁移为 stale 首页面', () async {
+    final catalogEntry = _catalogEntry('collection-1', 'Migrated collection');
     SharedPreferences.setMockInitialValues({
-      'community_collection_discovery_v2': jsonEncode([summary.toJson()]),
+      'community_collection_discovery_v2': jsonEncode([catalogEntry.toJson()]),
     });
     final preferences = await SharedPreferences.getInstance();
     final api = _FakeCommunityApi(
       collectionsResponse: (_) async => PublicCollectionPage(
-        items: [_summary('collection-2', 'Fresh collection')],
+        items: [_catalogEntry('collection-2', 'Fresh collection')],
         nextCursor: null,
       ),
     );
@@ -191,7 +201,8 @@ void main() {
   test('页面请求失败时不覆盖已有页面缓存', () async {
     final writer = CommunityCollectionCatalogService(
       api: _FakeCommunityApi(
-        filesResponse: (cursor) async => CommunityCollectionFilesPage(
+        filesResponse: (cursor) async => CommunityCollectionDetailPage(
+          collection: _catalogEntry('collection-1', 'Cached collection'),
           items: [_file(cursor ?? 'first', 'Old lesson')],
           nextCursor: cursor == null ? 'next' : null,
         ),
@@ -206,7 +217,8 @@ void main() {
       api: _FakeCommunityApi(
         filesResponse: (cursor) async {
           if (cursor == 'next') throw StateError('second page failed');
-          return CommunityCollectionFilesPage(
+          return CommunityCollectionDetailPage(
+            collection: _catalogEntry('collection-1', 'Cached collection'),
             items: [_file('first', 'New first page')],
             nextCursor: 'next',
           );
@@ -239,12 +251,14 @@ void main() {
       filesResponse: (cursor) async {
         if (cursor == null) {
           firstPageVersion++;
-          return CommunityCollectionFilesPage(
+          return CommunityCollectionDetailPage(
+            collection: _catalogEntry('collection-1', 'Cached collection'),
             items: [_file('first-$firstPageVersion', 'First')],
             nextCursor: firstPageVersion == 1 ? 'old-next' : 'new-next',
           );
         }
-        return CommunityCollectionFilesPage(
+        return CommunityCollectionDetailPage(
+          collection: _catalogEntry('collection-1', 'Cached collection'),
           items: [_file('second', 'Second')],
           nextCursor: null,
         );
@@ -274,7 +288,8 @@ void main() {
     final cachedFile = _file('file-1', 'Cached lesson');
     final writer = CommunityCollectionCatalogService(
       api: _FakeCommunityApi(
-        filesResponse: (_) async => CommunityCollectionFilesPage(
+        filesResponse: (_) async => CommunityCollectionDetailPage(
+          collection: _catalogEntry('collection-1', 'Cached collection'),
           items: [cachedFile],
           nextCursor: 'next',
         ),
@@ -284,8 +299,8 @@ void main() {
     );
     await writer.refreshFilesPage('collection-1', cursor: null, force: true);
 
-    final firstPageGate = Completer<CommunityCollectionFilesPage>();
-    final secondPageGate = Completer<CommunityCollectionFilesPage>();
+    final firstPageGate = Completer<CommunityCollectionDetailPage>();
+    final secondPageGate = Completer<CommunityCollectionDetailPage>();
     final firstRequestStarted = Completer<void>();
     final secondRequestStarted = Completer<void>();
     final readerApi = _FakeCommunityApi(
@@ -349,7 +364,8 @@ void main() {
     expect(firstPageGate.isCompleted, isFalse);
 
     firstPageGate.complete(
-      CommunityCollectionFilesPage(
+      CommunityCollectionDetailPage(
+        collection: _catalogEntry('collection-1', 'Cached collection'),
         items: [_file('file-1', 'Fresh lesson')],
         nextCursor: 'next',
       ),
@@ -365,7 +381,8 @@ void main() {
     expect(secondPageGate.isCompleted, isFalse);
 
     secondPageGate.complete(
-      CommunityCollectionFilesPage(
+      CommunityCollectionDetailPage(
+        collection: _catalogEntry('collection-1', 'Cached collection'),
         items: [_file('file-2', 'Second lesson')],
         nextCursor: null,
       ),
@@ -375,11 +392,11 @@ void main() {
     expect(values.last.valueOrNull?.items.length, 2);
   });
 
-  test('发现页摘要 Provider 首次只请求第一页', () async {
+  test('发现页目录 Provider 首次只请求第一页', () async {
     final writer = CommunityCollectionCatalogService(
       api: _FakeCommunityApi(
         collectionsResponse: (_) async => PublicCollectionPage(
-          items: [_summary('collection-1', 'Cached collection')],
+          items: [_catalogEntry('collection-1', 'Cached collection')],
           nextCursor: 'next',
         ),
       ),
@@ -394,7 +411,7 @@ void main() {
       collectionsResponse: (cursor) async {
         if (cursor == null) {
           return PublicCollectionPage(
-            items: [_summary('collection-1', 'Fresh collection')],
+            items: [_catalogEntry('collection-1', 'Fresh collection')],
             nextCursor: 'next',
           );
         }
@@ -440,7 +457,7 @@ void main() {
     expect(api.collectionCursors, [null, 'next']);
     secondPageGate.complete(
       PublicCollectionPage(
-        items: [_summary('collection-2', 'Second collection')],
+        items: [_catalogEntry('collection-2', 'Second collection')],
         nextCursor: null,
       ),
     );
@@ -452,8 +469,8 @@ void main() {
   });
 }
 
-PublicCollectionSummary _summary(String id, String name) {
-  return PublicCollectionSummary(
+PublicCollectionCatalogEntry _catalogEntry(String id, String name) {
+  return PublicCollectionCatalogEntry(
     id: id,
     name: name,
     description: null,

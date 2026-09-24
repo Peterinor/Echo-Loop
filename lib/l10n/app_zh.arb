@@ -1660,6 +1660,7 @@
   "communityCollectionSignInRequiredTitle": "登录后添加合集",
   "communityCollectionSignInRequiredMessage": "登录后可以将共享合集添加到我的合集，并同步后续内容。",
   "goLearn": "去学习",
+  "communityCollectionAdded": "已添加",
   "removeFromMyCollections": "从我的合集移除",
   "enrollNeededTitle": "需要先添加合集",
   "enrollNeededMessage": "添加到我的合集后，就可以开始学习这条音频。",

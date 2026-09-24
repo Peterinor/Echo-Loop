@@ -4,30 +4,34 @@ import 'package:echo_loop/features/community_collections/models/community_collec
 import 'package:echo_loop/models/collection.dart';
 
 void main() {
-  test('community collection summary caches its optional author nickname', () {
-    final summary = PublicCollectionSummary.fromJson({
-      'id': 'collection-1',
-      'name': 'Community English',
-      'description': 'A description',
-      'coverUrl': null,
-      'authorNickname': 'Echo Studio',
-      'fileCount': 3,
-      'publishedAt': '2026-09-22T00:00:00.000Z',
-    });
+  test(
+    'community collection catalog entry caches its optional author nickname',
+    () {
+      final catalogEntry = PublicCollectionCatalogEntry.fromJson({
+        'id': 'collection-1',
+        'name': 'Community English',
+        'description': 'A description',
+        'coverUrl': null,
+        'authorNickname': 'Echo Studio',
+        'fileCount': 3,
+        'publishedAt': '2026-09-22T00:00:00.000Z',
+      });
 
-    expect(summary.authorNickname, 'Echo Studio');
-    expect(summary.toJson()['authorNickname'], 'Echo Studio');
+      expect(catalogEntry.authorNickname, 'Echo Studio');
+      expect(catalogEntry.toJson()['authorNickname'], 'Echo Studio');
 
-    final legacySummary = PublicCollectionSummary.fromJson({
-      'id': 'legacy-collection',
-      'name': 'Legacy collection',
-      'description': null,
-      'coverUrl': null,
-      'fileCount': 0,
-      'publishedAt': '2026-09-22T00:00:00.000Z',
-    });
-    expect(legacySummary.authorNickname, isNull);
-  });
+      final legacyCatalogEntry = PublicCollectionCatalogEntry.fromJson({
+        'id': 'legacy-collection',
+        'name': 'Legacy collection',
+        'description': null,
+        'coverUrl': null,
+        'fileCount': 0,
+        'publishedAt': '2026-09-22T00:00:00.000Z',
+      });
+      expect(legacyCatalogEntry.authorNickname, isNull);
+      expect(legacyCatalogEntry.updatedAt, legacyCatalogEntry.publishedAt);
+    },
+  );
 
   test(
     'legacy collection source is read as community and stored canonically',

@@ -47,7 +47,7 @@ void main() {
         overrides: [
           discoverCommunityCollectionsProvider.overrideWith(
             () => _TestDiscoverCommunityCollections(
-              PublicCollectionSummary(
+              PublicCollectionCatalogEntry(
                 id: 'collection-1',
                 name: 'Community English',
                 description: 'A short collection',
@@ -55,6 +55,7 @@ void main() {
                 authorNickname: 'Echo Studio',
                 fileCount: files.length,
                 publishedAt: DateTime(2026, 9, 22),
+                updatedAt: DateTime(2026, 9, 24, 15, 7),
               ),
             ),
           ),
@@ -72,7 +73,8 @@ void main() {
 
     expect(find.text('2 items'), findsOneWidget);
     expect(find.text('Echo Studio'), findsOneWidget);
-    expect(find.text('9/22/2026'), findsOneWidget);
+    expect(find.text('2026-09-24 15:07'), findsOneWidget);
+    expect(find.text('9/22/2026'), findsNothing);
     expect(
       find.ancestor(
         of: find.byType(CommunityCollectionHeader),
@@ -83,6 +85,10 @@ void main() {
     expect(
       tester.getSize(find.byType(CommunityCollectionHeader)).width,
       closeTo(tester.getSize(find.byType(ListView)).width, 1),
+    );
+    expect(
+      tester.getTopLeft(find.byType(CommunityCollectionHeader)).dy,
+      closeTo(tester.getBottomLeft(find.byType(AppBar)).dy, 1),
     );
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Duration'), findsOneWidget);
@@ -109,6 +115,50 @@ void main() {
       tester.getTopRight(find.text('Duration')).dx,
       closeTo(tester.getTopRight(find.text('1:05')).dx, 1),
     );
+  });
+
+  testWidgets('详情接口返回的合集元数据更新信息头部和标题', (tester) async {
+    final latest = PublicCollectionCatalogEntry(
+      id: 'collection-1',
+      name: 'Latest collection name',
+      description: 'Latest collection description',
+      coverUrl: null,
+      authorNickname: 'Latest author',
+      fileCount: 9,
+      publishedAt: DateTime(2026, 9, 22),
+      updatedAt: DateTime(2026, 10, 1, 9, 5),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
+        overrides: [
+          discoverCommunityCollectionsProvider.overrideWith(
+            () => _TestDiscoverCommunityCollections(
+              PublicCollectionCatalogEntry(
+                id: 'collection-1',
+                name: 'Stale collection name',
+                description: 'Stale description',
+                coverUrl: null,
+                authorNickname: 'Old author',
+                fileCount: 2,
+                publishedAt: DateTime(2026, 8, 1),
+              ),
+            ),
+          ),
+          communityCollectionFilesProvider(
+            'collection-1',
+          ).overrideWith(() => _TestCommunityCollectionFiles(files, latest)),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Latest collection name'), findsOneWidget);
+    expect(find.text('Latest collection description'), findsOneWidget);
+    expect(find.text('Latest author'), findsOneWidget);
+    expect(find.text('9 items'), findsOneWidget);
+    expect(find.text('2026-10-01 09:05'), findsOneWidget);
+    expect(find.text('Stale description'), findsNothing);
   });
 
   testWidgets('未加入合集时点击素材提示先添加合集', (tester) async {
@@ -138,7 +188,7 @@ void main() {
         overrides: [
           discoverCommunityCollectionsProvider.overrideWith(
             () => _TestDiscoverCommunityCollections(
-              PublicCollectionSummary(
+              PublicCollectionCatalogEntry(
                 id: 'collection-1',
                 name: 'Community English',
                 description: 'A short collection',
@@ -176,16 +226,17 @@ void main() {
 }
 
 class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
-  final PublicCollectionSummary summary;
+  final PublicCollectionCatalogEntry catalogEntry;
 
-  _TestDiscoverCommunityCollections(this.summary);
+  _TestDiscoverCommunityCollections(this.catalogEntry);
 
   @override
-  Future<CommunityCollectionPagedState<PublicCollectionSummary>> build() async {
+  Future<CommunityCollectionPagedState<PublicCollectionCatalogEntry>>
+  build() async {
     return CommunityCollectionPagedState.fromFirstPage(
       CommunityCollectionCatalogPage(
         cursor: null,
-        items: [summary],
+        items: [catalogEntry],
         nextCursor: null,
       ),
     );
@@ -194,8 +245,9 @@ class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
 
 class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
   final List<CommunityCollectionFile> files;
+  final PublicCollectionCatalogEntry? collection;
 
-  _TestCommunityCollectionFiles(this.files);
+  _TestCommunityCollectionFiles(this.files, [this.collection]);
 
   @override
   Future<CommunityCollectionPagedState<CommunityCollectionFile>> build(
@@ -204,6 +256,7 @@ class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
     return CommunityCollectionPagedState.fromFirstPage(
       CommunityCollectionCatalogPage(
         cursor: null,
+        collection: collection,
         items: files,
         nextCursor: null,
       ),

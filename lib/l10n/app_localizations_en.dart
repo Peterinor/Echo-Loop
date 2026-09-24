@@ -4033,6 +4033,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get goLearn => 'Start Practicing';
 
   @override
+  String get communityCollectionAdded => 'Added';
+
+  @override
   String get removeFromMyCollections => 'Remove from My Collections';
 
   @override

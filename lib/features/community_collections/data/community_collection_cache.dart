@@ -14,7 +14,7 @@ import '../models/community_collection_paging.dart';
 import 'community_collection_api.dart';
 
 const _logTag = 'CommunityCollectionCatalog';
-const _cacheVersion = 3;
+const _cacheVersion = 4;
 const _legacyDiscoveryCacheKey = 'community_collection_discovery_v2';
 const _firstPageKey = 'first';
 
@@ -58,7 +58,7 @@ class _PageCacheDocument<T> {
 
 /// 社区合集 catalog 的统一分页缓存与刷新服务。
 ///
-/// 公开合集摘要和详情文件元数据都使用同一套 Application Support/cache 下的
+/// 公开合集目录和详情文件元数据都使用同一套 Application Support/cache 下的
 /// JSON + meta 文件格式，并通过 [RefreshCoordinator] 处理按页节流和并发合并。
 /// 媒体文件与字幕不属于本服务的缓存范围。
 class CommunityCollectionCatalogService {
@@ -67,7 +67,7 @@ class CommunityCollectionCatalogService {
   final DateTime Function() _now;
   late final RefreshCoordinator<
     String,
-    CommunityCollectionCatalogPage<PublicCollectionSummary>
+    CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
   >
   _collectionsRefresh;
   late final RefreshCoordinator<
@@ -76,7 +76,7 @@ class CommunityCollectionCatalogService {
   >
   _filesRefresh;
 
-  _PageCacheDocument<PublicCollectionSummary>? _collectionsDocument;
+  _PageCacheDocument<PublicCollectionCatalogEntry>? _collectionsDocument;
   final _filesDocuments =
       <String, _PageCacheDocument<CommunityCollectionFile>>{};
   bool _collectionsLoaded = false;
@@ -90,7 +90,7 @@ class CommunityCollectionCatalogService {
     DateTime Function()? now,
     RefreshCoordinator<
       String,
-      CommunityCollectionCatalogPage<PublicCollectionSummary>
+      CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
     >?
     collectionsRefresh,
     RefreshCoordinator<
@@ -105,7 +105,7 @@ class CommunityCollectionCatalogService {
         collectionsRefresh ??
         RefreshCoordinator<
           String,
-          CommunityCollectionCatalogPage<PublicCollectionSummary>
+          CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
         >(now: _now);
     _filesRefresh =
         filesRefresh ??
@@ -116,7 +116,7 @@ class CommunityCollectionCatalogService {
   }
 
   /// 读取公开合集指定页面的缓存；不存在或损坏时返回 null。
-  Future<CommunityCollectionCatalogPage<PublicCollectionSummary>?>
+  Future<CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>?>
   loadCachedCollectionsPage({required String? cursor}) async {
     await _ensureCollectionsDocument();
     return _collectionsDocument?.pages[_pageKey(cursor)];
@@ -132,7 +132,7 @@ class CommunityCollectionCatalogService {
   /// 刷新公开合集的单个页面；一次只发起一个 API 请求。
   Future<
     CommunityCollectionRefreshOutcome<
-      CommunityCollectionCatalogPage<PublicCollectionSummary>
+      CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
     >
   >
   refreshCollectionsPage({required String? cursor, bool force = false}) async {
@@ -147,22 +147,23 @@ class CommunityCollectionCatalogService {
         throttleWindow: communityCollectionCatalogThrottleWindow,
         refresh: () async {
           final response = await _api.getCollections(cursor: normalizedCursor);
-          final page = CommunityCollectionCatalogPage<PublicCollectionSummary>(
-            cursor: normalizedCursor,
-            items: response.items,
-            nextCursor: _normalizeCursor(response.nextCursor),
-          );
+          final page =
+              CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>(
+                cursor: normalizedCursor,
+                items: response.items,
+                nextCursor: _normalizeCursor(response.nextCursor),
+              );
           await _writeCollectionsPage(page, fetchedAt: _now());
           return page;
         },
       );
       return switch (result) {
         RefreshThrottled<
-          CommunityCollectionCatalogPage<PublicCollectionSummary>
+          CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
         >() =>
           const CommunityCollectionRefreshThrottled(),
         RefreshCompleted<
-          CommunityCollectionCatalogPage<PublicCollectionSummary>
+          CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
         >(
           :final result,
         ) =>
@@ -175,7 +176,7 @@ class CommunityCollectionCatalogService {
       );
       AppLogger.log(_logTag, stackTrace.toString());
       return CommunityCollectionRefreshFailed<
-        CommunityCollectionCatalogPage<PublicCollectionSummary>
+        CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>
       >(error, stackTrace);
     }
   }
@@ -201,12 +202,13 @@ class CommunityCollectionCatalogService {
         lastRefreshedAt: _filesDocuments[remoteId]?.fetchedAt[pageKey],
         throttleWindow: communityCollectionCatalogThrottleWindow,
         refresh: () async {
-          final response = await _api.getCollectionFiles(
+          final response = await _api.getCollectionDetail(
             remoteId,
             cursor: normalizedCursor,
           );
           final page = CommunityCollectionCatalogPage<CommunityCollectionFile>(
             cursor: normalizedCursor,
+            collection: response.collection,
             items: response.items,
             nextCursor: _normalizeCursor(response.nextCursor),
           );
@@ -316,7 +318,7 @@ class CommunityCollectionCatalogService {
     _filesLoaded.add(remoteId);
   }
 
-  Future<_PageCacheDocument<PublicCollectionSummary>?>
+  Future<_PageCacheDocument<PublicCollectionCatalogEntry>?>
   _readCollectionsDocument() async {
     final file = await _collectionsFile();
     final metaFile = await _collectionsMetaFile();
@@ -324,7 +326,7 @@ class CommunityCollectionCatalogService {
     return _readDocument(
       file: file,
       metaFile: metaFile,
-      decodeItem: _decodePublicCollectionSummary,
+      decodeItem: _decodePublicCollectionCatalogEntry,
     );
   }
 
@@ -373,6 +375,9 @@ class CommunityCollectionCatalogService {
       if (rawItems is! List) return null;
       pages[key] = CommunityCollectionCatalogPage(
         cursor: _normalizeCursor(_readNullableString(page['cursor'])),
+        collection: page['collection'] is Map
+            ? _decodePublicCollectionCatalogEntry(page['collection'])
+            : null,
         items: rawItems.map(decodeItem).toList(growable: false),
         nextCursor: _normalizeCursor(_readNullableString(page['nextCursor'])),
       );
@@ -392,7 +397,7 @@ class CommunityCollectionCatalogService {
     return _PageCacheDocument(pages: pages, fetchedAt: fetchedAt);
   }
 
-  Future<CommunityCollectionCatalogPage<PublicCollectionSummary>?>
+  Future<CommunityCollectionCatalogPage<PublicCollectionCatalogEntry>?>
   _readLegacyCollectionsPage() async {
     final file = await _collectionsFile();
     if (await file.exists()) {
@@ -402,7 +407,7 @@ class CommunityCollectionCatalogService {
         return CommunityCollectionCatalogPage(
           cursor: null,
           items: rawItems
-              .map(_decodePublicCollectionSummary)
+              .map(_decodePublicCollectionCatalogEntry)
               .toList(growable: false),
           nextCursor: null,
         );
@@ -417,7 +422,7 @@ class CommunityCollectionCatalogService {
     return CommunityCollectionCatalogPage(
       cursor: null,
       items: decoded
-          .map(_decodePublicCollectionSummary)
+          .map(_decodePublicCollectionCatalogEntry)
           .toList(growable: false),
       nextCursor: null,
     );
@@ -439,13 +444,16 @@ class CommunityCollectionCatalogService {
   }
 
   Future<void> _writeCollectionsPage(
-    CommunityCollectionCatalogPage<PublicCollectionSummary> page, {
+    CommunityCollectionCatalogPage<PublicCollectionCatalogEntry> page, {
     required DateTime fetchedAt,
   }) async {
     await _ensureCollectionsDocument();
     final document =
         _collectionsDocument ??
-        _PageCacheDocument<PublicCollectionSummary>(pages: {}, fetchedAt: {});
+        _PageCacheDocument<PublicCollectionCatalogEntry>(
+          pages: {},
+          fetchedAt: {},
+        );
     _setPage(document, page, fetchedAt: fetchedAt);
     _collectionsDocument = document;
     await _writeCollectionsDocument(document);
@@ -495,7 +503,7 @@ class CommunityCollectionCatalogService {
   }
 
   Future<void> _writeCollectionsDocument(
-    _PageCacheDocument<PublicCollectionSummary> document,
+    _PageCacheDocument<PublicCollectionCatalogEntry> document,
   ) async {
     final previous = _collectionsWriteTail;
     final write = previous.then<void>(
@@ -506,7 +514,7 @@ class CommunityCollectionCatalogService {
   }
 
   Future<void> _writeCollectionsDocumentNow(
-    _PageCacheDocument<PublicCollectionSummary> document,
+    _PageCacheDocument<PublicCollectionCatalogEntry> document,
   ) async {
     final file = await _collectionsFile();
     final metaFile = await _collectionsMetaFile();
@@ -563,6 +571,7 @@ class CommunityCollectionCatalogService {
     return pages.map(
       (key, page) => MapEntry(key, {
         'cursor': page.cursor,
+        'collection': page.collection?.toJson(),
         'nextCursor': page.nextCursor,
         'items': page.items.map(_encodeItem).toList(growable: false),
       }),
@@ -571,7 +580,7 @@ class CommunityCollectionCatalogService {
 
   Object? _encodeItem<T>(T item) {
     return switch (item) {
-      final PublicCollectionSummary summary => summary.toJson(),
+      final PublicCollectionCatalogEntry catalogEntry => catalogEntry.toJson(),
       final CommunityCollectionFile file => file.toJson(),
       _ => throw StateError('Unsupported community catalog item'),
     };
@@ -607,9 +616,15 @@ String? _readNullableString(Object? value) {
   throw const FormatException('Expected nullable string');
 }
 
-PublicCollectionSummary _decodePublicCollectionSummary(Object? value) {
-  if (value is! Map) throw const FormatException('Invalid collection summary');
-  return PublicCollectionSummary.fromJson(Map<String, Object?>.from(value));
+PublicCollectionCatalogEntry _decodePublicCollectionCatalogEntry(
+  Object? value,
+) {
+  if (value is! Map) {
+    throw const FormatException('Invalid collection catalog entry');
+  }
+  return PublicCollectionCatalogEntry.fromJson(
+    Map<String, Object?>.from(value),
+  );
 }
 
 CommunityCollectionFile _decodeCommunityCollectionFile(Object? value) {

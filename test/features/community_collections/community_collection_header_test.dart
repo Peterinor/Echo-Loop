@@ -15,7 +15,7 @@ void main() {
           body: CommunityCollectionHeader(
             description: 'A short collection.',
             authorNickname: 'Echo Studio',
-            publishedAt: DateTime(2026, 9, 22),
+            updatedAt: DateTime(2026, 9, 24, 15, 7),
             fileCount: 4,
           ),
         ),
@@ -24,11 +24,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Echo Studio'), findsOneWidget);
-    expect(find.text('9/22/2026'), findsOneWidget);
+    expect(find.text('2026-09-24 15:07'), findsOneWidget);
     expect(find.text('By Echo Studio'), findsNothing);
-    expect(find.text('Released 9/22/2026'), findsNothing);
+    expect(find.text('Date unknown'), findsNothing);
     expect(find.text('4 items'), findsOneWidget);
     expect(find.text('Show more'), findsNothing);
+    final metadataRow = tester.getRect(
+      find.byKey(const ValueKey('community-collection-metadata-row')),
+    );
+    final authorRect = tester.getRect(
+      find.byKey(const ValueKey('community-collection-author-metadata')),
+    );
+    final updateRect = tester.getRect(
+      find.byKey(const ValueKey('community-collection-updated-metadata')),
+    );
+    final countRect = tester.getRect(
+      find.byKey(const ValueKey('community-collection-count-metadata')),
+    );
+    final metadataRect = tester.getRect(
+      find.byKey(const ValueKey('community-collection-metadata-row')),
+    );
+    expect(authorRect.left, closeTo(metadataRow.left, 1));
+    expect(countRect.right, closeTo(metadataRect.right, 1));
+    final leftGap = updateRect.left - authorRect.right;
+    final rightGap = countRect.left - updateRect.right;
+    expect(leftGap, greaterThanOrEqualTo(8));
+    expect(rightGap, greaterThanOrEqualTo(8));
+    expect(leftGap, closeTo(rightGap, 1));
   });
 
   testWidgets('long description can expand and collapse', (tester) async {
@@ -44,7 +66,6 @@ void main() {
           body: CommunityCollectionHeader(
             description: description,
             authorNickname: null,
-            publishedAt: null,
             fileCount: 4,
           ),
         ),
@@ -67,7 +88,7 @@ void main() {
     expect(textPainter.computeLineMetrics(), hasLength(3));
     textPainter.dispose();
     expect(find.text('Unknown author'), findsOneWidget);
-    expect(find.text('Date unknown'), findsOneWidget);
+    expect(find.text('Date unknown'), findsNothing);
 
     await _tapInlineAction(tester, descriptionFinder, 'More');
     await tester.pumpAndSettle();
