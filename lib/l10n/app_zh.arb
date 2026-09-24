@@ -1983,7 +1983,7 @@
   "audioUrlNotDirectAudio": "该链接不是可直接下载的音频文件",
   "audioUrlDuplicate": "已存在同名音频",
   "audioDownloadFailed": "下载音频失败",
-  "audioDownloadInProgress": "正在下载音频",
+  "audioDownloadInProgress": "正在下载",
   "audioImportComplete": "导入完成",
   "audioImportCanceled": "已取消音频导入",
   "cancelDownload": "取消下载",

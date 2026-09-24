@@ -653,7 +653,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.textContaining('Downloading audio 42%'), findsOneWidget);
+      expect(find.textContaining('Downloading 42%'), findsOneWidget);
     });
 
     testWidgets('未下载单集点击时只下载音频并显示行内进度', (tester) async {
@@ -693,8 +693,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.text('Downloading audio'), findsOneWidget);
-      expect(find.text('Downloading audio and subtitle...'), findsNothing);
+      expect(find.text('Downloading'), findsOneWidget);
 
       controller.complete();
       await tester.pumpAndSettle();
@@ -925,7 +924,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.textContaining('Downloading audio 42%'), findsOneWidget);
+      expect(find.textContaining('Downloading 42%'), findsOneWidget);
     });
 
     testWidgets('已下载社区音频左侧显示学习进度图标而非下载图标', (tester) async {

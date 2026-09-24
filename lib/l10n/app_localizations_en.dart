@@ -4881,7 +4881,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioDownloadFailed => 'Failed to download audio';
 
   @override
-  String get audioDownloadInProgress => 'Downloading audio';
+  String get audioDownloadInProgress => 'Downloading';
 
   @override
   String get audioImportComplete => 'Import complete';

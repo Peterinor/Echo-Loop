@@ -8555,7 +8555,7 @@ abstract class AppLocalizations {
   /// No description provided for @audioDownloadInProgress.
   ///
   /// In en, this message translates to:
-  /// **'Downloading audio'**
+  /// **'Downloading'**
   String get audioDownloadInProgress;
 
   /// No description provided for @audioImportComplete.

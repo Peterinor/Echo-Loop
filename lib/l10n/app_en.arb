@@ -2459,7 +2459,7 @@
   "audioUrlNotDirectAudio": "This link is not a direct audio file",
   "audioUrlDuplicate": "An audio file with this name already exists",
   "audioDownloadFailed": "Failed to download audio",
-  "audioDownloadInProgress": "Downloading audio",
+  "audioDownloadInProgress": "Downloading",
   "audioImportComplete": "Import complete",
   "audioImportCanceled": "Audio import canceled",
   "cancelDownload": "Cancel Download",

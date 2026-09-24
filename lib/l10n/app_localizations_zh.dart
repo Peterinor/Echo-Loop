@@ -4658,7 +4658,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get audioDownloadFailed => '下载音频失败';
 
   @override
-  String get audioDownloadInProgress => '正在下载音频';
+  String get audioDownloadInProgress => '正在下载';
 
   @override
   String get audioImportComplete => '导入完成';
