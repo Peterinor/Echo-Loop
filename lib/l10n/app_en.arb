@@ -442,6 +442,22 @@
   "discoverEntryTitleA": "Discover Resources",
   "discoverEntrySubtitleA": "Podcasts, TOEFL, IELTS, CET-4/6, Interpreting...",
   "communityCollectionEmpty": "This collection has no audio yet",
+  "communityCollectionAuthor": "By {nickname}",
+  "@communityCollectionAuthor": {
+    "placeholders": {
+      "nickname": {"type": "String"}
+    }
+  },
+  "communityCollectionUnknownAuthor": "Unknown author",
+  "communityCollectionUnknownPublishDate": "Date unknown",
+  "communityCollectionCover": "{name} cover",
+  "@communityCollectionCover": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "communityCollectionShowMore": "More",
+  "communityCollectionShowLess": "Less",
   "sortCollections": "Sort",
   "gridView": "Grid View",
   "listView": "List View",

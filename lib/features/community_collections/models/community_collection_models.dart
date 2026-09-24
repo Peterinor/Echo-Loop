@@ -6,6 +6,7 @@ class PublicCollectionSummary {
   final String name;
   final String? description;
   final String? coverUrl;
+  final String? authorNickname;
   final int fileCount;
   final DateTime publishedAt;
 
@@ -14,6 +15,7 @@ class PublicCollectionSummary {
     required this.name,
     required this.description,
     required this.coverUrl,
+    this.authorNickname,
     required this.fileCount,
     required this.publishedAt,
   });
@@ -24,6 +26,7 @@ class PublicCollectionSummary {
       name: _requiredString(json, 'name'),
       description: _nullableString(json, 'description'),
       coverUrl: _nullableString(json, 'coverUrl'),
+      authorNickname: _nullableString(json, 'authorNickname'),
       fileCount: _requiredInt(json, 'fileCount'),
       publishedAt: _requiredDateTime(json, 'publishedAt'),
     );
@@ -35,6 +38,7 @@ class PublicCollectionSummary {
     'name': name,
     'description': description,
     'coverUrl': coverUrl,
+    'authorNickname': authorNickname,
     'fileCount': fileCount,
     'publishedAt': publishedAt.toIso8601String(),
   };

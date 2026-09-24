@@ -76,6 +76,8 @@ class CommunityCollectionRepository {
           remoteId: Value(summary.id),
           coverUrl: Value(summary.coverUrl),
           description: Value(summary.description),
+          authorNickname: Value(summary.authorNickname),
+          publishedAt: Value(summary.publishedAt),
         ),
       );
       for (final file in files) {

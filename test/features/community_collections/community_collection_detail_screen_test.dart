@@ -3,6 +3,7 @@ import 'package:echo_loop/features/community_collections/models/community_collec
 import 'package:echo_loop/features/community_collections/providers/community_collection_detail_provider.dart';
 import 'package:echo_loop/features/community_collections/providers/discover_community_collections_provider.dart';
 import 'package:echo_loop/features/community_collections/screens/community_collection_detail_screen.dart';
+import 'package:echo_loop/features/community_collections/widgets/community_collection_header.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:flutter/material.dart';
@@ -51,6 +52,7 @@ void main() {
                 name: 'Community English',
                 description: 'A short collection',
                 coverUrl: null,
+                authorNickname: 'Echo Studio',
                 fileCount: files.length,
                 publishedAt: DateTime(2026, 9, 22),
               ),
@@ -69,11 +71,44 @@ void main() {
     await pumpDetail(tester);
 
     expect(find.text('2 items'), findsOneWidget);
+    expect(find.text('Echo Studio'), findsOneWidget);
+    expect(find.text('9/22/2026'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(CommunityCollectionHeader),
+        matching: find.byType(ListView),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.getSize(find.byType(CommunityCollectionHeader)).width,
+      closeTo(tester.getSize(find.byType(ListView)).width, 1),
+    );
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Duration'), findsOneWidget);
     expect(find.text('1:05'), findsOneWidget);
     expect(find.text('Track 2'), findsOneWidget);
     expect(find.text('0s'), findsNothing);
+    expect(
+      find.ancestor(of: find.text('Name'), matching: find.byType(ListView)),
+      findsOneWidget,
+    );
+    expect(
+      tester.getTopLeft(find.byType(CommunityCollectionHeader)).dy,
+      lessThan(tester.getTopLeft(find.text('Name')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Name')).dy,
+      lessThan(tester.getTopLeft(find.text('Track 1')).dy),
+    );
+    expect(
+      tester.getTopLeft(find.text('Name')).dx,
+      closeTo(tester.getTopLeft(find.text('Track 1')).dx, 1),
+    );
+    expect(
+      tester.getTopRight(find.text('Duration')).dx,
+      closeTo(tester.getTopRight(find.text('1:05')).dx, 1),
+    );
   });
 
   testWidgets('未加入合集时点击素材提示先添加合集', (tester) async {
@@ -108,6 +143,7 @@ void main() {
                 name: 'Community English',
                 description: 'A short collection',
                 coverUrl: null,
+                authorNickname: 'Echo Studio',
                 fileCount: 2,
                 publishedAt: DateTime(2026, 9, 22),
               ),

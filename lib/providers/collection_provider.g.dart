@@ -6,7 +6,7 @@ part of 'collection_provider.dart';
 // RiverpodGenerator
 // **************************************************************************
 
-String _$collectionListHash() => r'b92d421eadd62ac2c635099ddd142925eed10b21';
+String _$collectionListHash() => r'bd3c1546770f0dbd59e417cbf8fe7d3ea5f1f009';
 
 /// See also [CollectionList].
 @ProviderFor(CollectionList)

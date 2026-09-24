@@ -24,6 +24,7 @@ class _ApiAdapter implements HttpClientAdapter {
             'name': 'Community English',
             'description': null,
             'coverUrl': 'https://cdn.example/cover.jpg',
+            'authorNickname': 'Echo Studio',
             'fileCount': 1,
             'publishedAt': '2026-09-22T00:00:00.000Z',
           },
@@ -84,6 +85,7 @@ void main() {
 
       expect(page.items.single.id, 'collection-1');
       expect(page.items.single.fileCount, 1);
+      expect(page.items.single.authorNickname, 'Echo Studio');
       expect(adapter.requests.single.queryParameters, {'cursor': 'cursor-2'});
       expect(
         adapter.requests.single.queryParameters.containsKey('page'),

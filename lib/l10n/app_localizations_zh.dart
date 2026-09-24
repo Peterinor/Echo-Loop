@@ -850,6 +850,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionEmpty => '该合集暂无文件';
 
   @override
+  String communityCollectionAuthor(String nickname) {
+    return '作者：$nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownAuthor => '未知作者';
+
+  @override
+  String get communityCollectionUnknownPublishDate => '日期未知';
+
+  @override
+  String communityCollectionCover(String name) {
+    return '$name封面';
+  }
+
+  @override
+  String get communityCollectionShowMore => '展开';
+
+  @override
+  String get communityCollectionShowLess => '收起';
+
+  @override
   String get sortCollections => '排序';
 
   @override

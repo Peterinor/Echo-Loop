@@ -875,6 +875,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get communityCollectionEmpty => 'This collection has no audio yet';
 
   @override
+  String communityCollectionAuthor(String nickname) {
+    return 'By $nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownAuthor => 'Unknown author';
+
+  @override
+  String get communityCollectionUnknownPublishDate => 'Date unknown';
+
+  @override
+  String communityCollectionCover(String name) {
+    return '$name cover';
+  }
+
+  @override
+  String get communityCollectionShowMore => 'More';
+
+  @override
+  String get communityCollectionShowLess => 'Less';
+
+  @override
   String get sortCollections => 'Sort';
 
   @override

@@ -97,6 +97,25 @@ void main() {
     expect(row?.totalDuration, 42);
   });
 
+  test('后台同步会持久化社区合集作者昵称', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    final api = _FakeCommunityApi(
+      [_summary('remote-1', 'One', authorNickname: 'Echo Studio')],
+      {'remote-1': const []},
+    );
+
+    await CommunitySyncService(
+      database: database,
+      api: api,
+    ).syncAll(force: true);
+
+    final collection = await (database.select(
+      database.collections,
+    )..where((row) => row.id.equals('local-1'))).getSingle();
+    expect(collection.authorNickname, 'Echo Studio');
+    expect(collection.publishedAt, DateTime(2026, 1, 1));
+  });
+
   test('后台同步节流，force 可以绕过节流', () async {
     await _insertCollection(database, 'local-1', 'remote-1', 'One');
     final api = _FakeCommunityApi(
@@ -121,12 +140,17 @@ void main() {
   });
 }
 
-PublicCollectionSummary _summary(String id, String name) {
+PublicCollectionSummary _summary(
+  String id,
+  String name, {
+  String? authorNickname,
+}) {
   return PublicCollectionSummary(
     id: id,
     name: name,
     description: null,
     coverUrl: null,
+    authorNickname: authorNickname,
     fileCount: 1,
     publishedAt: DateTime(2026, 1, 1),
   );

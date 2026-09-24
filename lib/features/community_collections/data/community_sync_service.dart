@@ -326,6 +326,8 @@ class CommunitySyncService {
           name: Value(summary.name),
           description: Value(summary.description),
           coverUrl: Value(summary.coverUrl),
+          authorNickname: Value(summary.authorNickname),
+          publishedAt: Value(summary.publishedAt),
           updatedAt: Value(_now()),
         ),
       );

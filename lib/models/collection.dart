@@ -63,6 +63,12 @@ class Collection {
   /// 合集描述；社区合集从后端获取；podcast 合集从 feed description 获取
   final String? description;
 
+  /// 社区合集发布者昵称；旧数据中可能为空。
+  final String? authorNickname;
+
+  /// 社区合集发布日期；历史本地副本可能为空。
+  final DateTime? publishedAt;
+
   /// 社区合集被标记下架的时间；非 null 时 UI 置灰，sync 不再请求
   final DateTime? deprecatedAt;
 
@@ -93,6 +99,8 @@ class Collection {
     this.remoteId,
     this.coverUrl,
     this.description,
+    this.authorNickname,
+    this.publishedAt,
     this.deprecatedAt,
     this.podcastInputUrl,
     this.podcastFeedUrl,
@@ -123,6 +131,14 @@ class Collection {
     remoteId: json['remoteId'] as String?,
     coverUrl: json['coverUrl'] as String?,
     description: json['description'] as String?,
+    authorNickname: switch (json['authorNickname']) {
+      final String nickname => nickname,
+      _ => null,
+    },
+    publishedAt: switch (json['publishedAt']) {
+      final String value => DateTime.tryParse(value),
+      _ => null,
+    },
     deprecatedAt: json['deprecatedAt'] != null
         ? DateTime.parse(json['deprecatedAt'] as String)
         : null,
@@ -150,6 +166,8 @@ class Collection {
     String? remoteId,
     String? coverUrl,
     String? description,
+    String? authorNickname,
+    DateTime? publishedAt,
     DateTime? deprecatedAt,
     String? podcastInputUrl,
     String? podcastFeedUrl,
@@ -168,6 +186,8 @@ class Collection {
       remoteId: remoteId ?? this.remoteId,
       coverUrl: coverUrl ?? this.coverUrl,
       description: description ?? this.description,
+      authorNickname: authorNickname ?? this.authorNickname,
+      publishedAt: publishedAt ?? this.publishedAt,
       deprecatedAt: deprecatedAt ?? this.deprecatedAt,
       podcastInputUrl: podcastInputUrl ?? this.podcastInputUrl,
       podcastFeedUrl: podcastFeedUrl ?? this.podcastFeedUrl,

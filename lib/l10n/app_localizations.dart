@@ -1646,6 +1646,42 @@ abstract class AppLocalizations {
   /// **'This collection has no audio yet'**
   String get communityCollectionEmpty;
 
+  /// No description provided for @communityCollectionAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'By {nickname}'**
+  String communityCollectionAuthor(String nickname);
+
+  /// No description provided for @communityCollectionUnknownAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown author'**
+  String get communityCollectionUnknownAuthor;
+
+  /// No description provided for @communityCollectionUnknownPublishDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date unknown'**
+  String get communityCollectionUnknownPublishDate;
+
+  /// No description provided for @communityCollectionCover.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} cover'**
+  String communityCollectionCover(String name);
+
+  /// No description provided for @communityCollectionShowMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get communityCollectionShowMore;
+
+  /// No description provided for @communityCollectionShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less'**
+  String get communityCollectionShowLess;
+
   /// No description provided for @sortCollections.
   ///
   /// In en, this message translates to:
