@@ -16,8 +16,8 @@ import '../../../providers/collection_provider.dart';
 import '../../../providers/favorite_sentence_lifecycle_provider.dart';
 import '../../../providers/learning_progress_provider.dart';
 import '../../../providers/listening_practice/listening_practice_provider.dart';
+import '../../../providers/download_provider.dart';
 import '../../../services/app_logger.dart';
-import '../../../services/reliable_http_downloader.dart';
 import '../../../utils/app_data_dir.dart';
 import '../../../utils/srt_generator.dart';
 import '../../../utils/transcript_stats.dart';
@@ -167,14 +167,14 @@ class CommunityDownload extends _$CommunityDownload {
       );
       final finalFile = File(p.join(tempDir.path, relativePath));
       await finalFile.parent.create(recursive: true);
-      await DioReliableHttpDownloader(dio: Dio()).download(
-        uri: Uri.parse(file.mediaUrl),
-        savePath: tempFile.path,
-        expectedSize: file.fileSizeBytes,
-        allowResume: false,
-        cancelToken: cancelToken,
-        onProgress: _updateProgress,
-      );
+      await ref
+          .read(backgroundFileDownloadServiceProvider)
+          .download(
+            uri: Uri.parse(file.mediaUrl),
+            savePath: tempFile.path,
+            cancelToken: cancelToken,
+            onProgress: _updateProgress,
+          );
       if (sessionId != _sessionId) return false;
       await tempFile.rename(finalFile.path);
 

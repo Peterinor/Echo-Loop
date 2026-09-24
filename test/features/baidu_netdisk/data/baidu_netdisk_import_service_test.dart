@@ -66,9 +66,8 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   int downloadCalls = 0;
   String? lastAccessToken;
   String? lastSavePath;
-  String? lastIdentityKey;
   final downloadedDlinks = <String>[];
-  List<int> bytes = const [1, 2, 3, 4];
+  List<int> bytes = const [1, 2, 3];
   Map<int, List<int>> bytesByFsId = const <int, List<int>>{};
   Map<int, Object> downloadErrorsByFsId = const <int, Object>{};
 
@@ -77,16 +76,12 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
     required String accessToken,
     required String dlink,
     required String savePath,
-    String? identityKey,
-    int? expectedSize,
-    bool allowResume = true,
     CancelToken? cancelToken,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) async {
     downloadCalls += 1;
     lastAccessToken = accessToken;
     lastSavePath = savePath;
-    lastIdentityKey = identityKey;
     downloadedDlinks.add(dlink);
     final fsId = int.tryParse(Uri.parse(dlink).pathSegments.last);
     final error = fsId == null ? null : downloadErrorsByFsId[fsId];
@@ -95,7 +90,7 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
       throw error;
     }
     final content = fsId == null ? bytes : bytesByFsId[fsId] ?? bytes;
-    onProgress?.call(content.length, expectedSize);
+    onProgress?.call(content.length, null);
     await File(savePath).writeAsBytes(content);
   }
 
@@ -109,7 +104,7 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
     return BaiduDownloadLink(
       fsId: fsId,
       dlink: 'https://d.pcs.baidu.com/file/$fsId?v=$fetchDownloadLinkCalls',
-      size: (bytesByFsId[fsId] ?? bytes).length,
+      size: 4,
     );
   }
 
@@ -190,7 +185,7 @@ void main() {
       }
     });
 
-    test('下载百度网盘文件并按 cloudDrive 来源入库', () async {
+    test('远端大小元数据不准确时仍完成下载并按 cloudDrive 来源入库', () async {
       final container = ProviderContainer(
         overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
       );
@@ -207,7 +202,6 @@ void main() {
       expect(api.fetchDownloadLinkCalls, 1);
       expect(api.downloadCalls, 1);
       expect(api.lastAccessToken, 'access-token');
-      expect(api.lastIdentityKey, 'baidu:42:4');
       expect(p.basename(api.lastSavePath!), '42.mp3');
       expect(item.name, 'Lesson 1');
       expect(item.totalDuration, 12);
@@ -215,7 +209,7 @@ void main() {
       expect(item.importSourceUrl, contains('baidunetdisk://fs/42'));
       expect(item.audioPath, 'audios/imported/sha256.mp3');
       expect(File('${tempDir.path}/${item.audioPath}').existsSync(), isTrue);
-      expect(progresses, [4]);
+      expect(progresses, [3]);
     });
 
     test('视频文件从百度网盘导入后落 videos 目录并派生为视频素材', () async {

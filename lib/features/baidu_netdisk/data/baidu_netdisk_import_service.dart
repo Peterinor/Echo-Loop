@@ -396,13 +396,11 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
     final tempFile = File(
       p.join(tmpDir.path, '${entry.fsId}.${entry.extension}'),
     );
-    final identityKey = _identityKeyFor(entry);
     try {
       await _downloadWithFreshLink(
         accessToken: accessToken,
         entry: entry,
         savePath: tempFile.path,
-        identityKey: identityKey,
         cancelToken: cancelToken,
         onProgress: onProgress,
       );
@@ -417,7 +415,6 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
     required String accessToken,
     required CloudDriveEntry entry,
     required String savePath,
-    required String identityKey,
     required CancelToken? cancelToken,
     required BaiduNetdiskImportProgressCallback? onProgress,
   }) async {
@@ -430,8 +427,6 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
         accessToken: accessToken,
         dlink: link.dlink,
         savePath: savePath,
-        identityKey: identityKey,
-        expectedSize: link.size ?? entry.size,
         cancelToken: cancelToken,
         onProgress: (received, total) =>
             onProgress?.call(entry, received, total),
@@ -450,8 +445,6 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
         accessToken: accessToken,
         dlink: refreshed.dlink,
         savePath: savePath,
-        identityKey: identityKey,
-        expectedSize: refreshed.size ?? entry.size,
         cancelToken: cancelToken,
         onProgress: (received, total) =>
             onProgress?.call(entry, received, total),
@@ -484,10 +477,6 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
 
   String _sourceUrlForEntry(CloudDriveEntry entry) {
     return 'baidunetdisk://fs/${entry.fsId}?path=${Uri.encodeComponent(entry.path)}';
-  }
-
-  String _identityKeyFor(CloudDriveEntry entry) {
-    return 'baidu:${entry.fsId}:${entry.size}';
   }
 
   String _messageForUnexpectedError(Object error) {

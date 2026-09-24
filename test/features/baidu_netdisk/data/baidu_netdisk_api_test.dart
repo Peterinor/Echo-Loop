@@ -1,59 +1,61 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:echo_loop/features/baidu_netdisk/data/baidu_netdisk_api.dart';
 import 'package:echo_loop/features/baidu_netdisk/models/cloud_drive_models.dart';
-import 'package:echo_loop/services/reliable_http_downloader.dart';
+import 'package:echo_loop/services/background_file_download_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 
 class _MockDio extends Mock implements Dio {}
 
-class _FakeReliableHttpDownloader implements ReliableHttpDownloader {
+class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   Uri? uri;
   String? savePath;
   Map<String, String>? headers;
-  int? expectedSize;
-  String? identityKey;
-  Object? error;
+  BackgroundDownloadResult result = const BackgroundDownloadResult(
+    status: BackgroundDownloadStatus.complete,
+  );
 
   @override
-  Future<ReliableDownloadResult> download({
+  Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
-    Map<String, String> headers = const <String, String>{},
-    int? expectedSize,
-    String? identityKey,
-    bool allowResume = true,
-    CancelToken? cancelToken,
-    void Function(int receivedBytes, int? totalBytes)? onProgress,
+    required Map<String, String> headers,
+    required BackgroundFileDownloadProgress? onProgress,
+    required CancelToken? cancelToken,
   }) async {
     this.uri = uri;
     this.savePath = savePath;
     this.headers = headers;
-    this.expectedSize = expectedSize;
-    this.identityKey = identityKey;
-    final error = this.error;
-    if (error != null) throw error;
-    onProgress?.call(expectedSize ?? 1, expectedSize);
-    return ReliableDownloadResult(
-      savePath: savePath,
-      bytesWritten: expectedSize ?? 1,
-      resumed: false,
-    );
+    if (result.status == BackgroundDownloadStatus.complete) {
+      await File(savePath).parent.create(recursive: true);
+      await File(savePath).writeAsBytes(const <int>[1, 2]);
+    }
+    return result;
   }
 }
 
 void main() {
   late _MockDio metadataDio;
-  late _FakeReliableHttpDownloader downloader;
+  late _FakeBackgroundDownloadRunner downloader;
+  late Directory tempDirectory;
   late DefaultBaiduNetdiskApi api;
 
-  setUp(() {
+  setUp(() async {
     metadataDio = _MockDio();
-    downloader = _FakeReliableHttpDownloader();
+    downloader = _FakeBackgroundDownloadRunner();
+    tempDirectory = await Directory.systemTemp.createTemp('baidu-api-test-');
     api = DefaultBaiduNetdiskApi(
       metadataDio: metadataDio,
-      downloader: downloader,
+      backgroundDownloader: BackgroundFileDownloadService(runner: downloader),
     );
+  });
+
+  tearDown(() async {
+    if (await tempDirectory.exists()) {
+      await tempDirectory.delete(recursive: true);
+    }
   });
 
   Response<Object?> jsonResponse(Object? data) => Response<Object?>(
@@ -68,7 +70,7 @@ void main() {
       api = DefaultBaiduNetdiskApi(
         metadataDio: metadataDio,
         profileDio: profileDio,
-        downloader: downloader,
+        backgroundDownloader: BackgroundFileDownloadService(runner: downloader),
       );
       when(
         () => profileDio.get<Object?>(
@@ -233,35 +235,32 @@ void main() {
       );
     });
 
-    test('downloadToFile 给 dlink 补 access_token 并带百度 UA', () async {
+    test('downloadToFile 给 dlink 补 access_token 并带百度 UA，不依赖元数据大小', () async {
+      final savePath = '${tempDirectory.path}/lesson.mp3';
       await api.downloadToFile(
         accessToken: 'access-token',
         dlink: 'https://d.pcs.baidu.com/file/lesson?x=1',
-        savePath: '/tmp/lesson.mp3',
-        identityKey: 'baidu:42:123',
-        expectedSize: 123,
+        savePath: savePath,
       );
 
       expect(downloader.uri?.queryParameters['x'], '1');
       expect(downloader.uri?.queryParameters['access_token'], 'access-token');
-      expect(downloader.savePath, '/tmp/lesson.mp3');
+      expect(downloader.savePath, savePath);
       expect(downloader.headers?['User-Agent'], 'pan.baidu.com');
-      expect(downloader.identityKey, 'baidu:42:123');
-      expect(downloader.expectedSize, 123);
+      expect(await File(savePath).readAsBytes(), const <int>[1, 2]);
     });
 
     test('downloadToFile 网络异常保留底层错误原因', () async {
-      downloader.error = DioException(
-        requestOptions: RequestOptions(path: '/file'),
-        type: DioExceptionType.unknown,
-        error: 'HandshakeException: Connection terminated during handshake',
+      downloader.result = const BackgroundDownloadResult(
+        status: BackgroundDownloadStatus.failed,
+        message: 'HandshakeException: Connection terminated during handshake',
       );
 
       await expectLater(
         api.downloadToFile(
           accessToken: 'access-token',
           dlink: 'https://d.pcs.baidu.com/file/lesson',
-          savePath: '/tmp/lesson.mp3',
+          savePath: '${tempDirectory.path}/lesson.mp3',
         ),
         throwsA(
           isA<BaiduNetdiskFileException>()
@@ -279,55 +278,49 @@ void main() {
       );
     });
 
-    test(
-      'downloadToFile ReliableDownloadException httpStatus 401 映射为 unauthorized',
-      () async {
-        downloader.error = const ReliableDownloadException(
-          'unauthorized',
-          kind: ReliableDownloadFailure.httpStatus,
-          statusCode: 401,
-        );
+    test('downloadToFile HTTP 401 映射为 unauthorized', () async {
+      downloader.result = const BackgroundDownloadResult(
+        status: BackgroundDownloadStatus.failed,
+        statusCode: 401,
+        message: 'unauthorized',
+      );
 
-        await expectLater(
-          api.downloadToFile(
-            accessToken: 'access-token',
-            dlink: 'https://d.pcs.baidu.com/file/lesson',
-            savePath: '/tmp/lesson.mp3',
+      await expectLater(
+        api.downloadToFile(
+          accessToken: 'access-token',
+          dlink: 'https://d.pcs.baidu.com/file/lesson',
+          savePath: '${tempDirectory.path}/lesson.mp3',
+        ),
+        throwsA(
+          isA<BaiduNetdiskFileException>().having(
+            (error) => error.kind,
+            'kind',
+            BaiduNetdiskFileErrorKind.unauthorized,
           ),
-          throwsA(
-            isA<BaiduNetdiskFileException>().having(
-              (error) => error.kind,
-              'kind',
-              BaiduNetdiskFileErrorKind.unauthorized,
-            ),
-          ),
-        );
-      },
-    );
+        ),
+      );
+    });
 
-    test(
-      'downloadToFile ReliableDownloadException cancelled 映射为 canceled',
-      () async {
-        downloader.error = const ReliableDownloadException(
-          'cancelled',
-          kind: ReliableDownloadFailure.cancelled,
-        );
+    test('downloadToFile canceled 映射为 canceled', () async {
+      downloader.result = const BackgroundDownloadResult(
+        status: BackgroundDownloadStatus.canceled,
+        message: 'cancelled',
+      );
 
-        await expectLater(
-          api.downloadToFile(
-            accessToken: 'access-token',
-            dlink: 'https://d.pcs.baidu.com/file/lesson',
-            savePath: '/tmp/lesson.mp3',
+      await expectLater(
+        api.downloadToFile(
+          accessToken: 'access-token',
+          dlink: 'https://d.pcs.baidu.com/file/lesson',
+          savePath: '${tempDirectory.path}/lesson.mp3',
+        ),
+        throwsA(
+          isA<BaiduNetdiskFileException>().having(
+            (error) => error.kind,
+            'kind',
+            BaiduNetdiskFileErrorKind.canceled,
           ),
-          throwsA(
-            isA<BaiduNetdiskFileException>().having(
-              (error) => error.kind,
-              'kind',
-              BaiduNetdiskFileErrorKind.canceled,
-            ),
-          ),
-        );
-      },
-    );
+        ),
+      );
+    });
   });
 }

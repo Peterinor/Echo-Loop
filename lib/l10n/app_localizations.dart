@@ -6845,7 +6845,7 @@ abstract class AppLocalizations {
   /// No description provided for @discoverCommunityCollections.
   ///
   /// In en, this message translates to:
-  /// **'Discover Shared Collections'**
+  /// **'Discover Resources'**
   String get discoverCommunityCollections;
 
   /// No description provided for @discoverEmpty.
