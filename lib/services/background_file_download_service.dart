@@ -344,6 +344,13 @@ class PluginBackgroundDownloadRunner implements BackgroundDownloadRunner {
       'initializing plugin group=$_group',
     );
     try {
+      _downloader.configureNotificationForGroup(
+        _group,
+        running: const TaskNotification('Downloading', '{displayName}'),
+        complete: const TaskNotification('Download complete', '{displayName}'),
+        error: const TaskNotification('Download failed', '{displayName}'),
+        progressBar: true,
+      );
       _downloader.registerCallbacks(
         group: _group,
         taskStatusCallback: _handleStatus,

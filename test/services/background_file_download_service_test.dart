@@ -12,6 +12,27 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
 
   final TaskException exception;
   TaskStatusCallback? _statusCallback;
+  String? configuredNotificationGroup;
+  TaskNotification? runningNotification;
+  bool notificationProgressBar = false;
+
+  @override
+  FileDownloader configureNotificationForGroup(
+    String group, {
+    TaskNotification? running,
+    TaskNotification? complete,
+    TaskNotification? error,
+    TaskNotification? paused,
+    TaskNotification? canceled,
+    bool progressBar = false,
+    bool tapOpensFile = false,
+    String groupNotificationId = '',
+  }) {
+    configuredNotificationGroup = group;
+    runningNotification = running;
+    notificationProgressBar = progressBar;
+    return this;
+  }
 
   @override
   FileDownloader registerCallbacks({
@@ -284,6 +305,10 @@ void main() {
               ),
         ),
       );
+      expect(downloader.configuredNotificationGroup, 'echo-loop-user-files');
+      expect(downloader.runningNotification?.title, 'Downloading');
+      expect(downloader.runningNotification?.body, '{displayName}');
+      expect(downloader.notificationProgressBar, isTrue);
       expect(
         AppLogger.instance.entries.any(
           (entry) =>
