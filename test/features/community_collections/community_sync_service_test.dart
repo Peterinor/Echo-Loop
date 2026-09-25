@@ -82,6 +82,45 @@ void main() {
     expect(api.detailCalls, unorderedEquals(['remote-1', 'remote-2']));
   });
 
+  test('同步会把其它合集已有的远端音频关联到当前合集', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    await _insertCollection(database, 'local-2', 'remote-2', 'Two');
+    await _insertFile(database, 'local-1', 'file-shared', 'Shared audio');
+
+    final api = _FakeCommunityApi(
+      [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
+      {
+        'remote-1': [_file('file-shared', 'Shared audio')],
+        'remote-2': [_file('file-shared', 'Shared audio')],
+      },
+    );
+
+    final outcome = await CommunitySyncService(
+      database: database,
+      api: api,
+    ).syncAll(force: true);
+
+    final firstCollectionAudioIds = await database.collectionDao.getAudioIds(
+      'local-1',
+    );
+    final secondCollectionAudioIds = await database.collectionDao.getAudioIds(
+      'local-2',
+    );
+    final audioRows = await (database.select(
+      database.audioItems,
+    )..where((row) => row.remoteAudioId.equals('file-shared'))).get();
+    final filesAdded = switch (outcome) {
+      CommunitySyncCompleted(:final filesAdded) => filesAdded,
+      _ => null,
+    };
+
+    expect(outcome, isA<CommunitySyncCompleted>());
+    expect(filesAdded, 1);
+    expect(firstCollectionAudioIds, ['local-file-shared']);
+    expect(secondCollectionAudioIds, ['local-file-shared']);
+    expect(audioRows, hasLength(1));
+  });
+
   test('已加入合集从详情接口判断下架，不依赖公开合集目录', () async {
     await _insertCollection(database, 'local-1', 'remote-1', 'One');
     final api = _NotFoundCommunityApi();

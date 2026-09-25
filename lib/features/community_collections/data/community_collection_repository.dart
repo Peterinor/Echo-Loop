@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Ref;
 import 'package:path/path.dart' as p;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -60,6 +60,8 @@ class CommunityCollectionRepository {
        _docsDir = docsDir ?? getAppDataDirectory;
 
   /// 拉取 v2 合集及其全部文件后，以事务方式创建本地占位数据。
+  ///
+  /// 若远端音频已存在于其他合集，则复用该本地音频项并只新增合集关联。
   Future<String> enroll(String remoteId) async {
     final existing = await _db.collectionDao.getByRemoteId(remoteId);
     if (existing != null) {
@@ -90,18 +92,23 @@ class CommunityCollectionRepository {
         ),
       );
       for (final file in snapshot.files) {
-        final audioId = const Uuid().v4();
-        await _db.audioItemDao.upsert(
-          db.AudioItemsCompanion(
-            id: Value(audioId),
-            name: Value(file.title),
-            addedDate: Value(now),
-            totalDuration: Value(file.durationSec ?? 0),
-            remoteAudioId: Value(file.id),
-            originalDate: Value(file.publishedAt),
-            updatedAt: Value(now),
-          ),
+        final existingAudio = await _db.audioItemDao.getByRemoteAudioId(
+          file.id,
         );
+        final audioId = existingAudio?.id ?? const Uuid().v4();
+        if (existingAudio == null) {
+          await _db.audioItemDao.upsert(
+            db.AudioItemsCompanion(
+              id: Value(audioId),
+              name: Value(file.title),
+              addedDate: Value(now),
+              totalDuration: Value(file.durationSec ?? 0),
+              remoteAudioId: Value(file.id),
+              originalDate: Value(file.publishedAt),
+              updatedAt: Value(now),
+            ),
+          );
+        }
         await _db
             .into(_db.collectionAudioItems)
             .insertOnConflictUpdate(
@@ -120,15 +127,24 @@ class CommunityCollectionRepository {
 
   /// 彻底移除社区合集及其未共享的本地媒体和学习数据。
   Future<void> remove(String localCollectionId) async {
-    final audioIds = await _db.collectionDao.getAudioIds(localCollectionId);
-    final audioRows = <db.AudioItem>[];
-    for (final id in audioIds) {
-      final row = await _db.audioItemDao.getById(id);
-      if (row != null) audioRows.add(row);
-    }
-
+    final orphanedAudioRows = <db.AudioItem>[];
     await _db.transaction(() async {
+      final audioIds = await _db.collectionDao.getAudioIds(localCollectionId);
       for (final audioId in audioIds) {
+        final audioRow = await _db.audioItemDao.getById(audioId);
+        await (_db.delete(_db.collectionAudioItems)..where(
+              (row) =>
+                  row.collectionId.equals(localCollectionId) &
+                  row.audioItemId.equals(audioId),
+            ))
+            .go();
+
+        final remainingMembership = await (_db.select(
+          _db.collectionAudioItems,
+        )..where((row) => row.audioItemId.equals(audioId))).getSingleOrNull();
+        // 仅在最后一个合集关联移除后清理音频行和对应学习数据。
+        if (remainingMembership != null) continue;
+
         for (final table in [
           'learning_progresses',
           'stage_completions',
@@ -143,17 +159,12 @@ class CommunityCollectionRepository {
             [audioId],
           );
         }
-      }
-      await _db.customStatement(
-        'DELETE FROM collection_audio_items WHERE collection_id = ?',
-        [localCollectionId],
-      );
-      for (final id in audioIds) {
-        await _db.audioItemDao.hardDelete(id);
+        await _db.audioItemDao.hardDelete(audioId);
+        if (audioRow != null) orphanedAudioRows.add(audioRow);
       }
       await _db.collectionDao.hardDelete(localCollectionId);
     });
-    await _deleteLocalFiles(audioRows);
+    await _deleteLocalFiles(orphanedAudioRows);
   }
 
   Future<_CommunityCollectionSnapshot> _fetchCollection(String remoteId) async {
@@ -178,6 +189,7 @@ class CommunityCollectionRepository {
   }
 
   Future<void> _deleteLocalFiles(List<db.AudioItem> rows) async {
+    if (rows.isEmpty) return;
     final dir = await _docsDir();
     for (final row in rows) {
       for (final relativePath in [row.audioPath, row.transcriptPath]) {

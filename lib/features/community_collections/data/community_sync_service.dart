@@ -252,6 +252,7 @@ class CommunitySyncService {
     );
   }
 
+  /// 复用已存在的远端音频行，并仅为当前合集补充关联。
   Future<_CollectionDiff> _applyCollection(
     db.Collection local,
     PublicCollectionCatalogEntry catalogEntry,
@@ -260,10 +261,14 @@ class CommunitySyncService {
     final junctions = await (_db.select(
       _db.collectionAudioItems,
     )..where((t) => t.collectionId.equals(local.id))).get();
+    final sortOrderByAudioId = <String, int>{
+      for (final junction in junctions)
+        junction.audioItemId: junction.sortOrder,
+    };
     final audioRows = <String, db.AudioItem>{};
     for (final junction in junctions) {
       final row = await _db.audioItemDao.getById(junction.audioItemId);
-      if (row != null) audioRows[row.id] = row;
+      if (row != null && row.deletedAt == null) audioRows[row.id] = row;
     }
     final localByRemoteId = <String, db.AudioItem>{};
     for (final row in audioRows.values) {
@@ -278,8 +283,14 @@ class CommunitySyncService {
 
     await _db.transaction(() async {
       for (final file in files) {
-        final existing = localByRemoteId[file.id];
-        if (existing == null) {
+        final existingInCollection = localByRemoteId[file.id];
+        final alreadyLinked = existingInCollection != null;
+        final existingAudio =
+            existingInCollection ??
+            await _db.audioItemDao.getByRemoteAudioId(file.id);
+        late final db.AudioItem audio;
+
+        if (existingAudio == null) {
           final id = const Uuid().v4();
           final now = _now();
           await _db.audioItemDao.upsert(
@@ -294,28 +305,33 @@ class CommunitySyncService {
               updatedAt: Value(now),
             ),
           );
+          final insertedAudio = await _db.audioItemDao.getById(id);
+          if (insertedAudio == null) {
+            throw StateError('Inserted community audio $id was not found');
+          }
+          audio = insertedAudio;
+        } else {
+          audio = existingAudio;
+        }
+
+        if (!alreadyLinked) {
+          final now = _now();
           await _db
               .into(_db.collectionAudioItems)
               .insertOnConflictUpdate(
                 db.CollectionAudioItemsCompanion(
                   collectionId: Value(local.id),
-                  audioItemId: Value(id),
+                  audioItemId: Value(audio.id),
                   sortOrder: Value(file.sortOrder),
                   addedAt: Value(now),
                 ),
               );
           added++;
-          continue;
-        }
-
-        final junction = junctions.firstWhere(
-          (item) => item.audioItemId == existing.id,
-        );
-        if (junction.sortOrder != file.sortOrder) {
+        } else if (sortOrderByAudioId[audio.id] != file.sortOrder) {
           await (_db.update(_db.collectionAudioItems)..where(
                 (t) =>
                     t.collectionId.equals(local.id) &
-                    t.audioItemId.equals(existing.id),
+                    t.audioItemId.equals(audio.id),
               ))
               .write(
                 db.CollectionAudioItemsCompanion(
@@ -323,9 +339,12 @@ class CommunitySyncService {
                 ),
               );
         }
+        sortOrderByAudioId[audio.id] = file.sortOrder;
+        localByRemoteId[file.id] = audio;
+
         await (_db.update(
           _db.audioItems,
-        )..where((t) => t.id.equals(existing.id))).write(
+        )..where((t) => t.id.equals(audio.id))).write(
           db.AudioItemsCompanion(
             name: Value(file.title),
             totalDuration: file.durationSec == null

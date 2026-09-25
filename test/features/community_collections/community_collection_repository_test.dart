@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:echo_loop/database/app_database.dart' as db;
 import 'package:echo_loop/features/community_collections/data/community_collection_api.dart';
@@ -106,7 +109,51 @@ void main() {
     },
   );
 
-  test('enrolling reuses a remote audio item already in another collection', () async {
+  test(
+    'enrolling reuses a remote audio item already in another collection',
+    () async {
+      final now = DateTime(2026, 9, 24);
+      await database.collectionDao.upsert(
+        db.CollectionsCompanion.insert(
+          id: 'existing-collection',
+          name: 'Existing community collection',
+          createdDate: now,
+          updatedAt: now,
+          source: const Value('community'),
+          remoteId: const Value('remote-existing'),
+        ),
+      );
+      await database.audioItemDao.upsert(
+        db.AudioItemsCompanion.insert(
+          id: 'existing-audio',
+          name: 'Episode 1',
+          addedDate: now,
+          updatedAt: now,
+          remoteAudioId: const Value('file-1'),
+        ),
+      );
+      await database.collectionDao.addAudio(
+        'existing-collection',
+        'existing-audio',
+      );
+
+      final repository = CommunityCollectionRepository(
+        database: database,
+        api: _FakeCommunityApi(),
+      );
+
+      final localId = await repository.enroll('remote-1');
+      final audioIds = await database.collectionDao.getAudioIds(localId);
+
+      expect(audioIds, ['existing-audio']);
+      expect(
+        await database.audioItemDao.getByRemoteAudioId('file-1'),
+        isNotNull,
+      );
+    },
+  );
+
+  test('移除一个合集会保留其它合集共享的音频和学习记录', () async {
     final now = DateTime(2026, 9, 24);
     await database.collectionDao.upsert(
       db.CollectionsCompanion.insert(
@@ -114,8 +161,8 @@ void main() {
         name: 'Existing community collection',
         createdDate: now,
         updatedAt: now,
-        source: const db.Value('community'),
-        remoteId: const db.Value('remote-existing'),
+        source: const Value('community'),
+        remoteId: const Value('remote-existing'),
       ),
     );
     await database.audioItemDao.upsert(
@@ -124,23 +171,52 @@ void main() {
         name: 'Episode 1',
         addedDate: now,
         updatedAt: now,
-        remoteAudioId: const db.Value('file-1'),
+        remoteAudioId: const Value('file-1'),
       ),
     );
     await database.collectionDao.addAudio(
       'existing-collection',
       'existing-audio',
     );
-
+    await database
+        .into(database.learningProgresses)
+        .insert(
+          db.LearningProgressesCompanion(
+            audioItemId: const Value('existing-audio'),
+            updatedAt: Value(now),
+          ),
+        );
     final repository = CommunityCollectionRepository(
       database: database,
       api: _FakeCommunityApi(),
+      docsDir: () async => Directory.systemTemp,
     );
+    final secondCollectionId = await repository.enroll('remote-1');
 
+    await repository.remove(secondCollectionId);
+
+    expect(await database.audioItemDao.getById('existing-audio'), isNotNull);
+    expect(await database.collectionDao.getAudioIds('existing-collection'), [
+      'existing-audio',
+    ]);
+    expect(
+      await database.learningProgressDao.getByAudioId('existing-audio'),
+      isNotNull,
+    );
+  });
+
+  test('移除最后一个合集时清理不再共享的音频行', () async {
+    final repository = CommunityCollectionRepository(
+      database: database,
+      api: _FakeCommunityApi(),
+      docsDir: () async => Directory.systemTemp,
+    );
     final localId = await repository.enroll('remote-1');
-    final audioIds = await database.collectionDao.getAudioIds(localId);
+    final audioId = (await database.collectionDao.getAudioIds(localId)).single;
 
-    expect(audioIds, ['existing-audio']);
-    expect(await database.audioItemDao.getByRemoteAudioId('file-1'), isNotNull);
+    await repository.remove(localId);
+
+    expect(await database.collectionDao.getById(localId), isNull);
+    expect(await database.audioItemDao.getById(audioId), isNull);
   });
 }

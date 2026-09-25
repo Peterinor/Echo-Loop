@@ -9,7 +9,11 @@ import '../../helpers/test_app.dart';
 
 void main() {
   testWidgets('来源角标使用三种不同颜色', (tester) async {
-    final colors = <Color>{};
+    final expectedColors = {
+      CollectionSource.local: AppTheme.localCollectionBadgeColor,
+      CollectionSource.community: AppTheme.successColor,
+      CollectionSource.podcast: AppTheme.podcastCollectionBadgeColor,
+    };
 
     for (final source in CollectionSource.values) {
       await tester.pumpWidget(
@@ -24,14 +28,9 @@ void main() {
         ),
       );
       final decoration = container.decoration! as BoxDecoration;
-      colors.add(decoration.color!);
+      expect(decoration.color, expectedColors[source]);
     }
 
-    expect(colors, {
-      AppTheme.localCollectionBadgeColor,
-      AppTheme.communityBadgeColor,
-      AppTheme.podcastCollectionBadgeColor,
-    });
     expect(AppTheme.communityBadgeColor, AppTheme.successColor);
   });
 

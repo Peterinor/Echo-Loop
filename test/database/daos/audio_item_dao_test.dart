@@ -75,4 +75,14 @@ void main() {
       expect(row.originalAudioSha256, isNull);
     });
   });
+
+  test('getByRemoteAudioId ignores a soft-deleted row', () async {
+    await insertDownloaded('deleted', remoteAudioId: 'remote-1');
+    await db.audioItemDao.softDelete('deleted');
+    await insertDownloaded('active', remoteAudioId: 'remote-1');
+
+    final row = await db.audioItemDao.getByRemoteAudioId('remote-1');
+
+    expect(row?.id, 'active');
+  });
 }

@@ -123,6 +123,64 @@ void main() {
     );
     expect(await file.exists(), isTrue);
   });
+
+  test('共享媒体即使有学习记录也只从已下架的合集中解除关联', () async {
+    await _seed(database, audioPath: 'audios/community/file.m4a');
+    await database.collectionDao.upsert(
+      db.CollectionsCompanion(
+        id: const Value('collection-2'),
+        name: const Value('Another Community'),
+        createdDate: Value(DateTime(2026, 1, 1)),
+        updatedAt: Value(DateTime(2026, 1, 1)),
+        source: const Value('community'),
+        remoteId: const Value('remote-2'),
+      ),
+    );
+    await database
+        .into(database.collectionAudioItems)
+        .insert(
+          db.CollectionAudioItemsCompanion(
+            collectionId: const Value('collection-2'),
+            audioItemId: const Value('audio-1'),
+            addedAt: Value(DateTime(2026, 1, 1)),
+          ),
+        );
+    await database
+        .into(database.learningProgresses)
+        .insert(
+          db.LearningProgressesCompanion(
+            audioItemId: const Value('audio-1'),
+            updatedAt: Value(DateTime(2026, 1, 1)),
+          ),
+        );
+    final file = File('${dataDirectory.path}/audios/community/file.m4a')
+      ..createSync(recursive: true);
+
+    final result =
+        await CommunityFileLifecycleService(
+          database: database,
+          dataDir: () async => dataDirectory,
+        ).markUnavailable(
+          audioItemId: 'audio-1',
+          localCollectionId: 'collection-1',
+        );
+
+    final row = await database.audioItemDao.getById('audio-1');
+    expect(result, CommunityFileRemovalResult.unchanged);
+    expect(row?.audioPath, 'audios/community/file.m4a');
+    expect(row?.communityUnavailableAt, isNull);
+    expect(
+      await database.learningProgressDao.getByAudioId('audio-1'),
+      isNotNull,
+    );
+    expect(
+      await (database.select(database.collectionAudioItems)
+            ..where((junction) => junction.collectionId.equals('collection-1')))
+          .get(),
+      isEmpty,
+    );
+    expect(await file.exists(), isTrue);
+  });
 }
 
 Future<void> _seed(db.AppDatabase database, {required String audioPath}) async {
