@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../services/app_network_image_cache.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/common/collection_added_badge.dart';
 import '../models/community_collection_models.dart';
 
 /// Discover 页的合集卡片。
@@ -154,7 +155,7 @@ class CommunityCollectionCard extends StatelessWidget {
     );
   }
 
-  /// 右侧 trailing 区。已加入时用不可点击的对勾图标替代学习按钮。
+  /// 右侧状态区固定为 56px；已加入时叠加角标，不改变卡片宽度。
   Widget _buildTrailing(
     BuildContext context,
     AppLocalizations l10n,
@@ -178,10 +179,22 @@ class CommunityCollectionCard extends StatelessWidget {
         width: trailingWidth,
         child: Semantics(
           label: l10n.communityCollectionAdded,
-          child: const Center(
-            child: Icon(
-              Icons.check_circle_outline_rounded,
-              color: AppTheme.successColor,
+          child: ExcludeSemantics(
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                const Icon(
+                  Icons.check_circle_outline_rounded,
+                  color: AppTheme.successColor,
+                ),
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: CollectionAddedBadge(
+                    label: l10n.communityCollectionAdded,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

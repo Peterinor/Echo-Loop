@@ -40,7 +40,7 @@ void main() {
     expect(find.text('发现资源'), findsOneWidget);
   });
 
-  testWidgets('已加入的社区合集显示圆形对勾而不是去学习', (tester) async {
+  testWidgets('已加入的社区合集显示圆形对勾和已添加角标', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const DiscoverCommunityCollectionsScreen(),
@@ -80,7 +80,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
-    expect(find.text('已添加'), findsNothing);
+    expect(find.text('已添加'), findsOneWidget);
     expect(find.text('去学习'), findsNothing);
   });
 

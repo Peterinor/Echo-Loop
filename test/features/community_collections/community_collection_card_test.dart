@@ -35,7 +35,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('已添加'), findsNothing);
+    expect(find.text('已添加'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) => widget is Semantics && widget.properties.label == '已添加',
@@ -49,8 +49,12 @@ void main() {
 
     final cardRect = tester.getRect(find.byType(CommunityCollectionCard));
     final checkRect = tester.getRect(checkFinder);
+    final addedBadgeRect = tester.getRect(find.text('已添加'));
     expect(checkRect.center.dy, closeTo(cardRect.center.dy, 1));
     expect(checkRect.center.dx, greaterThan(cardRect.center.dx));
+    expect(addedBadgeRect.top, lessThan(checkRect.top));
+    expect(addedBadgeRect.right, lessThanOrEqualTo(cardRect.right));
+    expect(addedBadgeRect.center.dx, greaterThan(cardRect.center.dx));
 
     await tester.tap(checkFinder);
     await tester.pump();
@@ -135,7 +139,15 @@ void main() {
       find.byKey(const ValueKey('not-enrolled-card')),
     );
 
+    expect(enrolledCardRect.size, notEnrolledCardRect.size);
     expect(checkRect.size, addRect.size);
+    final badgeRect = tester.getRect(
+      find.descendant(
+        of: find.byKey(const ValueKey('enrolled-card')),
+        matching: find.text('Added'),
+      ),
+    );
+    expect(badgeRect.center.dx, greaterThan(enrolledCardRect.center.dx));
     expect(
       enrolledCardRect.right - checkRect.center.dx,
       closeTo(notEnrolledCardRect.right - addRect.center.dx, 1),
@@ -158,7 +170,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Added'), findsNothing);
+    expect(find.text('Added'), findsOneWidget);
     expect(
       find.byWidgetPredicate(
         (widget) => widget is Semantics && widget.properties.label == 'Added',

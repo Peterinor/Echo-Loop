@@ -7,6 +7,7 @@ import 'package:echo_loop/features/podcast/podcast_search_provider.dart';
 import 'package:echo_loop/features/podcast/podcast_search_service.dart';
 import 'package:echo_loop/features/podcast/providers/discover_podcasts_provider.dart';
 import 'package:echo_loop/features/podcast/screens/podcast_discovery_screen.dart';
+import 'package:echo_loop/features/podcast/widgets/podcast_subscribe_tile.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:flutter/material.dart';
@@ -133,7 +134,7 @@ void main() {
     expect(find.text('Added to My Collections'), findsWidgets);
   });
 
-  testWidgets('已订阅的精选 Podcast 显示去学习', (tester) async {
+  testWidgets('已订阅的精选 Podcast 显示静态对勾而不是去学习', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
@@ -159,8 +160,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Start Practicing'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle_outline_rounded), findsOneWidget);
+    expect(find.text('Added'), findsOneWidget);
+    expect(find.text('Start Practicing'), findsNothing);
     expect(find.byIcon(Icons.add_circle_outline), findsNothing);
+
+    final tileRect = tester.getRect(find.byType(PodcastSubscribeTile));
+    final badgeRect = tester.getRect(find.text('Added'));
+    final checkRect = tester.getRect(
+      find.byIcon(Icons.check_circle_outline_rounded),
+    );
+    expect(badgeRect.top, greaterThanOrEqualTo(tileRect.top));
+    expect(badgeRect.bottom, lessThan(checkRect.top));
   });
 
   testWidgets('未登录订阅精选 Podcast 显示登录提示且不调用仓库', (tester) async {

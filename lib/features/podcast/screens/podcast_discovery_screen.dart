@@ -6,15 +6,14 @@
 /// - 粘贴 http/https 链接 → 解析该链接对应的播客并显示为可点 item（[podcastPreviewProvider]），
 ///   **不直接订阅**，点「+」才订阅。
 ///
-/// 点击 item 进入单集预览页；点「+」订阅后**停留在本页**（item 自动翻成
-/// 「去学习」），支持连续订阅多个播客；仅点「去学习」才跳合集详情。
+/// 点击 item 进入单集预览页；点「+」订阅后**停留在本页**（item 自动显示对勾和
+/// 「已添加」角标），支持连续订阅多个播客。
 library;
 
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../l10n/app_localizations.dart';
 import '../../../models/collection.dart';
@@ -184,9 +183,6 @@ class _PodcastDiscoveryScreenState
                 id: meta.feedUrl,
                 knownFeedUrl: meta.feedUrl,
               ),
-              onGoLearn: () {
-                if (local != null) _goLearn(local.id);
-              },
             ),
           ],
         );
@@ -238,9 +234,6 @@ class _PodcastDiscoveryScreenState
             id: podcast.id,
             knownFeedUrl: podcast.rssUrl,
           ),
-          onGoLearn: () {
-            if (local != null) _goLearn(local.id);
-          },
         );
       },
     );
@@ -286,9 +279,6 @@ class _PodcastDiscoveryScreenState
                   id: r.id,
                   knownFeedUrl: r.feedUrl,
                 );
-              },
-              onGoLearn: () {
-                if (local != null) _goLearn(local.id);
               },
             );
           },
@@ -350,11 +340,6 @@ class _PodcastDiscoveryScreenState
     } finally {
       if (mounted) setState(() => _subscribingIds.remove(id));
     }
-  }
-
-  /// 已订阅项「去学习」：跳到已有合集详情。
-  void _goLearn(String collectionId) {
-    context.go(AppRoutes.collectionDetail(collectionId));
   }
 
   String _formatSubscribeError(AppLocalizations l10n, Object error) {
