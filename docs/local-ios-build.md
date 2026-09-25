@@ -22,7 +22,20 @@
 工作流会先执行本地版行为测试和 Apple 配置测试，再验证编译产物。
 现有上游 `CI`、`Release` 工作流保持原样；不要通过 `Release` 打包本地版。
 
-## 已完成验证（2026-09-25）
+## 最新构建：恢复匿名发现资源（2026-09-25）
+
+- [成功运行 #3](https://github.com/Peterinor/Echo-Loop/actions/runs/36089026211)，源码提交 `22b0b7baf0945fb5464207e011e6b078d2f57451`，耗时 15 分 22 秒。
+- 包含“发现资源”、免登录加入合集/订阅播客、资源接口白名单和播客首启目录刷新修改。
+- macOS 15.7.9 / Xcode 16.4 / Flutter 3.41.5；6 项 Python、6 项本地版和 7 项 AI 客户端测试全部通过。
+- iPhone ARM64 Release，版本 `1.0.35`，构建号 `3`，最低 iOS `15.0`；原生埋点关闭，逐文件扫描未发现本机验证所用的模型密钥。
+- 下载后核对 SHA256，并将 `.app` 整理成 `Payload/Runner.app` 的未签名 IPA；684 个应用条目的内容及权限元数据均与云端产物一致。
+- IPA：`D:\env\echo-loop\ios-build\run-3\Echo-Loop-local-1.0.35-3.ipa`，61,583,532 字节，供 Sideloadly 签名覆盖安装。
+- IPA SHA256：`cb50db54ad72686fc91b37b27c0837efa0ed39d9ef09eaf8b8f823eae4d9d79e`。
+- 原始 ZIP SHA256：`9c49667f8dd5618996d4a5bc2b3a844a953226fcdcee4b9a32750f52ea30eb79`。
+
+本轮只进行云端构建和本地打包校验，未运行全量 `scripts/check.sh` 或重新执行 UI / Maestro；资源修改的 Android 验收见本地版实施记录。此新版尚未在 iPhone 上运行验证，官方合集文件接口此前返回 404 的限制仍存在。
+
+## 首次成功构建记录（2026-09-25）
 
 - [成功运行 #2](https://github.com/Peterinor/Echo-Loop/actions/runs/36082542625)，代码提交 `52486de9`。
 - macOS 15.7.9 / Xcode 16.4 / Flutter 3.41.5；6 项 Python 构建配置测试、5 项本地版行为测试及 7 项 AI 客户端测试通过。
@@ -35,7 +48,17 @@
 此次只验证 iOS 构建链路，未运行覆盖全项目/macOS 集成测试的 `scripts/check.sh`。
 没有新增应用页面或运行时行为，因此未重跑 Android UI / Maestro；iPhone 真机验证仍未执行。
 
-## 后续导出可安装 IPA
+## 使用 Sideloadly 在自己的 iPhone 上安装
+
+也可以将已编译的 `Runner.app` 按 `Payload/Runner.app` 目录结构打包为 IPA，
+交给 Sideloadly 使用自己的 Apple 账号签名安装。这与修改文件后缀不同，
+打包时应保留文件内容和 ZIP 权限/符号链接元数据，随后重新验证。
+此 IPA 在签名前仍不能直接安装；不需要将 Apple 密码或模型密钥上传到 GitHub。
+
+更新已有安装时，使用上次相同的 Apple 账号与 Bundle ID 配置覆盖安装，
+无需先删除旧应用。手机上如有开发者信任或开发者模式提示，需用户亲自确认。
+
+## 可选：使用 Ad Hoc 证书在云端签名
 
 需要 Apple Developer Program 账号、包含私钥的 Apple Distribution `.p12` 及密码，
 以及登记目标 iPhone UDID 的 Ad Hoc `.mobileprovision`。

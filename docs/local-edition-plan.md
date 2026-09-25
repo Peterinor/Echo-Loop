@@ -225,7 +225,7 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - Android API 35 模拟器真实验收通过：入口可见、匿名合集目录、精选播客、Apple 搜索、RSS 预览/订阅和更新、342 期 BBC 节目入库及列表可见。模拟器直连因本机代理网络超时，验收通过 `RESOURCE_TEST_PROXY=10.0.2.2:8087` 使用电脑已有代理；该参数只由测试入口读取，普通安装包不包含代理覆盖。
 - 已有登录校验改为本地资源专用放行，没有修改通用 AI 登录/配置门控。支付、账号和官方 AI 请求仍被拦截。
 - `scripts/check.sh` 未运行：此次为资源入口及访问范围的局部改动，执行相关检查即可。Maestro CLI 未安装，使用 Flutter integration_test 完成模拟器验证。
-- iPhone 上现有安装包仍为此前版本；此次未推送或触发 iOS 云端构建。更新 iPhone 需要重新构建并用同一 Apple 账号覆盖签名安装。
+- iPhone 上现有安装包仍为此前版本；后续已完成 [iOS 第 3 次构建及 IPA 打包](local-ios-build.md)，更新 iPhone 可使用该 IPA 和同一 Apple 账号覆盖签名安装。
 - 原入口 Android dev Debug（x86_64）普通包构建、覆盖安装和启动成功；模拟器已恢复普通运行入口，最新包位于 `D:\env\echo-loop\echo-loop-local-emulator.apk`，未清除原有学习数据。
 
 下一步手动验证：以 `APP_EDITION=local` 运行原入口，进入“资源库 → 发现资源 → Apple Podcasts”，搜索或粘贴公开 RSS 后加入，确认无需登录或配置模型；进入合集点击未下载单集验证音频下载。官方合集文件 404 应展示失败状态，不能计为下载成功。
