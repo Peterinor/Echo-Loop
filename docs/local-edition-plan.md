@@ -278,3 +278,4 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - `flutter analyze --no-fatal-warnings --no-fatal-infos lib test integration_test/local_resources_test.dart` 无编译错误，保留 30 条已有 warning/info。
 - 已执行 `scripts/check.sh`：在全仓静态分析阶段被既有 `integration_test/kokoro_tts_test.dart` 的 3 个错误阻断（旧 `TtsEngineKind.echoLoop` 与工厂签名），该文件在本次合并前后未变化；没有跳过或削弱测试来使脚本通过。脚本后续 macOS 设备测试和构建不能在本机 Windows 执行。
 - Maestro 脚本已尝试，CLI 未安装；改用已有 Flutter 设备集成测试。Android 模拟器资源集成测试通过：Example 预览、匿名加入、已有音频和字幕校验、常驻 Podcast 入口、精选、Apple 搜索、RSS 订阅和单集列表。覆盖安装前后数据库由 v55 升到 v57，原有 484 条素材、5 个合集、3 条学习进度和 3 条书签的标识均保留；本机升级前数据库快照位于 `D:\env\echo-loop\pre-upstream-merge.db`。
+- 普通 Android 本地版 Debug APK 已重新构建并通过 `adb install -r` 覆盖安装；实际确认学习首页、AI 设置卡片及配置页导航、资源库发现入口可用，当前模拟器停留在资源库。日常包使用 `lib/main.dart`，未注入测试代理或模型密钥。本轮未推送 GitHub，未重新构建 iOS。
