@@ -22,6 +22,19 @@
 工作流会先执行本地版行为测试和 Apple 配置测试，再验证编译产物。
 现有上游 `CI`、`Release` 工作流保持原样；不要通过 `Release` 打包本地版。
 
+## 已完成验证（2026-09-25）
+
+- [成功运行 #2](https://github.com/Peterinor/Echo-Loop/actions/runs/36082542625)，代码提交 `52486de9`。
+- macOS 15.7.9 / Xcode 16.4 / Flutter 3.41.5；6 项 Python 构建配置测试、5 项本地版行为测试及 7 项 AI 客户端测试通过。
+- 原入口 `lib/main.dart` 的 iOS Release 编译、ARM64 架构、本地模式及原生 PostHog 配置检查通过。
+- 版本 `1.0.35`、构建号 `2`、最低 iOS `15.0`；未签名压缩包约 58.7 MiB。
+- 下载后重新核对 SHA256、Mach-O ARM64 及 iPhoneOS 平台；全部压缩包条目未发现本机验证所用的模型密钥。
+- SHA256：`33ca4c6212cadcb29ef4ac208743b97dce7720110aaa4a7c69d914f681d41d69`。
+
+首轮编译与本地配置检查已通过，但架构检查命令的参数顺序有误；修复后上述第二轮完整成功。
+此次只验证 iOS 构建链路，未运行覆盖全项目/macOS 集成测试的 `scripts/check.sh`。
+没有新增应用页面或运行时行为，因此未重跑 Android UI / Maestro；iPhone 真机验证仍未执行。
+
 ## 后续导出可安装 IPA
 
 需要 Apple Developer Program 账号、包含私钥的 Apple Distribution `.p12` 及密码，

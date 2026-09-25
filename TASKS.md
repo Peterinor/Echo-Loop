@@ -369,7 +369,7 @@
 
 > 范围和接入文件见 [实施方案](docs/local-edition-plan.md)。保留原有资源下载，不增加资源包导入。
 
-- [ ] iOS 云端验证：配置独立 `Local iOS Build` 工作流并在 fork 实际完成 macOS 无签名 Release 编译；不使用苹果证书或模型密钥，产物不可直接安装。操作说明见 [iOS 云端构建](docs/local-ios-build.md)。
+- [x] iOS 云端验证：独立 `Local iOS Build` 工作流已推送并在 GitHub macOS 15 / Xcode 16.4 实际完成无签名 Release 编译；18 项相关测试、ARM64 / 本地模式 / 原生 PostHog 隔离检查通过，产物下载与 SHA256、模型密钥泄漏检查通过。修正首轮 `lipo` 参数顺序后，[第二轮构建成功](https://github.com/Peterinor/Echo-Loop/actions/runs/36082542625)。产物不可直接安装，签名和 iPhone 真机验证仍待苹果材料与设备。未运行全量 `scripts/check.sh`（本次仅验证 iOS 构建链路）。见 [操作说明](docs/local-ios-build.md)。**完成时间**: 2026-09-25
 
 - [x] 阶段一：增加 `APP_EDITION=local`，停用账号/订阅/官方后台任务与埋点，隐藏远程入口，保留本地学习和资源下载；官方 HTTP 请求在网络发送前拦截，Android Firebase 原生自动初始化关闭，模拟器启动和路由验证通过。**完成时间**: 2026-09-24
 - [x] 阶段二：实现用户模型设置、安全密钥存储、统一 AI 访问策略及直连客户端，复用原版翻译页面和缓存，不伪造登录态。**完成时间**: 2026-09-24
