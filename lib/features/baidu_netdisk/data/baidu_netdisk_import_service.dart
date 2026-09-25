@@ -352,10 +352,6 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
 
     try {
       for (final entry in entries) {
-        if (cancelToken?.isCancelled ?? false) {
-          wasCanceled = true;
-          break;
-        }
         final requestId =
             requestIdByAudioId[entry.fsId] ?? 'audio-${entry.fsId}';
         final error =
@@ -363,13 +359,17 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
         if (error != null) {
           if (_isCanceled(error)) {
             wasCanceled = true;
-            break;
+            continue;
           }
           _reportFailure(entry, error, failures, onItemResult);
           continue;
         }
         final request = requestsById[requestId];
         if (request == null) {
+          if (cancelToken?.isCancelled ?? false) {
+            wasCanceled = true;
+            continue;
+          }
           _reportFailure(
             entry,
             StateError('Missing prepared download for ${entry.name}'),
@@ -378,8 +378,25 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
           );
           continue;
         }
+        if (!resultsById.containsKey(requestId)) {
+          if (cancelToken?.isCancelled ?? false) {
+            wasCanceled = true;
+            continue;
+          }
+          _reportFailure(
+            entry,
+            StateError('Missing completed download for ${entry.name}'),
+            failures,
+            onItemResult,
+          );
+          continue;
+        }
 
         try {
+          // 取消整批时仍完成已下载文件的入库，避免丢弃此前已完成的任务。
+          final itemCancelToken = cancelToken?.isCancelled ?? false
+              ? null
+              : cancelToken;
           final item = await _finalizeAndRegisterAudio(
             entry: entry,
             dataDir: dataDir,
@@ -389,7 +406,7 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
             collectionList: collectionList,
             collectionState: collectionState,
             collectionId: collectionId,
-            cancelToken: cancelToken,
+            cancelToken: itemCancelToken,
           );
           var importedItem = item;
           final subtitleRequestId = requestIdBySubtitleAudioId[entry.fsId];
@@ -400,12 +417,15 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
               ? null
               : failuresByRequestId[subtitleRequestId] ??
                     resultsById[subtitleRequestId]?.failure;
+          final subtitleCanceled =
+              subtitleError != null && _isCanceled(subtitleError);
           if (subtitleError != null) {
             AppLogger.log(
               'BaiduNetdiskImport',
               'subtitle download failed for "${entry.name}": $subtitleError',
             );
           }
+          if (subtitleCanceled) wasCanceled = true;
           if (subtitleRequest != null && subtitleError == null) {
             final subtitle = subtitleByRequestId[subtitleRequestId];
             if (subtitle != null &&
@@ -413,7 +433,7 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
                   item: importedItem,
                   subtitleEntry: subtitle,
                   savePath: subtitleRequest.savePath,
-                  cancelToken: cancelToken,
+                  cancelToken: itemCancelToken,
                 )) {
               importedItem = importedItem.copyWith(
                 transcriptSource: TranscriptSource.local,

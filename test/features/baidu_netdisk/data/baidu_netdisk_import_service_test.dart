@@ -73,6 +73,7 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   List<int> bytes = const [1, 2, 3];
   Map<int, List<int>> bytesByFsId = const <int, List<int>>{};
   Map<int, Object> downloadErrorsByFsId = const <int, Object>{};
+  bool cancelBatchAfterFirstDownload = false;
 
   @override
   Future<void> downloadToFile({
@@ -110,6 +111,18 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
     fetchLinkCountsAtSubmission.add(fetchDownloadLinkCalls);
     final results = <BaiduNetdiskDownloadItemResult>[];
     for (final request in requests) {
+      if (cancelToken?.isCancelled ?? false) {
+        results.add(
+          BaiduNetdiskDownloadItemResult(
+            request: request,
+            failure: const BaiduNetdiskFileException(
+              kind: BaiduNetdiskFileErrorKind.canceled,
+              message: 'Download canceled.',
+            ),
+          ),
+        );
+        continue;
+      }
       await File(request.savePath).parent.create(recursive: true);
       try {
         await downloadToFile(
@@ -121,6 +134,10 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
               onProgress?.call(request.id, received, total),
         );
         results.add(BaiduNetdiskDownloadItemResult(request: request));
+        if (cancelBatchAfterFirstDownload) {
+          cancelBatchAfterFirstDownload = false;
+          cancelToken?.cancel('test-cancel-after-first-download');
+        }
       } on BaiduNetdiskFileException catch (error) {
         results.add(
           BaiduNetdiskDownloadItemResult(request: request, failure: error),
@@ -446,6 +463,42 @@ void main() {
       expect(api.submittedBatchIds.single, ['audio-42', 'audio-45']);
     });
 
+    test('批量下载中途取消仍入库已完成的音频并清理未完成文件', () async {
+      const nextEntry = CloudDriveEntry(
+        fsId: 45,
+        name: 'Lesson 2.mp3',
+        path: '/英语/Lesson 2.mp3',
+        isDirectory: false,
+        size: 4,
+      );
+      api.cancelBatchAfterFirstDownload = true;
+      final container = ProviderContainer(
+        overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
+      );
+      addTearDown(container.dispose);
+      final cancelToken = CancelToken();
+
+      final outcome = await service.importAudios(
+        entries: [entry, nextEntry],
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        audioLibraryState: container.read(audioLibraryProvider),
+        cancelToken: cancelToken,
+      );
+
+      expect(outcome.wasCanceled, isTrue);
+      expect(outcome.added, [entry]);
+      expect(outcome.addedItems.single.name, 'Lesson 1');
+      expect(outcome.failures, isEmpty);
+      expect(
+        File('${tempDir.path}/audios/imported/sha256.mp3').existsSync(),
+        isTrue,
+      );
+      expect(
+        File('${tempDir.path}/tmp/baidu_netdisk/45.mp3').existsSync(),
+        isFalse,
+      );
+    });
+
     test('批量导入时下载并挂载同名字幕', () async {
       final container = ProviderContainer(
         overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
@@ -489,6 +542,47 @@ void main() {
       expect(api.downloadBatchCalls, 1);
       expect(api.submittedBatchIds.single, ['audio-42', 'subtitle-43']);
       expect(attached['Lesson 1'], contains('srt:1'));
+    });
+
+    test('字幕下载单独取消时仍导入已下载音频并标记取消', () async {
+      api.downloadErrorsByFsId = {
+        subtitleEntry.fsId: const BaiduNetdiskFileException(
+          kind: BaiduNetdiskFileErrorKind.canceled,
+          message: 'Subtitle download canceled.',
+        ),
+      };
+      final container = ProviderContainer(
+        overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
+      );
+      addTearDown(container.dispose);
+      service = DefaultBaiduNetdiskImportService(
+        credentialRepository: credentialRepository,
+        api: api,
+        resolveDataDir: () async => tempDir,
+        finalizationService: AudioFinalizationService(
+          computeSha256: (_) async => 'sha256',
+        ),
+        registrationService: AudioRegistrationService(
+          readDurationSeconds: (_) async => 12,
+        ),
+        subtitleImporter: (_, {required text, required ext}) async {},
+      );
+
+      final outcome = await service.importAudios(
+        entries: [entry],
+        subtitleEntries: [subtitleEntry],
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        audioLibraryState: container.read(audioLibraryProvider),
+      );
+
+      expect(outcome.wasCanceled, isTrue);
+      expect(outcome.added, [entry]);
+      expect(outcome.addedItems.single.name, 'Lesson 1');
+      expect(api.downloadBatchCalls, 1);
+      expect(
+        File('${tempDir.path}/audios/imported/sha256.mp3').existsSync(),
+        isTrue,
+      );
     });
   });
 }

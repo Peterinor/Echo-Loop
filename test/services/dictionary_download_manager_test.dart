@@ -107,11 +107,7 @@ void main() {
   DictionaryDownloadManager manager(_MockAdapter adapter) {
     final dio = Dio();
     dio.httpClientAdapter = adapter;
-    final archive = Archive()
-      ..addFile(
-        ArchiveFile('dict_en_zh-v1.sqlite', 16, List<int>.filled(16, 7)),
-      );
-    final zip = ZipEncoder().encode(archive);
+    final zip = _dictionaryArchivePayload();
     final sha = sha256.convert(zip).toString();
     return DictionaryDownloadManager.withDio(
       dio,
@@ -128,11 +124,7 @@ void main() {
   }
 
   test('download 成功 → 固定 URL 解压为 dict.sqlite 并写入安装清单', () async {
-    final archive = Archive()
-      ..addFile(
-        ArchiveFile('dict_en_zh-v1.sqlite', 16, List<int>.filled(16, 7)),
-      );
-    final payload = ZipEncoder().encode(archive);
+    final payload = _dictionaryArchivePayload();
     final m = manager(
       _MockAdapter(
         downloadUrl: 'http://mock.local/dict-v1.sqlite.zip',
@@ -196,4 +188,10 @@ void main() {
         : const <File>[];
     expect(leftovers, isEmpty);
   });
+}
+
+List<int> _dictionaryArchivePayload() {
+  final file = ArchiveFile('dict_en_zh-v1.sqlite', 16, List<int>.filled(16, 7))
+    ..lastModTime = DateTime.utc(2020).millisecondsSinceEpoch ~/ 1000;
+  return ZipEncoder().encode(Archive()..addFile(file));
 }

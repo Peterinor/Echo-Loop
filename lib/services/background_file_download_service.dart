@@ -15,7 +15,7 @@ typedef BackgroundFileDownloadProgress =
 typedef BackgroundFileDownloadBatchProgress =
     void Function(String taskId, int receivedBytes, int? totalBytes);
 
-/// A single file request submitted to the shared background download queue.
+/// 提交到共享后台下载队列的单个文件请求。
 class BackgroundFileDownloadRequest {
   const BackgroundFileDownloadRequest({
     required this.id,
@@ -24,14 +24,14 @@ class BackgroundFileDownloadRequest {
     this.headers = const <String, String>{},
   });
 
-  /// Stable identifier used to associate progress and results with this request.
+  /// 用于关联该请求进度和结果的稳定标识。
   final String id;
   final Uri uri;
   final String savePath;
   final Map<String, String> headers;
 }
 
-/// The terminal outcome for one request in a background download batch.
+/// 后台批量下载中单个请求的最终结果。
 class BackgroundFileDownloadItemResult {
   const BackgroundFileDownloadItemResult({required this.request, this.error});
 
@@ -83,8 +83,7 @@ abstract interface class BackgroundDownloadRunner {
   });
 }
 
-/// Optional capability for platform runners that can queue an entire batch
-/// natively before Dart waits for completion.
+/// 平台 runner 可选实现此能力，在 Dart 等待任务完成前先将整批任务提交到原生队列。
 abstract interface class BackgroundDownloadBatchRunner {
   Future<List<BackgroundDownloadResult>> enqueueBatch({
     required List<BackgroundFileDownloadRequest> requests,
@@ -123,7 +122,6 @@ class BackgroundFileDownloadService {
     CancelToken? cancelToken,
     BackgroundFileDownloadProgress? onProgress,
   }) async {
-    onProgress?.call(0, null);
     final outcomes = await downloadBatch(
       requests: [
         BackgroundFileDownloadRequest(
@@ -140,7 +138,7 @@ class BackgroundFileDownloadService {
     if (error != null) throw error;
   }
 
-  /// Submits a batch to the shared queue and returns one terminal result per file.
+  /// 将一批任务提交到共享队列，并为每个文件返回一个最终结果。
   ///
   /// Mobile platform tasks are all enqueued before this method waits, allowing
   /// the native queue to start the next file while the app is suspended. Runners
@@ -153,6 +151,7 @@ class BackgroundFileDownloadService {
     if (requests.isEmpty) return const <BackgroundFileDownloadItemResult>[];
 
     for (final request in requests) {
+      onProgress?.call(request.id, 0, null);
       AppLogger.log(
         'BackgroundFileDownload',
         'download queued host=${request.uri.host} '
@@ -226,7 +225,6 @@ class BackgroundFileDownloadService {
         );
         continue;
       }
-      onProgress?.call(request.id, 0, null);
       try {
         results.add(
           await _runner.enqueue(

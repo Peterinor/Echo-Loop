@@ -66,7 +66,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Echo Studio'), findsOneWidget);
-    expect(find.text('6/12/2026'), findsOneWidget);
+    expect(find.text('2026-06-12 00:00'), findsOneWidget);
     expect(find.text('0 items'), findsOneWidget);
     expect(find.text('A short collection.'), findsOneWidget);
     expect(
