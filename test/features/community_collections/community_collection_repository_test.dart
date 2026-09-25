@@ -105,4 +105,42 @@ void main() {
       expect(junction.sortOrder, 3);
     },
   );
+
+  test('enrolling reuses a remote audio item already in another collection', () async {
+    final now = DateTime(2026, 9, 24);
+    await database.collectionDao.upsert(
+      db.CollectionsCompanion.insert(
+        id: 'existing-collection',
+        name: 'Existing community collection',
+        createdDate: now,
+        updatedAt: now,
+        source: const db.Value('community'),
+        remoteId: const db.Value('remote-existing'),
+      ),
+    );
+    await database.audioItemDao.upsert(
+      db.AudioItemsCompanion.insert(
+        id: 'existing-audio',
+        name: 'Episode 1',
+        addedDate: now,
+        updatedAt: now,
+        remoteAudioId: const db.Value('file-1'),
+      ),
+    );
+    await database.collectionDao.addAudio(
+      'existing-collection',
+      'existing-audio',
+    );
+
+    final repository = CommunityCollectionRepository(
+      database: database,
+      api: _FakeCommunityApi(),
+    );
+
+    final localId = await repository.enroll('remote-1');
+    final audioIds = await database.collectionDao.getAudioIds(localId);
+
+    expect(audioIds, ['existing-audio']);
+    expect(await database.audioItemDao.getByRemoteAudioId('file-1'), isNotNull);
+  });
 }
