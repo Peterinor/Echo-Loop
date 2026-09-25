@@ -61,6 +61,16 @@ class CommunitySyncFailed extends CommunitySyncOutcome {
   const CommunitySyncFailed(this.error);
 }
 
+class _CommunityCollectionSnapshot {
+  final PublicCollectionCatalogEntry collection;
+  final List<CommunityCollectionFile> files;
+
+  const _CommunityCollectionSnapshot({
+    required this.collection,
+    required this.files,
+  });
+}
+
 /// 社区合集本地缓存与 v2 远端数据的协调层。
 class CommunitySyncService {
   final db.AppDatabase _db;
@@ -129,8 +139,6 @@ class CommunitySyncService {
     if (locals.isEmpty) return const CommunitySyncSkipped();
 
     try {
-      final summaries = await _fetchAllCollections();
-      final byRemoteId = {for (final item in summaries) item.id: item};
       var deprecated = 0;
       var undeprecated = 0;
       var added = 0;
@@ -142,8 +150,17 @@ class CommunitySyncService {
       for (final local in locals) {
         try {
           final remoteId = local.remoteId;
-          final summary = remoteId == null ? null : byRemoteId[remoteId];
-          if (summary == null) {
+          if (remoteId == null) {
+            if (local.deprecatedAt == null) {
+              await _markDeprecated(local.id);
+              deprecated++;
+            }
+            continue;
+          }
+
+          // 只同步本地已加入的合集；详情第一页的 404 才代表合集已下架。
+          final snapshot = await _fetchCollection(remoteId);
+          if (snapshot == null) {
             if (local.deprecatedAt == null) {
               await _markDeprecated(local.id);
               deprecated++;
@@ -154,8 +171,11 @@ class CommunitySyncService {
             await _restore(local.id);
             undeprecated++;
           }
-          final files = await _fetchAllFiles(summary.id);
-          final result = await _applyCollection(local, summary, files);
+          final result = await _applyCollection(
+            local,
+            snapshot.collection,
+            snapshot.files,
+          );
           added += result.added;
           removed += result.removed;
           unavailable += result.unavailable;
@@ -187,28 +207,28 @@ class CommunitySyncService {
     }
   }
 
-  Future<List<PublicCollectionSummary>> _fetchAllCollections() async {
-    final result = <PublicCollectionSummary>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollections(cursor: cursor);
-      result.addAll(page.items);
-      cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return result;
-  }
-
-  Future<List<CommunityCollectionFile>> _fetchAllFiles(
+  /// 拉取单个已加入合集的全部详情页；第一页 404 返回 null 表示合集已下架。
+  Future<_CommunityCollectionSnapshot?> _fetchCollection(
     String collectionId,
   ) async {
     final result = <CommunityCollectionFile>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollectionFiles(collectionId, cursor: cursor);
+    late final CommunityCollectionDetailPage firstPage;
+    try {
+      firstPage = await _api.getCollectionDetail(collectionId);
+    } on CommunityCollectionNotFound {
+      return null;
+    }
+    result.addAll(firstPage.items);
+    var cursor = firstPage.nextCursor;
+    while (cursor?.isNotEmpty ?? false) {
+      final page = await _api.getCollectionDetail(collectionId, cursor: cursor);
       result.addAll(page.items);
       cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return result;
+    }
+    return _CommunityCollectionSnapshot(
+      collection: firstPage.collection,
+      files: result,
+    );
   }
 
   Future<void> _markDeprecated(String localId) async {
@@ -232,18 +252,23 @@ class CommunitySyncService {
     );
   }
 
+  /// 复用已存在的远端音频行，并仅为当前合集补充关联。
   Future<_CollectionDiff> _applyCollection(
     db.Collection local,
-    PublicCollectionSummary summary,
+    PublicCollectionCatalogEntry catalogEntry,
     List<CommunityCollectionFile> files,
   ) async {
     final junctions = await (_db.select(
       _db.collectionAudioItems,
     )..where((t) => t.collectionId.equals(local.id))).get();
+    final sortOrderByAudioId = <String, int>{
+      for (final junction in junctions)
+        junction.audioItemId: junction.sortOrder,
+    };
     final audioRows = <String, db.AudioItem>{};
     for (final junction in junctions) {
       final row = await _db.audioItemDao.getById(junction.audioItemId);
-      if (row != null) audioRows[row.id] = row;
+      if (row != null && row.deletedAt == null) audioRows[row.id] = row;
     }
     final localByRemoteId = <String, db.AudioItem>{};
     for (final row in audioRows.values) {
@@ -258,8 +283,14 @@ class CommunitySyncService {
 
     await _db.transaction(() async {
       for (final file in files) {
-        final existing = localByRemoteId[file.id];
-        if (existing == null) {
+        final existingInCollection = localByRemoteId[file.id];
+        final alreadyLinked = existingInCollection != null;
+        final existingAudio =
+            existingInCollection ??
+            await _db.audioItemDao.getByRemoteAudioId(file.id);
+        late final db.AudioItem audio;
+
+        if (existingAudio == null) {
           final id = const Uuid().v4();
           final now = _now();
           await _db.audioItemDao.upsert(
@@ -274,28 +305,33 @@ class CommunitySyncService {
               updatedAt: Value(now),
             ),
           );
+          final insertedAudio = await _db.audioItemDao.getById(id);
+          if (insertedAudio == null) {
+            throw StateError('Inserted community audio $id was not found');
+          }
+          audio = insertedAudio;
+        } else {
+          audio = existingAudio;
+        }
+
+        if (!alreadyLinked) {
+          final now = _now();
           await _db
               .into(_db.collectionAudioItems)
               .insertOnConflictUpdate(
                 db.CollectionAudioItemsCompanion(
                   collectionId: Value(local.id),
-                  audioItemId: Value(id),
+                  audioItemId: Value(audio.id),
                   sortOrder: Value(file.sortOrder),
                   addedAt: Value(now),
                 ),
               );
           added++;
-          continue;
-        }
-
-        final junction = junctions.firstWhere(
-          (item) => item.audioItemId == existing.id,
-        );
-        if (junction.sortOrder != file.sortOrder) {
+        } else if (sortOrderByAudioId[audio.id] != file.sortOrder) {
           await (_db.update(_db.collectionAudioItems)..where(
                 (t) =>
                     t.collectionId.equals(local.id) &
-                    t.audioItemId.equals(existing.id),
+                    t.audioItemId.equals(audio.id),
               ))
               .write(
                 db.CollectionAudioItemsCompanion(
@@ -303,9 +339,12 @@ class CommunitySyncService {
                 ),
               );
         }
+        sortOrderByAudioId[audio.id] = file.sortOrder;
+        localByRemoteId[file.id] = audio;
+
         await (_db.update(
           _db.audioItems,
-        )..where((t) => t.id.equals(existing.id))).write(
+        )..where((t) => t.id.equals(audio.id))).write(
           db.AudioItemsCompanion(
             name: Value(file.title),
             totalDuration: file.durationSec == null
@@ -323,10 +362,12 @@ class CommunitySyncService {
       )..where((t) => t.id.equals(local.id))).write(
         db.CollectionsCompanion(
           source: const Value('community'),
-          name: Value(summary.name),
-          description: Value(summary.description),
-          coverUrl: Value(summary.coverUrl),
-          updatedAt: Value(_now()),
+          name: Value(catalogEntry.name),
+          description: Value(catalogEntry.description),
+          coverUrl: Value(catalogEntry.coverUrl),
+          authorNickname: Value(catalogEntry.authorNickname),
+          publishedAt: Value(catalogEntry.publishedAt),
+          updatedAt: Value(catalogEntry.updatedAt),
         ),
       );
     });

@@ -1,11 +1,15 @@
+import 'community_collection_models.dart';
+
 /// 社区合集 catalog 的单页数据。
 class CommunityCollectionCatalogPage<T> {
   final String? cursor;
+  final PublicCollectionCatalogEntry? collection;
   final List<T> items;
   final String? nextCursor;
 
   const CommunityCollectionCatalogPage({
     required this.cursor,
+    this.collection,
     required this.items,
     required this.nextCursor,
   });
@@ -34,6 +38,14 @@ class CommunityCollectionPagedState<T> {
 
   List<T> get items =>
       pages.expand((page) => page.items).toList(growable: false);
+
+  PublicCollectionCatalogEntry? get collection {
+    for (final page in pages) {
+      final metadata = page.collection;
+      if (metadata != null) return metadata;
+    }
+    return null;
+  }
 
   String? get nextCursor => pages.isEmpty ? null : pages.last.nextCursor;
 

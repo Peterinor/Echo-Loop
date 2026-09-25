@@ -344,11 +344,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       final settingsStore = await StorageService.loadSettings();
       if (!isCurrentGeneration()) return MediaLoadResult.cancelled;
       state = state.copyWith(
-        fullSettings: settingsStore.full.copyWith(
-          loopWhole: false,
-          loopSentence: false,
-        ),
-        bookmarkSettings: withBookmarkLoopDefaults(settingsStore.bookmark),
+        fullSettings: settingsStore.full,
+        bookmarkSettings: settingsStore.bookmark,
       );
 
       // 字幕读取与 media_kit 初始化互不依赖，应并行启动。字幕通常更快，完成后

@@ -9,6 +9,7 @@ import 'package:echo_loop/database/daos/playback_state_dao.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
 import 'package:echo_loop/models/media_load_result.dart';
+import 'package:echo_loop/models/playback_settings.dart';
 import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/models/study_stage.dart';
 import 'package:echo_loop/database/providers.dart';
@@ -18,6 +19,7 @@ import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/media_playback/media_playback_provider.dart';
 import 'package:echo_loop/services/app_logger.dart';
 import 'package:echo_loop/services/media_session_router.dart';
+import 'package:echo_loop/services/storage_service.dart';
 import 'package:echo_loop/services/study_time_service.dart';
 import 'package:echo_loop/utils/app_data_dir.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -155,6 +157,39 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     return controller;
   }
+
+  test('加载视频时恢复已保存的全文与收藏播放设置', () async {
+    await StorageService.saveSettings(
+      const ListeningPracticeSettingsStore(
+        full: PlaybackSettings(
+          loopWhole: true,
+          loopSentence: false,
+          wholeLoopCount: 5,
+          sentenceLoopCount: 4,
+        ),
+        bookmark: PlaybackSettings(
+          loopWhole: true,
+          loopSentence: false,
+          wholeLoopCount: 3,
+          sentenceLoopCount: 6,
+          sentenceInterval: Duration(seconds: 4),
+        ),
+      ),
+    );
+
+    await loadController();
+
+    final state = container.read(mediaPlaybackProvider);
+    expect(state.fullSettings.loopWhole, isTrue);
+    expect(state.fullSettings.loopSentence, isFalse);
+    expect(state.fullSettings.wholeLoopCount, 5);
+    expect(state.fullSettings.sentenceLoopCount, 4);
+    expect(state.bookmarkSettings.loopWhole, isTrue);
+    expect(state.bookmarkSettings.loopSentence, isFalse);
+    expect(state.bookmarkSettings.wholeLoopCount, 3);
+    expect(state.bookmarkSettings.sentenceLoopCount, 6);
+    expect(state.bookmarkSettings.sentenceInterval, const Duration(seconds: 4));
+  });
 
   Future<void> waitForSentenceStatistics({int minimumWords = 2}) async {
     for (var attempt = 0; attempt < 20; attempt += 1) {

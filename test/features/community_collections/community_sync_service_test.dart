@@ -9,13 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeCommunityApi extends CommunityCollectionApi {
-  _FakeCommunityApi(this.summaries, this.filesByCollection, {this.failId})
+  _FakeCommunityApi(this.catalogEntries, this.filesByCollection, {this.failId})
     : super.withDio(Dio());
 
-  final List<PublicCollectionSummary> summaries;
+  final List<PublicCollectionCatalogEntry> catalogEntries;
   final Map<String, List<CommunityCollectionFile>> filesByCollection;
   final String? failId;
   var collectionsCalls = 0;
+  final detailCalls = <String>[];
 
   @override
   Future<PublicCollectionPage> getCollections({
@@ -23,19 +24,21 @@ class _FakeCommunityApi extends CommunityCollectionApi {
     CancelToken? cancelToken,
   }) async {
     collectionsCalls++;
-    return PublicCollectionPage(items: summaries, nextCursor: null);
+    return PublicCollectionPage(items: catalogEntries, nextCursor: null);
   }
 
   @override
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
+  Future<CommunityCollectionDetailPage> getCollectionDetail(
     String collectionId, {
     String? cursor,
     CancelToken? cancelToken,
   }) async {
+    detailCalls.add(collectionId);
     if (collectionId == failId) {
       throw StateError('collection failed: $collectionId');
     }
-    return CommunityCollectionFilesPage(
+    return CommunityCollectionDetailPage(
+      collection: catalogEntries.firstWhere((item) => item.id == collectionId),
       items: filesByCollection[collectionId] ?? const [],
       nextCursor: null,
     );
@@ -60,7 +63,7 @@ void main() {
     await _insertFile(database, 'local-2', 'file-2', 'Old two');
 
     final api = _FakeCommunityApi(
-      [_summary('remote-1', 'One'), _summary('remote-2', 'Two')],
+      [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
       {
         'remote-2': [_file('file-2', 'Updated two')],
       },
@@ -75,6 +78,65 @@ void main() {
     final completed = outcome as CommunitySyncCompleted;
     expect(completed.failedCollections, 1);
     expect(updated?.name, 'Updated two');
+    expect(api.collectionsCalls, 0);
+    expect(api.detailCalls, unorderedEquals(['remote-1', 'remote-2']));
+  });
+
+  test('同步会把其它合集已有的远端音频关联到当前合集', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    await _insertCollection(database, 'local-2', 'remote-2', 'Two');
+    await _insertFile(database, 'local-1', 'file-shared', 'Shared audio');
+
+    final api = _FakeCommunityApi(
+      [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
+      {
+        'remote-1': [_file('file-shared', 'Shared audio')],
+        'remote-2': [_file('file-shared', 'Shared audio')],
+      },
+    );
+
+    final outcome = await CommunitySyncService(
+      database: database,
+      api: api,
+    ).syncAll(force: true);
+
+    final firstCollectionAudioIds = await database.collectionDao.getAudioIds(
+      'local-1',
+    );
+    final secondCollectionAudioIds = await database.collectionDao.getAudioIds(
+      'local-2',
+    );
+    final audioRows = await (database.select(
+      database.audioItems,
+    )..where((row) => row.remoteAudioId.equals('file-shared'))).get();
+    final filesAdded = switch (outcome) {
+      CommunitySyncCompleted(:final filesAdded) => filesAdded,
+      _ => null,
+    };
+
+    expect(outcome, isA<CommunitySyncCompleted>());
+    expect(filesAdded, 1);
+    expect(firstCollectionAudioIds, ['local-file-shared']);
+    expect(secondCollectionAudioIds, ['local-file-shared']);
+    expect(audioRows, hasLength(1));
+  });
+
+  test('已加入合集从详情接口判断下架，不依赖公开合集目录', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    final api = _NotFoundCommunityApi();
+
+    final outcome = await CommunitySyncService(
+      database: database,
+      api: api,
+    ).syncAll(force: true);
+
+    final collection = await (database.select(
+      database.collections,
+    )..where((row) => row.id.equals('local-1'))).getSingle();
+    expect(outcome, isA<CommunitySyncCompleted>());
+    expect(collection.deprecatedAt, isNotNull);
+    expect(api.collectionsCalls, 0);
+    expect(api.detailCalls, ['remote-1']);
   });
 
   test('已有文件的远端空时长不会覆盖本地时长', () async {
@@ -82,7 +144,7 @@ void main() {
     await _insertFile(database, 'local-1', 'file-1', 'Old one', duration: 42);
 
     final api = _FakeCommunityApi(
-      [_summary('remote-1', 'One')],
+      [_catalogEntry('remote-1', 'One')],
       {
         'remote-1': [_file('file-1', 'Updated one', duration: null)],
       },
@@ -97,10 +159,37 @@ void main() {
     expect(row?.totalDuration, 42);
   });
 
+  test('后台同步会持久化社区合集作者昵称', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    final api = _FakeCommunityApi(
+      [
+        _catalogEntry(
+          'remote-1',
+          'One',
+          authorNickname: 'Echo Studio',
+          updatedAt: DateTime(2026, 2, 1),
+        ),
+      ],
+      {'remote-1': const []},
+    );
+
+    await CommunitySyncService(
+      database: database,
+      api: api,
+    ).syncAll(force: true);
+
+    final collection = await (database.select(
+      database.collections,
+    )..where((row) => row.id.equals('local-1'))).getSingle();
+    expect(collection.authorNickname, 'Echo Studio');
+    expect(collection.publishedAt, DateTime(2026, 1, 1));
+    expect(collection.updatedAt, DateTime(2026, 2, 1));
+  });
+
   test('后台同步节流，force 可以绕过节流', () async {
     await _insertCollection(database, 'local-1', 'remote-1', 'One');
     final api = _FakeCommunityApi(
-      [_summary('remote-1', 'One')],
+      [_catalogEntry('remote-1', 'One')],
       {'remote-1': const []},
     );
     SharedPreferences.setMockInitialValues({});
@@ -117,18 +206,40 @@ void main() {
     await service.syncAll(force: true);
 
     expect(throttled, isA<CommunitySyncThrottled>());
-    expect(api.collectionsCalls, 2);
+    expect(api.collectionsCalls, 0);
+    expect(api.detailCalls, ['remote-1', 'remote-1']);
   });
 }
 
-PublicCollectionSummary _summary(String id, String name) {
-  return PublicCollectionSummary(
+class _NotFoundCommunityApi extends _FakeCommunityApi {
+  _NotFoundCommunityApi() : super(const [], const {});
+
+  @override
+  Future<CommunityCollectionDetailPage> getCollectionDetail(
+    String collectionId, {
+    String? cursor,
+    CancelToken? cancelToken,
+  }) async {
+    detailCalls.add(collectionId);
+    throw CommunityCollectionNotFound(collectionId);
+  }
+}
+
+PublicCollectionCatalogEntry _catalogEntry(
+  String id,
+  String name, {
+  String? authorNickname,
+  DateTime? updatedAt,
+}) {
+  return PublicCollectionCatalogEntry(
     id: id,
     name: name,
     description: null,
     coverUrl: null,
+    authorNickname: authorNickname,
     fileCount: 1,
     publishedAt: DateTime(2026, 1, 1),
+    updatedAt: updatedAt,
   );
 }
 

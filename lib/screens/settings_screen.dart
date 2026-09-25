@@ -1,4 +1,4 @@
-import '../features/custom_ai/custom_ai_settings_screen.dart';
+import '../features/custom_ai/custom_ai_settings_tile.dart';
 import '../config/app_capabilities.dart';
 import 'dart:io';
 
@@ -99,20 +99,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         padding: const EdgeInsets.all(AppSpacing.m),
         children: [
           if (!isLocalEdition) _buildAccountSection(context, l10n),
-          if (isLocalEdition)
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.auto_awesome),
-                title: const Text('AI 模型设置'),
-                subtitle: const Text('使用自己的 API，无需登录或会员'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const CustomAiSettingsScreen(),
-                  ),
-                ),
-              ),
-            ),
+          if (isLocalEdition) const CustomAiSettingsTile(),
           const SizedBox(height: AppSpacing.m),
           _buildSection(
             context,

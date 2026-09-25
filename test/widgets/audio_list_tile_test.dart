@@ -514,7 +514,7 @@ void main() {
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Duration:'), findsNothing);
+      expect(find.byIcon(Icons.schedule_outlined), findsNothing);
       expect(
         find.byKey(const Key('audio_list_tile_content_warning_badge')),
         findsOneWidget,
@@ -522,15 +522,25 @@ void main() {
     });
 
     testWidgets('社区合集条目保存 totalDuration 后在列表显示时长', (tester) async {
-      final item = createTestAudioItem(
-        name: 'Community Audio',
-        totalDuration: 42,
-      ).copyWith(remoteAudioId: 'remote-file-1');
+      final item =
+          createTestAudioItem(
+            name: 'Community Audio',
+            totalDuration: 42,
+          ).copyWith(
+            remoteAudioId: 'remote-file-1',
+            originalDate: DateTime(2025, 5, 30),
+          );
 
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
 
-      expect(find.text('Duration: 00:42'), findsOneWidget);
+      expect(find.byIcon(Icons.schedule_outlined), findsOneWidget);
+      expect(find.textContaining('00:42', findRichText: true), findsOneWidget);
+      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+      expect(
+        find.textContaining('2025/5/30', findRichText: true),
+        findsOneWidget,
+      );
       expect(find.textContaining('Added on:'), findsNothing);
     });
 
@@ -543,7 +553,7 @@ void main() {
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Duration:'), findsNothing);
+      expect(find.byIcon(Icons.schedule_outlined), findsNothing);
     });
 
     testWidgets('contentStatus=ok 时不显示警告徽章', (tester) async {
@@ -593,17 +603,30 @@ void main() {
       );
     }
 
-    testWidgets('用户自建普通音频显示「添加于」', (tester) async {
+    testWidgets('用户自建普通音频用日历图标展示添加日期', (tester) async {
       final item = createTestAudioItem(name: 'User Audio');
 
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Added'), findsOneWidget);
+      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+      expect(find.textContaining('Added', findRichText: true), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('Added:')), findsOneWidget);
       expect(find.textContaining('Released'), findsNothing);
     });
 
-    testWidgets('podcast 单集显示「发布于」而非「添加于」', (tester) async {
+    testWidgets('时长用时钟图标展示并保留无障碍描述', (tester) async {
+      final item = createTestAudioItem(name: 'User Audio', totalDuration: 120);
+
+      await tester.pumpWidget(buildTile(item));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.schedule_outlined), findsOneWidget);
+      expect(find.textContaining('02:00', findRichText: true), findsOneWidget);
+      expect(find.bySemanticsLabel(RegExp('Duration: 02:00')), findsOneWidget);
+    });
+
+    testWidgets('podcast 单集用日历图标展示发布日期而非添加日期', (tester) async {
       final item = createTestAudioItem(name: 'Podcast Episode').copyWith(
         podcastEpisodeGuid: 'episode-guid-1',
         podcastEnclosureUrl: 'https://example.com/episode.mp3',
@@ -613,7 +636,30 @@ void main() {
       await tester.pumpWidget(buildTile(item));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('Released'), findsOneWidget);
+      expect(find.byIcon(Icons.calendar_today_outlined), findsOneWidget);
+      expect(
+        find.textContaining('2025/3/31', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Released', findRichText: true), findsNothing);
+      expect(find.textContaining('Added'), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp('Released 2025/3/31')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('没有发布日期时不显示日历图标', (tester) async {
+      final item = createTestAudioItem(name: 'Podcast Episode').copyWith(
+        podcastEpisodeGuid: 'episode-guid-1',
+        podcastEnclosureUrl: 'https://example.com/episode.mp3',
+        originalDate: null,
+      );
+
+      await tester.pumpWidget(buildTile(item));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.calendar_today_outlined), findsNothing);
       expect(find.textContaining('Added'), findsNothing);
     });
   });
@@ -653,7 +699,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.textContaining('Downloading audio 42%'), findsOneWidget);
+      expect(find.textContaining('Downloading 42%'), findsOneWidget);
     });
 
     testWidgets('未下载单集点击时只下载音频并显示行内进度', (tester) async {
@@ -693,8 +739,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.text('Downloading audio'), findsOneWidget);
-      expect(find.text('Downloading audio and subtitle...'), findsNothing);
+      expect(find.text('Downloading'), findsOneWidget);
 
       controller.complete();
       await tester.pumpAndSettle();
@@ -925,7 +970,7 @@ void main() {
         find.byKey(const Key('audio_list_tile_download_progress')),
         findsOneWidget,
       );
-      expect(find.textContaining('Downloading audio 42%'), findsOneWidget);
+      expect(find.textContaining('Downloading 42%'), findsOneWidget);
     });
 
     testWidgets('已下载社区音频左侧显示学习进度图标而非下载图标', (tester) async {

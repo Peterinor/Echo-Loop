@@ -70,25 +70,24 @@ void main() {
     });
 
     group('toJson / fromJson 往返序列化', () {
-      test('循环开关不持久化：往返后恒为关', () {
+      test('循环开关与循环参数往返保留', () {
         const settings = PlaybackSettings(
           loopWhole: true,
-          loopSentence: true,
+          loopSentence: false,
           playbackSpeed: 1.5,
         );
         final restored = PlaybackSettings.fromJson(settings.toJson());
 
-        // 开关不落盘，还原后一律为关
-        expect(restored.loopWhole, isFalse);
+        expect(restored.loopWhole, isTrue);
         expect(restored.loopSentence, isFalse);
       });
 
-      test('toJson 不含循环开关键，但含循环参数键', () {
+      test('toJson 同时包含循环开关和循环参数键', () {
         const settings = PlaybackSettings(loopWhole: true, loopSentence: true);
         final json = settings.toJson();
 
-        expect(json.containsKey('loopWhole'), isFalse);
-        expect(json.containsKey('loopSentence'), isFalse);
+        expect(json['loopWhole'], isTrue);
+        expect(json['loopSentence'], isTrue);
         expect(json.containsKey('wholeLoopCount'), isTrue);
         expect(json.containsKey('sentenceLoopCount'), isTrue);
         expect(json.containsKey('wholeInterval'), isTrue);
@@ -137,8 +136,8 @@ void main() {
       });
     });
 
-    group('旧字段兼容（开关不恢复，仅迁移参数）', () {
-      test('旧 repeatMode=one 仅迁移单句循环参数，开关恒关', () {
+    group('旧字段兼容（缺失开关时默认关闭，仅迁移参数）', () {
+      test('旧 repeatMode=one 仅迁移单句循环参数，开关默认关闭', () {
         final settings = PlaybackSettings.fromJson({
           'repeatMode': 'one',
           'loopCount': 5,
@@ -150,7 +149,7 @@ void main() {
         expect(settings.loopWhole, isFalse);
       });
 
-      test('旧 repeatMode=all 不再开启整篇循环', () {
+      test('旧 repeatMode=all 不会开启整篇循环', () {
         final settings = PlaybackSettings.fromJson({'repeatMode': 'all'});
         expect(settings.loopWhole, isFalse);
         expect(settings.loopSentence, isFalse);
@@ -162,13 +161,13 @@ void main() {
         expect(settings.loopSentence, isFalse);
       });
 
-      test('更旧 loopEnabled=true 不再开启循环', () {
+      test('更旧 loopEnabled=true 不会开启循环', () {
         final settings = PlaybackSettings.fromJson({'loopEnabled': true});
         expect(settings.loopSentence, isFalse);
         expect(settings.loopWhole, isFalse);
       });
 
-      test('更旧 loopAudioEnabled=true 不再开启循环', () {
+      test('更旧 loopAudioEnabled=true 不会开启循环', () {
         final settings = PlaybackSettings.fromJson({'loopAudioEnabled': true});
         expect(settings.loopWhole, isFalse);
         expect(settings.loopSentence, isFalse);

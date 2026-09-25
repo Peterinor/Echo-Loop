@@ -18,7 +18,6 @@ import '../../../providers/collection_provider.dart';
 import '../../../router/app_router.dart';
 import '../../../services/app_logger.dart';
 import '../../../theme/app_theme.dart';
-import '../../../config/app_capabilities.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../podcast_info_sheet.dart';
 import '../podcast_models.dart';
@@ -216,14 +215,13 @@ class _PodcastPreviewScreenState extends ConsumerState<PodcastPreviewScreen> {
   /// 本地版直接读取公开 RSS 并保存订阅，不要求登录或配置 AI。
   Future<void> _subscribe() async {
     final l10n = AppLocalizations.of(context)!;
-    final canEnroll =
-        isLocalEdition ||
-        await ensureSignedInForAction(
-          context: context,
-          ref: ref,
-          title: l10n.communityCollectionSignInRequiredTitle,
-          message: l10n.podcastCatalogSignInRequiredMessage,
-        );
+    final canEnroll = await ensureSignedInForAction(
+      access: ActionAccess.publicResource,
+      context: context,
+      ref: ref,
+      title: l10n.communityCollectionSignInRequiredTitle,
+      message: l10n.podcastCatalogSignInRequiredMessage,
+    );
     if (!mounted || !canEnroll) return;
 
     setState(() => _subscribing = true);

@@ -99,14 +99,20 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
     required String accessToken,
     required String dlink,
     required String savePath,
-    String? identityKey,
-    int? expectedSize,
-    bool allowResume = true,
     CancelToken? cancelToken,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) => throw UnimplementedError();
 
   @override
   Future<CloudDriveListPage> listDirectory({
@@ -651,6 +657,45 @@ void main() {
 
       expect(controller.state.phase, BaiduNetdiskImportPhase.completed);
       expect(controller.state.importSpeedBytesPerSecond, isNull);
+    });
+
+    test('导入被取消后未完成文件恢复为待导入状态', () async {
+      controller.dispose();
+      final progressService = _ProgressImportService(advanceClock: () {});
+      controller = BaiduNetdiskImportController(
+        credentialRepository: credentialRepository,
+        api: api,
+        importService: progressService,
+        launcher: _NoopLauncher(),
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        readAudioLibraryState: () => container.read(audioLibraryProvider),
+        collectionList: container.read(collectionListProvider.notifier),
+        readCollectionState: () => container.read(collectionListProvider),
+      );
+      api.entries = const [audio];
+      await controller.loadInitial();
+      controller.toggleEntry(audio);
+
+      final importFuture = controller.importSelected();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        controller.state.importItemStatuses[audio.fsId],
+        AudioImportSelectionStatus.importing,
+      );
+
+      progressService.completer.complete(
+        const CloudDriveImportOutcome(
+          added: <CloudDriveEntry>[],
+          wasCanceled: true,
+        ),
+      );
+      await importFuture;
+
+      expect(controller.state.phase, BaiduNetdiskImportPhase.completed);
+      expect(
+        controller.state.importItemStatuses[audio.fsId],
+        AudioImportSelectionStatus.pending,
+      );
     });
 
     test('导入速度按最近 5 秒窗口计算并限制显示刷新频率', () async {

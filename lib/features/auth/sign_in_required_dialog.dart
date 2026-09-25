@@ -8,6 +8,9 @@ import '../../l10n/app_localizations.dart';
 import '../../router/app_router.dart';
 import 'providers/auth_providers.dart';
 
+/// 操作的真实依赖；公开资源与 AI 配置不能借用账号登录语义。
+enum ActionAccess { account, ai, publicResource }
+
 /// 直接打开登录页。
 ///
 /// 供界面中明确标注为“登录”的按钮使用；这类用户主动操作不再额外显示
@@ -20,13 +23,21 @@ void openSignInPage(BuildContext context) {
 ///
 /// 已登录时返回 `true`，调用方可以继续原操作；未登录时显示提示，用户确认后
 /// 进入登录页，并返回 `false`，避免登录完成后隐式重放原操作。
+/// 本地版按 [access] 放行公开资源、检查 AI 配置或拒绝官方账号操作。
 Future<bool> ensureSignedInForAction({
   required BuildContext context,
   required WidgetRef ref,
   required String title,
   required String message,
+  ActionAccess access = ActionAccess.account,
 }) async {
-  if (isLocalEdition) return ensureCustomAiConfigured(context, ref);
+  if (isLocalEdition) {
+    return switch (access) {
+      ActionAccess.publicResource => true,
+      ActionAccess.ai => ensureCustomAiConfigured(context, ref),
+      ActionAccess.account => false,
+    };
+  }
   if (ref.read(isAuthenticatedProvider)) return true;
 
   final l10n = AppLocalizations.of(context);

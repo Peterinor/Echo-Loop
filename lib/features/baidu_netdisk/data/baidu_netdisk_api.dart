@@ -7,7 +7,7 @@ library;
 import 'package:dio/dio.dart';
 
 import '../../../services/api_log_interceptor.dart';
-import '../../../services/reliable_http_downloader.dart';
+import '../../../services/background_file_download_service.dart';
 import '../models/cloud_drive_models.dart';
 import '../models/baidu_account_profile.dart';
 
@@ -37,12 +37,45 @@ abstract interface class BaiduNetdiskApi {
     required String accessToken,
     required String dlink,
     required String savePath,
-    String? identityKey,
-    int? expectedSize,
-    bool allowResume = true,
     CancelToken? cancelToken,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   });
+
+  /// 将多个已有 dlink 提交给共享后台队列；返回顺序与请求顺序一致。
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  });
+}
+
+/// 百度网盘批量下载中的单个文件请求。
+class BaiduNetdiskDownloadRequest {
+  const BaiduNetdiskDownloadRequest({
+    required this.id,
+    required this.fsId,
+    required this.displayName,
+    required this.dlink,
+    required this.savePath,
+  });
+
+  final String id;
+  final int fsId;
+  final String displayName;
+  final String dlink;
+  final String savePath;
+}
+
+/// 百度网盘批量下载的单文件终态。
+class BaiduNetdiskDownloadItemResult {
+  const BaiduNetdiskDownloadItemResult({required this.request, this.failure});
+
+  final BaiduNetdiskDownloadRequest request;
+  final BaiduNetdiskFileException? failure;
+
+  bool get succeeded => failure == null;
 }
 
 /// 默认百度网盘文件 API 实现。
@@ -51,17 +84,15 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
   DefaultBaiduNetdiskApi({
     Dio? metadataDio,
     Dio? profileDio,
-    Dio? downloadDio,
-    ReliableHttpDownloader? downloader,
+    BackgroundFileDownloadService? backgroundDownloader,
   }) : _metadataDio = metadataDio ?? _createMetadataDio(),
        _profileDio = profileDio ?? _createProfileDio(),
-       _downloader =
-           downloader ??
-           DioReliableHttpDownloader(dio: downloadDio ?? _createDownloadDio());
+       _backgroundDownloader =
+           backgroundDownloader ?? BackgroundFileDownloadService();
 
   final Dio _metadataDio;
   final Dio _profileDio;
-  final ReliableHttpDownloader _downloader;
+  final BackgroundFileDownloadService _backgroundDownloader;
 
   static Dio _createBaiduDio({
     required bool enableLogging,
@@ -82,18 +113,6 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
   }
 
   static Dio _createMetadataDio() => _createBaiduDio(enableLogging: true);
-
-  static Dio _createDownloadDio() {
-    final dio = Dio(
-      BaseOptions(
-        connectTimeout: const Duration(seconds: 20),
-        receiveTimeout: const Duration(minutes: 10),
-        headers: const {'User-Agent': _baiduUserAgent},
-      ),
-    );
-    dio.interceptors.add(ApiLogInterceptor(tag: 'BAIDU-DOWNLOAD'));
-    return dio;
-  }
 
   static Dio _createProfileDio() => _createBaiduDio(enableLogging: false);
 
@@ -190,9 +209,6 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
     required String accessToken,
     required String dlink,
     required String savePath,
-    String? identityKey,
-    int? expectedSize,
-    bool allowResume = true,
     CancelToken? cancelToken,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) async {
@@ -204,24 +220,66 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
       },
     );
     try {
-      await _downloader.download(
+      await _backgroundDownloader.download(
         uri: downloadUri,
         savePath: savePath,
         headers: const {'User-Agent': _baiduUserAgent},
-        identityKey: identityKey,
-        expectedSize: expectedSize,
-        allowResume: allowResume,
         cancelToken: cancelToken,
         onProgress: onProgress,
       );
     } on DioException catch (error) {
       throw _mapDioException(error, fallbackMessage: 'Baidu download failed.');
-    } on ReliableDownloadException catch (error) {
-      throw _mapReliableDownloadException(
-        error,
-        fallbackMessage: 'Baidu download failed.',
-      );
+    } on BackgroundFileDownloadException catch (error) {
+      throw _mapBackgroundDownloadException(error);
     }
+  }
+
+  @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) async {
+    final downloadRequests = requests
+        .map(
+          (request) => BackgroundFileDownloadRequest(
+            id: request.id,
+            uri: _downloadUri(request.dlink, accessToken),
+            savePath: request.savePath,
+            displayName: request.displayName,
+            headers: const {'User-Agent': _baiduUserAgent},
+          ),
+        )
+        .toList(growable: false);
+    final results = await _backgroundDownloader.downloadBatch(
+      requests: downloadRequests,
+      cancelToken: cancelToken,
+      onProgress: (id, received, total) {
+        onProgress?.call(id, received, total);
+      },
+    );
+    return [
+      for (var index = 0; index < requests.length; index++)
+        BaiduNetdiskDownloadItemResult(
+          request: requests[index],
+          failure: switch (results[index].error) {
+            final error? => _mapBackgroundDownloadException(error),
+            null => null,
+          },
+        ),
+    ];
+  }
+
+  Uri _downloadUri(String dlink, String accessToken) {
+    final uri = Uri.parse(dlink);
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        'access_token': accessToken,
+      },
+    );
   }
 
   Future<Map<dynamic, dynamic>> _getJson(
@@ -291,25 +349,17 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
     );
   }
 
-  /// 把 [ReliableHttpDownloader] 的结构化异常映射回既有错误分类。
-  ///
-  /// httpStatus 按 statusCode 复用与 [_mapDioException] 相同的
-  /// unauthorized/notFound/rateLimited 判定；cancelled 映射为 canceled；
-  /// 其余 kind（network/timeout/redirect/storage/integrity/conflict/unknown）
-  /// 统一归为 network，与迁移前「非 DioException 一律 network」的行为一致。
-  BaiduNetdiskFileException _mapReliableDownloadException(
-    ReliableDownloadException error, {
-    required String fallbackMessage,
-  }) {
-    if (error.kind == ReliableDownloadFailure.cancelled) {
+  /// 将后台任务错误转换成网盘导入使用的稳定错误分类。
+  BaiduNetdiskFileException _mapBackgroundDownloadException(
+    BackgroundFileDownloadException error,
+  ) {
+    if (error.isCanceled) {
       return const BaiduNetdiskFileException(
         kind: BaiduNetdiskFileErrorKind.canceled,
         message: 'Baidu request canceled.',
       );
     }
-    final kind = switch (error.kind == ReliableDownloadFailure.httpStatus
-        ? error.statusCode
-        : null) {
+    final kind = switch (error.statusCode) {
       401 || 403 => BaiduNetdiskFileErrorKind.unauthorized,
       404 => BaiduNetdiskFileErrorKind.notFound,
       429 => BaiduNetdiskFileErrorKind.rateLimited,
@@ -317,10 +367,7 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
     };
     return BaiduNetdiskFileException(
       kind: kind,
-      message: _displayMessageForReliableDownloadException(
-        error,
-        fallbackMessage: fallbackMessage,
-      ),
+      message: _displayMessageForBackgroundDownloadException(error),
       cause: error,
     );
   }
@@ -349,13 +396,14 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
     return null;
   }
 
-  String _displayMessageForReliableDownloadException(
-    ReliableDownloadException error, {
-    required String fallbackMessage,
-  }) {
+  String _displayMessageForBackgroundDownloadException(
+    BackgroundFileDownloadException error,
+  ) {
     final detail = error.message.trim();
-    if (detail.isEmpty || detail == fallbackMessage) return fallbackMessage;
-    return '$fallbackMessage $detail';
+    if (detail.isEmpty || detail == 'Background download failed.') {
+      return 'Baidu download failed.';
+    }
+    return 'Baidu download failed. $detail';
   }
 
   int? _errnoOf(Object? value) {

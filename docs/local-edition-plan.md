@@ -243,3 +243,38 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - 本轮未运行 `scripts/check.sh`（局部接口与入口修复）；Maestro CLI 未安装，使用 Flutter integration_test。iPhone 仍需安装新包后复核。
 - 修复提交 `70f3df5d` 已推送；第 4 次 iOS 构建成功，59 项云端测试通过，IPA 校验与位置见 [最新构建记录](local-ios-build.md)。后续 `b7372d20` 只补充设备测试与记录，不改变安装包运行时代码。
 - Android 普通入口包已重新构建、覆盖安装并启动，最新 APK 为 `D:\env\echo-loop\echo-loop-local-emulator.apk`，启动崩溃日志为空；没有卸载应用或清除学习数据。
+
+
+## 同步上游前的本地版任务记录（2026-09-25）
+
+- [x] 完成资源故障修复版 iOS 构建与 IPA 交付：[运行 #4](https://github.com/Peterinor/Echo-Loop/actions/runs/36092777859) 成功，源码 `70f3df5d`，59 项云端测试、ARM64/iPhoneOS/本地配置与密钥未打包检查通过；684 个应用条目内容和权限核对通过，IPA 位于 `D:\env\echo-loop\ios-build\run-4\Echo-Loop-local-1.0.35-4.ipa`。模拟器已恢复原入口普通运行包并成功覆盖启动，保留既有数据。iPhone 待使用原 Apple 账号覆盖签名安装后复核。**完成时间**: 2026-09-25 12:22
+- [x] 修复 iPhone 社区合集 404 与 Apple Podcasts 首装入口缺失：参考上游 `a7fb15ee` 修正合集/文件详情 API 及本地版匿名白名单，入口不再依赖精选缓存或社区请求成功，详情错误改为本地化重试按钮；仅改动 4 个运行时代码文件。先补测试复现 7 项失败，修复后本地相关 46 项、官方相关 49 项及静态分析通过；模拟器完整验收通过，包含 Example 加入及 268333 字节音频与字幕下载、可见播客入口、精选/Apple 搜索、RSS 订阅及单集列表。iOS 工作流加入资源回归测试，第 4 次构建已成功；未运行全量 scripts/check.sh（局部修复），Maestro CLI 不可用，使用 Flutter integration_test。**完成时间**: 2026-09-25 12:10
+- [x] 完成匿名资源新版 iOS 云端构建及 IPA 交付：资源修改提交 `22b0b7ba` 已推送至 `codex/local-edition`，GitHub Actions [运行 #3](https://github.com/Peterinor/Echo-Loop/actions/runs/36089026211) 成功，19 项测试和 ARM64/本地配置检查通过；下载后校验 SHA256、模型密钥未打包及 684 个应用条目内容/权限，生成 `D:\env\echo-loop\ios-build\run-3\Echo-Loop-local-1.0.35-3.ipa`（待 Sideloadly 签名）。更新 PLAN、构建说明及本地版记录；仅构建打包，未运行全量 scripts/check.sh 或重复 UI / Maestro，新版尚未安装到 iPhone。**完成时间**: 2026-09-25 11:35
+- [x] 本地版恢复“发现资源”、公开合集与播客入口；加入资源不要求登录或配置 AI，恢复未下载单集展示、按需下载和 RSS 刷新；仅显式资源客户端的同源白名单 GET 可访问官方匿名接口，账号/支付/官方 AI 保持禁用，补齐进入播客页时加载空缓存。相关静态分析通过；官方回归 185 项、本地相关回归 130 项、下载交互 17 项及最后补充回归通过；Android 模拟器真实验证匿名目录、精选播客、Apple 搜索、RSS 订阅/更新和 342 期 BBC 单集入库与显示，普通 APK 构建并覆盖安装成功。官方合集 v2 文件接口线上抽查仍返回 404，完整合集下载尚未验证。Maestro CLI 未安装，改用 Flutter integration_test；未运行全量 scripts/check.sh（局部改动）。未推送或重新构建 iOS。详见 [修改清单与验收记录](docs/local-edition-plan.md)。**完成时间**: 2026-09-25 11:04
+- [x] 整理无官方业务后端版本的实施方案：保留词典/发音包及 ASR/TTS 官方资源下载，AI 改为用户云端 API 直连，分阶段列明启动隔离、访问策略、设置页、协议适配与验收；仅完成方案，功能尚未实现。见 [实施方案](docs/local-edition-plan.md)。**完成时间**: 2026-09-24
+- [x] 配置本机 Android 原版运行环境：Java、Android SDK/NDK、模拟器及缓存均放在 `D:\env`；使用仅对本仓库生效的本机 Gradle 配置支持 x86_64 Debug，保留正式包 ARM64 限制，未修改原版页面和仓库 Android 构建文件。环境检查与 6 个变体 ABI 检查通过，原入口 `lib/main.dart` 的 dev APK 构建、安装成功，模拟器实际显示首次使用问卷，启动崩溃日志为空。提供 `D:\env\echo-loop\Open-Android.cmd` 和运行说明；通过先构建后开模拟器、限制构建内存处理首次资源不足。Maestro 因 CLI 未安装未执行；未运行全量 `scripts/check.sh`（仅本机环境配置）。**完成时间**: 2026-09-24
+
+
+
+> 范围和接入文件见 [实施方案](docs/local-edition-plan.md)。保留原有资源下载，不增加资源包导入。
+
+- [x] iOS 云端验证：独立 `Local iOS Build` 工作流已推送并在 GitHub macOS 15 / Xcode 16.4 实际完成无签名 Release 编译；18 项相关测试、ARM64 / 本地模式 / 原生 PostHog 隔离检查通过，产物下载与 SHA256、模型密钥泄漏检查通过。修正首轮 `lipo` 参数顺序后，[第二轮构建成功](https://github.com/Peterinor/Echo-Loop/actions/runs/36082542625)。产物不可直接安装，签名和 iPhone 真机验证仍待苹果材料与设备。未运行全量 `scripts/check.sh`（本次仅验证 iOS 构建链路）。见 [操作说明](docs/local-ios-build.md)。**完成时间**: 2026-09-25
+
+- [x] 阶段一：增加 `APP_EDITION=local`，停用账号/订阅/官方后台任务与埋点，隐藏远程入口，保留本地学习和资源下载；官方 HTTP 请求在网络发送前拦截，Android Firebase 原生自动初始化关闭，模拟器启动和路由验证通过。**完成时间**: 2026-09-24
+- [x] 阶段二：实现用户模型设置、安全密钥存储、统一 AI 访问策略及直连客户端，复用原版翻译页面和缓存，不伪造登录态。**完成时间**: 2026-09-24
+- [x] 阶段三：接入解析、AI 词典、意群、对话和本地 ASR 加文本模型的复述评估；协议、取消、失败和缓存隔离测试通过，DeepSeek 官方 `deepseek-flash` 七项真实模型任务通过。**完成时间**: 2026-09-24
+- [x] 阶段四（本机）：Android 模拟器验证原版启动、模型配置保存和真实调用、路由限制、词典/发音包下载、原音播放、数据库导出、Kokoro 合成及 Whisper 识别；断网后本地播放/备份/语音验证通过。相关官方模式 96 项、本地模式 12 项、页面与行为回归 285 项测试通过；Apple 原生统计配置切换测试通过。额外备份回归有 4 项 Windows 清理临时目录失败，Maestro 缺失，具体边界见实施文档。**完成时间**: 2026-09-24
+- [ ] 发布前补充：ARM64 正式包真机网络审计、麦克风与既有 VAD 闪退验证、已有账号数据升级和完整设备备份恢复；本机没有真机，不能用模拟器结果替代。
+- [x] 本地版收尾：隐藏学习首页社群外链，补充对应回归；日常入口 APK 已重新构建、安装并确认首页，模型配置与已下载资源保留，源码和最终安装包未包含用户密钥。**完成时间**: 2026-09-24
+
+## 同步上游并收拢差异（2026-09-25）
+
+- 合并 upstream/main `315a326a`（相对分叉点新增 18 个提交），保留合并历史，解决全部 5 处文本冲突。
+- 社区资源 API、模型、分页缓存、下载、音频复用及数据库迁移跟随上游；API 文件仅保留匿名资源标记和资源地址两处接入差异。保留无缓存/社区失败时可见的播客入口和详情失败重试。
+- `ActionAccess` 明确区分账号、AI 和公开资源：本地版拒绝账号操作，AI 检查用户模型配置，公开资源不要求登录或 AI 配置；官方版保留登录流程。没有伪造登录或会员状态。
+- 网络白名单提取为 `LocalBackendPolicy`，设置卡片提取为 `CustomAiSettingsTile`；通用深链接服务恢复上游实现，支付监听的开关移到启动组合入口。保留原生统计、缓存隔离、本地 ASR 和后台任务的必要边界，不扩大重构。
+- 更新 iOS 工作流，在本地/官方两种模式执行访问策略回归。上游新增下载测试的路径断言改为平台路径拼接，保留所有成功、失败、取消与文件内容断言。
+- 验证：本地模式 93 项通过，真实云端模型测试因未注入凭据按原设计跳过；官方模式相关回归首轮 542 项通过、6 项 Windows 路径断言失败，修正后对应 38 项重测全部通过；原生配置/构建脚本 6 项通过。
+- `flutter analyze --no-fatal-warnings --no-fatal-infos lib test integration_test/local_resources_test.dart` 无编译错误，保留 30 条已有 warning/info。
+- 已执行 `scripts/check.sh`：在全仓静态分析阶段被既有 `integration_test/kokoro_tts_test.dart` 的 3 个错误阻断（旧 `TtsEngineKind.echoLoop` 与工厂签名），该文件在本次合并前后未变化；没有跳过或削弱测试来使脚本通过。脚本后续 macOS 设备测试和构建不能在本机 Windows 执行。
+- Maestro 脚本已尝试，CLI 未安装；改用已有 Flutter 设备集成测试。Android 模拟器资源集成测试通过：Example 预览、匿名加入、已有音频和字幕校验、常驻 Podcast 入口、精选、Apple 搜索、RSS 订阅和单集列表。覆盖安装前后数据库由 v55 升到 v57，原有 484 条素材、5 个合集、3 条学习进度和 3 条书签的标识均保留；本机升级前数据库快照位于 `D:\env\echo-loop\pre-upstream-merge.db`。

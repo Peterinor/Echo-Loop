@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Ref;
 import 'package:path/path.dart' as p;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -35,6 +35,16 @@ class CommunityCollectionNotFoundError implements Exception {
   const CommunityCollectionNotFoundError(this.remoteId);
 }
 
+class _CommunityCollectionSnapshot {
+  final PublicCollectionCatalogEntry collection;
+  final List<CommunityCollectionFile> files;
+
+  const _CommunityCollectionSnapshot({
+    required this.collection,
+    required this.files,
+  });
+}
+
 /// 社区合集与本地 Drift 数据的协调层。
 class CommunityCollectionRepository {
   final db.AppDatabase _db;
@@ -50,6 +60,8 @@ class CommunityCollectionRepository {
        _docsDir = docsDir ?? getAppDataDirectory;
 
   /// 拉取 v2 合集及其全部文件后，以事务方式创建本地占位数据。
+  ///
+  /// 若远端音频已存在于其他合集，则复用该本地音频项并只新增合集关联。
   Future<String> enroll(String remoteId) async {
     final existing = await _db.collectionDao.getByRemoteId(remoteId);
     if (existing != null) {
@@ -59,9 +71,8 @@ class CommunityCollectionRepository {
       );
     }
 
-    final summary = await _findCollection(remoteId);
-    if (summary == null) throw CommunityCollectionNotFoundError(remoteId);
-    final files = await _fetchAllFiles(remoteId);
+    final snapshot = await _fetchCollection(remoteId);
+    final catalogEntry = snapshot.collection;
     final localCollectionId = const Uuid().v4();
     final now = DateTime.now();
 
@@ -69,28 +80,35 @@ class CommunityCollectionRepository {
       await _db.collectionDao.upsert(
         db.CollectionsCompanion(
           id: Value(localCollectionId),
-          name: Value(summary.name),
+          name: Value(catalogEntry.name),
           createdDate: Value(now),
-          updatedAt: Value(now),
+          updatedAt: Value(catalogEntry.updatedAt),
           source: const Value('community'),
-          remoteId: Value(summary.id),
-          coverUrl: Value(summary.coverUrl),
-          description: Value(summary.description),
+          remoteId: Value(catalogEntry.id),
+          coverUrl: Value(catalogEntry.coverUrl),
+          description: Value(catalogEntry.description),
+          authorNickname: Value(catalogEntry.authorNickname),
+          publishedAt: Value(catalogEntry.publishedAt),
         ),
       );
-      for (final file in files) {
-        final audioId = const Uuid().v4();
-        await _db.audioItemDao.upsert(
-          db.AudioItemsCompanion(
-            id: Value(audioId),
-            name: Value(file.title),
-            addedDate: Value(now),
-            totalDuration: Value(file.durationSec ?? 0),
-            remoteAudioId: Value(file.id),
-            originalDate: Value(file.publishedAt),
-            updatedAt: Value(now),
-          ),
+      for (final file in snapshot.files) {
+        final existingAudio = await _db.audioItemDao.getByRemoteAudioId(
+          file.id,
         );
+        final audioId = existingAudio?.id ?? const Uuid().v4();
+        if (existingAudio == null) {
+          await _db.audioItemDao.upsert(
+            db.AudioItemsCompanion(
+              id: Value(audioId),
+              name: Value(file.title),
+              addedDate: Value(now),
+              totalDuration: Value(file.durationSec ?? 0),
+              remoteAudioId: Value(file.id),
+              originalDate: Value(file.publishedAt),
+              updatedAt: Value(now),
+            ),
+          );
+        }
         await _db
             .into(_db.collectionAudioItems)
             .insertOnConflictUpdate(
@@ -109,15 +127,24 @@ class CommunityCollectionRepository {
 
   /// 彻底移除社区合集及其未共享的本地媒体和学习数据。
   Future<void> remove(String localCollectionId) async {
-    final audioIds = await _db.collectionDao.getAudioIds(localCollectionId);
-    final audioRows = <db.AudioItem>[];
-    for (final id in audioIds) {
-      final row = await _db.audioItemDao.getById(id);
-      if (row != null) audioRows.add(row);
-    }
-
+    final orphanedAudioRows = <db.AudioItem>[];
     await _db.transaction(() async {
+      final audioIds = await _db.collectionDao.getAudioIds(localCollectionId);
       for (final audioId in audioIds) {
+        final audioRow = await _db.audioItemDao.getById(audioId);
+        await (_db.delete(_db.collectionAudioItems)..where(
+              (row) =>
+                  row.collectionId.equals(localCollectionId) &
+                  row.audioItemId.equals(audioId),
+            ))
+            .go();
+
+        final remainingMembership = await (_db.select(
+          _db.collectionAudioItems,
+        )..where((row) => row.audioItemId.equals(audioId))).getSingleOrNull();
+        // 仅在最后一个合集关联移除后清理音频行和对应学习数据。
+        if (remainingMembership != null) continue;
+
         for (final table in [
           'learning_progresses',
           'stage_completions',
@@ -132,43 +159,37 @@ class CommunityCollectionRepository {
             [audioId],
           );
         }
-      }
-      await _db.customStatement(
-        'DELETE FROM collection_audio_items WHERE collection_id = ?',
-        [localCollectionId],
-      );
-      for (final id in audioIds) {
-        await _db.audioItemDao.hardDelete(id);
+        await _db.audioItemDao.hardDelete(audioId);
+        if (audioRow != null) orphanedAudioRows.add(audioRow);
       }
       await _db.collectionDao.hardDelete(localCollectionId);
     });
-    await _deleteLocalFiles(audioRows);
+    await _deleteLocalFiles(orphanedAudioRows);
   }
 
-  Future<PublicCollectionSummary?> _findCollection(String remoteId) async {
-    String? cursor;
-    do {
-      final page = await _api.getCollections(cursor: cursor);
-      for (final item in page.items) {
-        if (item.id == remoteId) return item;
-      }
-      cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return null;
-  }
-
-  Future<List<CommunityCollectionFile>> _fetchAllFiles(String remoteId) async {
+  Future<_CommunityCollectionSnapshot> _fetchCollection(String remoteId) async {
     final files = <CommunityCollectionFile>[];
-    String? cursor;
-    do {
-      final page = await _api.getCollectionFiles(remoteId, cursor: cursor);
+    CommunityCollectionDetailPage firstPage;
+    try {
+      firstPage = await _api.getCollectionDetail(remoteId);
+    } on CommunityCollectionNotFound {
+      throw CommunityCollectionNotFoundError(remoteId);
+    }
+    files.addAll(firstPage.items);
+    var cursor = firstPage.nextCursor;
+    while (cursor?.isNotEmpty ?? false) {
+      final page = await _api.getCollectionDetail(remoteId, cursor: cursor);
       files.addAll(page.items);
       cursor = page.nextCursor;
-    } while (cursor?.isNotEmpty ?? false);
-    return files;
+    }
+    return _CommunityCollectionSnapshot(
+      collection: firstPage.collection,
+      files: files,
+    );
   }
 
   Future<void> _deleteLocalFiles(List<db.AudioItem> rows) async {
+    if (rows.isEmpty) return;
     final dir = await _docsDir();
     for (final row in rows) {
       for (final relativePath in [row.audioPath, row.transcriptPath]) {

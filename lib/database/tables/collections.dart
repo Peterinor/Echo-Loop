@@ -39,6 +39,12 @@ class Collections extends Table {
   /// 社区合集描述；用户自建合集目前为 null。
   TextColumn get description => text().nullable()();
 
+  /// 社区合集发布者昵称；老数据及匿名发布者保持 null。
+  TextColumn get authorNickname => text().nullable()();
+
+  /// 社区合集发布日期；老数据保持 null。
+  DateTimeColumn get publishedAt => dateTime().nullable()();
+
   /// 社区合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
   /// source='local' 永远为 null。
   DateTimeColumn get deprecatedAt => dateTime().nullable()();

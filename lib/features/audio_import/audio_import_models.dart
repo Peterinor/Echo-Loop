@@ -36,7 +36,6 @@ class ResolvedAudioImport {
     required this.fileName,
     required this.extension,
     this.mimeType,
-    this.contentLength,
   });
 
   final Uri uri;
@@ -44,7 +43,6 @@ class ResolvedAudioImport {
   final String fileName;
   final String extension;
   final String? mimeType;
-  final int? contentLength;
 }
 
 /// 仅落盘的音频下载结果（不入库）。

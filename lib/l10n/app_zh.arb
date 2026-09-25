@@ -366,6 +366,22 @@
   "discoverEntryTitleA": "发现资源",
   "discoverEntrySubtitleA": "播客、托福、雅思、四六级、口译...",
   "communityCollectionEmpty": "该合集暂无文件",
+  "communityCollectionAuthor": "作者：{nickname}",
+  "@communityCollectionAuthor": {
+    "placeholders": {
+      "nickname": {"type": "String"}
+    }
+  },
+  "communityCollectionUnknownAuthor": "未知作者",
+  "communityCollectionUnknownPublishDate": "日期未知",
+  "communityCollectionCover": "{name}封面",
+  "@communityCollectionCover": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "communityCollectionShowMore": "展开",
+  "communityCollectionShowLess": "收起",
   "sortCollections": "排序",
   "gridView": "文件夹视图",
   "listView": "列表视图",
@@ -1614,7 +1630,7 @@
   "resetOnboarding": "重置 Onboarding 问卷",
   "resetOnboardingDone": "Onboarding 已重置，请重启 App 以重新进入问卷",
 
-  "discoverCommunityCollections": "发现社区合集",
+  "discoverCommunityCollections": "发现资源",
   "discoverEmpty": "暂无精选合集",
   "discoverLoadFailed": "加载失败，点击重试",
   "discoverRetry": "重试",
@@ -1636,12 +1652,15 @@
   "podcastPreviewParseFailed": "播客源格式暂不支持，无法读取单集列表。",
   "podcastFeedBlocked": "该播客源在当前网络下拦截了自动访问。请稍后重试，或切换到其他网络。",
   "podcastPreviewEmpty": "暂未获取到单集。",
-  "communityBadge": "社区",
+  "localCollectionBadge": "本地",
+  "communityBadge": "共享",
   "communityDeprecatedBadge": "已下架",
+  "podcastCollectionBadge": "播客",
   "addToMyCollections": "添加到我的合集",
   "communityCollectionSignInRequiredTitle": "登录后添加合集",
-  "communityCollectionSignInRequiredMessage": "登录后可以将社区合集添加到我的合集，并同步后续内容。",
+  "communityCollectionSignInRequiredMessage": "登录后可以将共享合集添加到我的合集，并同步后续内容。",
   "goLearn": "去学习",
+  "communityCollectionAdded": "已添加",
   "removeFromMyCollections": "从我的合集移除",
   "enrollNeededTitle": "需要先添加合集",
   "enrollNeededMessage": "添加到我的合集后，就可以开始学习这条音频。",
@@ -1656,8 +1675,8 @@
   "removeCommunityConfirmMessage": "将删除本合集所有媒体、字幕和相关学习记录，此操作不可恢复。",
   "removeCommunityConfirmConfirm": "确认移除",
   "communityCollectionDeprecated": "该合集已移除，本地副本仍可继续使用。",
-  "communityFileUnavailable": "该文件已从社区合集移除",
-  "communityFilesRemoved": "社区合集有 {count} 个文件已移除",
+  "communityFileUnavailable": "该文件已从共享合集中移除",
+  "communityFilesRemoved": "共享合集中有 {count} 个文件已移除",
   "@communityFilesRemoved": {
     "placeholders": {
       "count": {"type": "int"}
@@ -1938,6 +1957,8 @@
   "baiduNetdiskDisconnect": "断开百度网盘连接",
   "baiduNetdiskNoSupportedAudio": "此文件夹中没有支持的素材文件。",
   "importAudioShort": "导入",
+  "cancelImport": "取消导入",
+  "cancelingImport": "正在取消导入…",
   "importAudioSelectedCount": "导入 {count} 个",
   "@importAudioSelectedCount": {
     "placeholders": {
@@ -1981,7 +2002,7 @@
   "audioUrlNotDirectAudio": "该链接不是可直接下载的音频文件",
   "audioUrlDuplicate": "已存在同名音频",
   "audioDownloadFailed": "下载音频失败",
-  "audioDownloadInProgress": "正在下载音频",
+  "audioDownloadInProgress": "正在下载",
   "audioImportComplete": "导入完成",
   "audioImportCanceled": "已取消音频导入",
   "cancelDownload": "取消下载",

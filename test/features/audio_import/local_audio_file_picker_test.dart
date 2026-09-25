@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:echo_loop/features/audio_import/local_audio_file_picker.dart';
 import 'package:echo_loop/features/audio_import/subtitle_pairing.dart';
 import 'package:flutter/services.dart';
@@ -184,15 +187,21 @@ void main() {
   test('copyToFile 把 URI 与目标路径一并下发', () async {
     mockChannel({'copyToFile': null});
 
-    await AndroidLocalAudioFilePicker(
-      channel: channel,
-    ).copyToFile('content://downloads/1', '/data/tmp/audio_import/1-a.mp3');
+    await AndroidLocalAudioFilePicker(channel: channel).copyToFile(
+      'content://downloads/1',
+      '/data/tmp/audio_import/1-a.mp3',
+      cancelToken: CancelToken(),
+    );
 
     expect(calls.single.method, 'copyToFile');
-    expect(calls.single.arguments, {
-      'uri': 'content://downloads/1',
-      'targetPath': '/data/tmp/audio_import/1-a.mp3',
-    });
+    expect(
+      calls.single.arguments,
+      allOf(
+        containsPair('uri', 'content://downloads/1'),
+        containsPair('targetPath', '/data/tmp/audio_import/1-a.mp3'),
+        containsPair('operationId', isA<String>()),
+      ),
+    );
   });
 
   test('copyToFile 的原生错误向上传播，不被静默吞掉', () async {
@@ -201,10 +210,45 @@ void main() {
     });
 
     await expectLater(
-      AndroidLocalAudioFilePicker(
-        channel: channel,
-      ).copyToFile('content://a', '/data/tmp/a.mp3'),
+      AndroidLocalAudioFilePicker(channel: channel).copyToFile(
+        'content://a',
+        '/data/tmp/a.mp3',
+        cancelToken: CancelToken(),
+      ),
       throwsA(isA<PlatformException>()),
     );
+  });
+
+  test('取消复制时通知原生任务并向调用方传播取消', () async {
+    final copyStarted = Completer<void>();
+    final copyResult = Completer<void>();
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      if (call.method == 'copyToFile') {
+        copyStarted.complete();
+        await copyResult.future;
+        return;
+      }
+      if (call.method == 'cancelCopyToFile') {
+        copyResult.completeError(PlatformException(code: 'cancelled'));
+        return null;
+      }
+      return null;
+    });
+
+    final cancelToken = CancelToken();
+    final copy = AndroidLocalAudioFilePicker(channel: channel).copyToFile(
+      'content://downloads/1',
+      '/data/tmp/audio_import/1-a.mp3',
+      cancelToken: cancelToken,
+    );
+    await copyStarted.future;
+    cancelToken.cancel('user-cancelled');
+
+    await expectLater(copy, throwsA(isA<DioException>()));
+    expect(calls.map((call) => call.method), [
+      'copyToFile',
+      'cancelCopyToFile',
+    ]);
   });
 }

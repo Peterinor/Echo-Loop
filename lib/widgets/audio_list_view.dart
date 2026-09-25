@@ -90,6 +90,9 @@ class AudioListView extends ConsumerStatefulWidget {
   /// 自定义空状态组件
   final Widget? emptyState;
 
+  /// 列表首项；适用于需要随文件一起滚动的详情摘要。
+  final Widget? header;
+
   /// 是否将第一条音频的菜单作为合集详情引导 target。
   final bool guideFirstAudioMenu;
 
@@ -121,6 +124,7 @@ class AudioListView extends ConsumerStatefulWidget {
     this.items,
     this.collectionId,
     this.emptyState,
+    this.header,
     this.guideFirstAudioMenu = false,
     this.menuGuideStep,
     this.guideEnabled = true,
@@ -159,7 +163,17 @@ class _AudioListViewState extends ConsumerState<AudioListView> {
     final sortedItems = _sortItems(audioItems, sortType);
 
     if (sortedItems.isEmpty) {
-      return widget.emptyState ?? _DefaultEmptyState(l10n: l10n);
+      final emptyState = widget.emptyState ?? _DefaultEmptyState(l10n: l10n);
+      final header = widget.header;
+      if (header == null) return emptyState;
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.zero,
+        children: [
+          header,
+          SizedBox(height: 280, child: emptyState),
+        ],
+      );
     }
 
     final showMenuGuide = widget.guideEnabled && widget.guideFirstAudioMenu;
@@ -171,12 +185,16 @@ class _AudioListViewState extends ConsumerState<AudioListView> {
           description: l10n.guideCollectionAudioMenuDescription,
         );
 
+    final header = widget.header;
+    final headerCount = header == null ? 0 : 1;
     final listView = ListView.builder(
-      padding: const EdgeInsets.all(8),
-      itemCount: sortedItems.length,
+      padding: header == null ? const EdgeInsets.all(8) : EdgeInsets.zero,
+      itemCount: sortedItems.length + headerCount,
       itemBuilder: (context, index) {
-        final item = sortedItems[index];
-        final isFirst = index == 0;
+        if (header != null && index == 0) return header;
+        final itemIndex = index - headerCount;
+        final item = sortedItems[itemIndex];
+        final isFirst = itemIndex == 0;
         final tile = AudioListTile(
           audioItem: item,
           collectionId: widget.collectionId,

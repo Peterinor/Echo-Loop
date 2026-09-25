@@ -359,11 +359,29 @@ class AudioListTile extends ConsumerWidget {
         transcriptionTask is TranscriptionUploading ||
         transcriptionTask is TranscriptionProcessing;
 
-    final metaParts = <String>[];
+    final metaParts = <InlineSpan>[];
+    final accessibleMetaParts = <String>[];
+    void addMetaSeparator() {
+      if (metaParts.isNotEmpty) {
+        metaParts.add(const TextSpan(text: ' · '));
+      }
+    }
+
     if (audioItem.totalDuration > 0) {
+      final duration = _formatDuration(audioItem.totalDuration);
+      addMetaSeparator();
       metaParts.add(
-        l10n.audioDuration(_formatDuration(audioItem.totalDuration)),
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Icon(
+            Icons.schedule_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       );
+      metaParts.add(TextSpan(text: ' $duration'));
+      accessibleMetaParts.add(l10n.audioDuration(duration));
     }
     // 日期 meta：
     // - 用户自建普通音频：显示「添加于 X」（addedDate 是 import 时间，有意义）
@@ -373,13 +391,47 @@ class AudioListTile extends ConsumerWidget {
     final isPublishedSource =
         audioItem.remoteAudioId != null || audioItem.podcastEpisodeGuid != null;
     if (!isPublishedSource) {
-      metaParts.add(l10n.addedOn(_formatDate(context, audioItem.addedDate)));
+      final addedDate = _formatDate(context, audioItem.addedDate);
+      final addedOn = l10n.addedOn(addedDate);
+      addMetaSeparator();
+      metaParts.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Icon(
+            Icons.calendar_today_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+      metaParts.add(TextSpan(text: ' $addedDate'));
+      accessibleMetaParts.add(addedOn);
     } else if (audioItem.originalDate case final originalDate?) {
-      metaParts.add(l10n.publishedOn(_formatAbsoluteDate(originalDate)));
+      final publishedDate = _formatAbsoluteDate(originalDate);
+      addMetaSeparator();
+      metaParts.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Icon(
+            Icons.calendar_today_outlined,
+            size: 14,
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+      metaParts.add(TextSpan(text: ' $publishedDate'));
+      accessibleMetaParts.add(l10n.publishedOn(publishedDate));
     }
 
     final metaStyle = theme.textTheme.bodySmall?.copyWith(
       color: theme.colorScheme.onSurfaceVariant,
+    );
+    final metadataText = Text.rich(
+      TextSpan(children: metaParts),
+      key: const Key('audio_list_tile_metadata_row'),
+      style: metaStyle,
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
     );
     final contentWarningLabel = _contentWarningLabel(
       l10n,
@@ -407,12 +459,14 @@ class AudioListTile extends ConsumerWidget {
               const SizedBox(width: 8),
             ],
             Flexible(
-              child: Text(
-                metaParts.join(' · '),
-                key: const Key('audio_list_tile_metadata_row'),
-                style: metaStyle,
-                overflow: TextOverflow.ellipsis,
-              ),
+              // 图标精简视觉文案；屏幕阅读器仍会读出原有完整元信息。
+              child: accessibleMetaParts.isEmpty
+                  ? metadataText
+                  : Semantics(
+                      label: accessibleMetaParts.join(' · '),
+                      excludeSemantics: true,
+                      child: metadataText,
+                    ),
             ),
           ],
         ),

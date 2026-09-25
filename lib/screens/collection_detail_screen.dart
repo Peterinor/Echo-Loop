@@ -21,6 +21,7 @@ import '../features/podcast/podcast_repository.dart';
 import '../features/podcast/podcast_models.dart';
 import '../features/podcast/podcast_info_sheet.dart';
 import '../features/podcast/widgets/podcast_feed_summary_header.dart';
+import '../features/community_collections/widgets/community_collection_header.dart';
 
 /// 合集详情页面 - 展示合集中的音频，支持上传音频
 class CollectionDetailScreen extends ConsumerStatefulWidget {
@@ -156,44 +157,69 @@ class _CollectionDetailScreenState
                   refreshState: _podcastRefreshState,
                   onRefresh: () => _refreshPodcastFeed(force: true),
                 )
-              : AudioListView(
-                  items: audioItems,
-                  collectionId: widget.collectionId,
-                  guideFirstAudioMenu: hasAudioItems,
-                  menuGuideStep: stepAudioMenu,
-                  overrideSortType: collection.isCommunity
-                      ? _communitySort
-                      : null,
-                  // 仅用户自建合集启用多选删除。
-                  selectionMode: canMultiSelect && _selectionMode,
-                  selectedIds: _selectedIds,
-                  onEnterSelection: canMultiSelect
-                      ? (id) => _enterSelection(id)
-                      : null,
-                  onToggleSelection: canMultiSelect
-                      ? (id) => _toggleSelect(id)
-                      : null,
-                  emptyState: collection.isCommunity
-                      ? Center(
-                          child: Text(
-                            // 区分「已下架」vs「暂无音频」：前者是后端主动下线，后者
-                            // 是合集刚建还没上内容，两种文案语义不同不能复用。
-                            collection.isDeprecated
-                                ? l10n.communityCollectionDeprecated
-                                : l10n.communityCollectionEmpty,
-                            textAlign: TextAlign.center,
+              : _buildAudioList(
+                  context,
+                  collection,
+                  audioItems,
+                  hasAudioItems,
+                  canMultiSelect,
+                  stepAudioMenu,
+                  l10n,
+                  header: collection.isCommunity
+                      ? CommunityCollectionHeader(
+                          description: collection.description,
+                          authorNickname: collection.authorNickname,
+                          updatedAt: collection.updatedAt,
+                          fileCount: collectionState.getAudioCount(
+                            collection.id,
                           ),
                         )
-                      : _CollectionEmptyState(
-                          l10n: l10n,
-                          onAdd: () => showImportAudioSheet(
-                            context,
-                            collectionId: collection.id,
-                          ),
-                        ),
+                      : null,
                 ),
         ),
       ),
+    );
+  }
+
+  /// 构建合集文件列表；社区合集和普通合集共用列表交互与空状态处理。
+  Widget _buildAudioList(
+    BuildContext context,
+    Collection collection,
+    List<AudioItem> audioItems,
+    bool hasAudioItems,
+    bool canMultiSelect,
+    GuideStep menuGuideStep,
+    AppLocalizations l10n, {
+    Widget? header,
+  }) {
+    return AudioListView(
+      items: audioItems,
+      collectionId: widget.collectionId,
+      guideFirstAudioMenu: hasAudioItems,
+      menuGuideStep: menuGuideStep,
+      header: header,
+      overrideSortType: collection.isCommunity ? _communitySort : null,
+      // 仅用户自建合集启用多选删除。
+      selectionMode: canMultiSelect && _selectionMode,
+      selectedIds: _selectedIds,
+      onEnterSelection: canMultiSelect ? (id) => _enterSelection(id) : null,
+      onToggleSelection: canMultiSelect ? (id) => _toggleSelect(id) : null,
+      emptyState: collection.isCommunity
+          ? Center(
+              child: Text(
+                // 区分「已下架」vs「暂无音频」：前者是后端主动下线，后者
+                // 是合集刚建还没上内容，两种文案语义不同不能复用。
+                collection.isDeprecated
+                    ? l10n.communityCollectionDeprecated
+                    : l10n.communityCollectionEmpty,
+                textAlign: TextAlign.center,
+              ),
+            )
+          : _CollectionEmptyState(
+              l10n: l10n,
+              onAdd: () =>
+                  showImportAudioSheet(context, collectionId: collection.id),
+            ),
     );
   }
 

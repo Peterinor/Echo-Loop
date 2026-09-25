@@ -157,6 +157,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     );
     if (edited == null || !mounted) return; // 关闭编辑页 = 取消，不改会话
     final ok = await ensureSignedInForAction(
+      access: ActionAccess.ai,
       context: context,
       ref: ref,
       title: l10n.chatSignInTitle,
@@ -175,6 +176,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     String text,
   ) async {
     final ok = await ensureSignedInForAction(
+      access: ActionAccess.ai,
       context: context,
       ref: ref,
       title: l10n.chatSignInTitle,
@@ -194,6 +196,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     ChatSessionController notifier,
   ) async {
     await ensureSignedInForAction(
+      access: ActionAccess.ai,
       context: context,
       ref: ref,
       title: l10n.chatSignInTitle,

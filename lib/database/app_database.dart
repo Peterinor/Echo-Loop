@@ -103,7 +103,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   /// 当前 schema 版本（静态访问，用于导入前版本检查）
-  static const currentSchemaVersion = 55;
+  static const currentSchemaVersion = 57;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -250,6 +250,14 @@ class AppDatabase extends _$AppDatabase {
             'community_unavailable_at',
             'INTEGER',
           );
+        }
+        // v55→v56：缓存社区合集发布者昵称，保证资源库详情离线可展示。
+        if (from < 56) {
+          await _addColumnIfNotExists('collections', 'author_nickname', 'TEXT');
+        }
+        // v56→v57：保存社区合集发布日期，资源库离线时仍可展示完整元信息。
+        if (from < 57) {
+          await _addColumnIfNotExists('collections', 'published_at', 'INTEGER');
         }
         // v49→v50：为收藏单词/意群补稳定的记忆主体 ID，并把收藏句专属的每日
         // 入队去重表泛化为带 namespace 的通用表，供词汇复习共用同一张表。

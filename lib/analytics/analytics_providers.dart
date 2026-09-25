@@ -87,7 +87,7 @@ AnalyticsChannel _createChannel() {
 // 以下通道备用，当前未启用
 // ignore: unused_element
 AnalyticsChannel _createChannelLegacy(bool isChina) {
-  if (isLocalEdition || kDebugMode) return LogOnlyChannel();
+  if (kDebugMode) return LogOnlyChannel();
   if (Platform.isAndroid) {
     if (isChina && UmengChannel.isConfigured) return UmengChannel();
     return FirebaseChannel();

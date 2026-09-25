@@ -518,6 +518,7 @@ class _SentenceExplanationViewState
     final l10n = AppLocalizations.of(context);
     if (l10n == null) return;
     await ensureSignedInForAction(
+      access: ActionAccess.ai,
       context: context,
       ref: ref,
       title: l10n.senseGroupSignInRequiredTitle,

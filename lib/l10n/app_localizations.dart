@@ -1646,6 +1646,42 @@ abstract class AppLocalizations {
   /// **'This collection has no audio yet'**
   String get communityCollectionEmpty;
 
+  /// No description provided for @communityCollectionAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'By {nickname}'**
+  String communityCollectionAuthor(String nickname);
+
+  /// No description provided for @communityCollectionUnknownAuthor.
+  ///
+  /// In en, this message translates to:
+  /// **'Unknown author'**
+  String get communityCollectionUnknownAuthor;
+
+  /// No description provided for @communityCollectionUnknownPublishDate.
+  ///
+  /// In en, this message translates to:
+  /// **'Date unknown'**
+  String get communityCollectionUnknownPublishDate;
+
+  /// No description provided for @communityCollectionCover.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} cover'**
+  String communityCollectionCover(String name);
+
+  /// No description provided for @communityCollectionShowMore.
+  ///
+  /// In en, this message translates to:
+  /// **'More'**
+  String get communityCollectionShowMore;
+
+  /// No description provided for @communityCollectionShowLess.
+  ///
+  /// In en, this message translates to:
+  /// **'Less'**
+  String get communityCollectionShowLess;
+
   /// No description provided for @sortCollections.
   ///
   /// In en, this message translates to:
@@ -6845,7 +6881,7 @@ abstract class AppLocalizations {
   /// No description provided for @discoverCommunityCollections.
   ///
   /// In en, this message translates to:
-  /// **'Discover Community Collections'**
+  /// **'Discover Resources'**
   String get discoverCommunityCollections;
 
   /// No description provided for @discoverEmpty.
@@ -6944,10 +6980,16 @@ abstract class AppLocalizations {
   /// **'No episodes were found yet.'**
   String get podcastPreviewEmpty;
 
+  /// No description provided for @localCollectionBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Local'**
+  String get localCollectionBadge;
+
   /// No description provided for @communityBadge.
   ///
   /// In en, this message translates to:
-  /// **'Community'**
+  /// **'Shared'**
   String get communityBadge;
 
   /// No description provided for @communityDeprecatedBadge.
@@ -6955,6 +6997,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Removed'**
   String get communityDeprecatedBadge;
+
+  /// No description provided for @podcastCollectionBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Podcast'**
+  String get podcastCollectionBadge;
 
   /// No description provided for @addToMyCollections.
   ///
@@ -6971,7 +7019,7 @@ abstract class AppLocalizations {
   /// No description provided for @communityCollectionSignInRequiredMessage.
   ///
   /// In en, this message translates to:
-  /// **'Sign in to add community collections to My Collections and sync new files.'**
+  /// **'Sign in to add shared collections to My Collections and sync new files.'**
   String get communityCollectionSignInRequiredMessage;
 
   /// No description provided for @goLearn.
@@ -6979,6 +7027,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Start Practicing'**
   String get goLearn;
+
+  /// No description provided for @communityCollectionAdded.
+  ///
+  /// In en, this message translates to:
+  /// **'Added'**
+  String get communityCollectionAdded;
 
   /// No description provided for @removeFromMyCollections.
   ///
@@ -7037,13 +7091,13 @@ abstract class AppLocalizations {
   /// No description provided for @communityFileUnavailable.
   ///
   /// In en, this message translates to:
-  /// **'This file was removed from the community collection'**
+  /// **'This file was removed from the shared collection'**
   String get communityFileUnavailable;
 
   /// No description provided for @communityFilesRemoved.
   ///
   /// In en, this message translates to:
-  /// **'{count} files were removed from community collections'**
+  /// **'{count} files were removed from shared collections'**
   String communityFilesRemoved(int count);
 
   /// No description provided for @downloadCancel.
@@ -8444,6 +8498,18 @@ abstract class AppLocalizations {
   /// **'Import'**
   String get importAudioShort;
 
+  /// No description provided for @cancelImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Import'**
+  String get cancelImport;
+
+  /// No description provided for @cancelingImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Canceling Import…'**
+  String get cancelingImport;
+
   /// No description provided for @importAudioSelectedCount.
   ///
   /// In en, this message translates to:
@@ -8543,7 +8609,7 @@ abstract class AppLocalizations {
   /// No description provided for @audioDownloadInProgress.
   ///
   /// In en, this message translates to:
-  /// **'Downloading audio'**
+  /// **'Downloading'**
   String get audioDownloadInProgress;
 
   /// No description provided for @audioImportComplete.

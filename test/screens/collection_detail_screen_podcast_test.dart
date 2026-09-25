@@ -4,6 +4,7 @@ import 'package:echo_loop/features/podcast/podcast_models.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/features/podcast/podcast_repository.dart';
+import 'package:echo_loop/features/community_collections/widgets/community_collection_header.dart';
 import 'package:echo_loop/providers/audio_library_provider.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:echo_loop/screens/collection_detail_screen.dart';
@@ -33,6 +34,50 @@ class _PodcastTestCollectionList extends TestCollectionList {
 }
 
 void main() {
+  testWidgets('community collection detail displays the shared local header', (
+    tester,
+  ) async {
+    final collection = Collection(
+      id: 'community-1',
+      name: 'Community English',
+      createdDate: DateTime(2026, 6, 12),
+      source: CollectionSource.community,
+      remoteId: 'remote-1',
+      description: 'A short collection.',
+      authorNickname: 'Echo Studio',
+      publishedAt: DateTime(2026, 6, 12),
+    );
+
+    await tester.pumpWidget(
+      createTestScreen(
+        const CollectionDetailScreen(collectionId: 'community-1'),
+        overrides: [
+          collectionListProvider.overrideWith(
+            () => TestCollectionList(
+              CollectionState(
+                rawCollections: [collection],
+                audioIdsMap: const {'community-1': []},
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Echo Studio'), findsOneWidget);
+    expect(find.text('2026-06-12 00:00'), findsOneWidget);
+    expect(find.text('0 items'), findsOneWidget);
+    expect(find.text('A short collection.'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(CommunityCollectionHeader),
+        matching: find.byType(ListView),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('podcast 合集详情头部紧凑展示 feed 元信息', (tester) async {
     const longDescription =
         'Short episodes for careful listening. Each episode is designed for '

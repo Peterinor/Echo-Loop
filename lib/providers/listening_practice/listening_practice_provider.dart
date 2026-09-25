@@ -1033,13 +1033,6 @@ class ListeningPractice extends _$ListeningPractice {
         sentences: [],
         clearCurrentFullIndex: true,
         clearCurrentBookmarkIndex: true,
-        // 循环开关是「现在想刷这条」的临时意图，加载新音频时一律重置为关
-        // （仅改内存，不持久化）；循环参数作为偏好保留。
-        fullSettings: state.fullSettings.copyWith(
-          loopWhole: false,
-          loopSentence: false,
-        ),
-        bookmarkSettings: withBookmarkLoopDefaults(state.bookmarkSettings),
       );
 
       try {

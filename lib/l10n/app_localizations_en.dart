@@ -875,6 +875,28 @@ class AppLocalizationsEn extends AppLocalizations {
   String get communityCollectionEmpty => 'This collection has no audio yet';
 
   @override
+  String communityCollectionAuthor(String nickname) {
+    return 'By $nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownAuthor => 'Unknown author';
+
+  @override
+  String get communityCollectionUnknownPublishDate => 'Date unknown';
+
+  @override
+  String communityCollectionCover(String name) {
+    return '$name cover';
+  }
+
+  @override
+  String get communityCollectionShowMore => 'More';
+
+  @override
+  String get communityCollectionShowLess => 'Less';
+
+  @override
   String get sortCollections => 'Sort';
 
   @override
@@ -3925,7 +3947,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Onboarding reset; please restart the app to retake the survey';
 
   @override
-  String get discoverCommunityCollections => 'Discover Community Collections';
+  String get discoverCommunityCollections => 'Discover Resources';
 
   @override
   String get discoverEmpty => 'No curated collections yet';
@@ -3985,10 +4007,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get podcastPreviewEmpty => 'No episodes were found yet.';
 
   @override
-  String get communityBadge => 'Community';
+  String get localCollectionBadge => 'Local';
+
+  @override
+  String get communityBadge => 'Shared';
 
   @override
   String get communityDeprecatedBadge => 'Removed';
+
+  @override
+  String get podcastCollectionBadge => 'Podcast';
 
   @override
   String get addToMyCollections => 'Add to My Collections';
@@ -3999,10 +4027,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get communityCollectionSignInRequiredMessage =>
-      'Sign in to add community collections to My Collections and sync new files.';
+      'Sign in to add shared collections to My Collections and sync new files.';
 
   @override
   String get goLearn => 'Start Practicing';
+
+  @override
+  String get communityCollectionAdded => 'Added';
 
   @override
   String get removeFromMyCollections => 'Remove from My Collections';
@@ -4039,11 +4070,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get communityFileUnavailable =>
-      'This file was removed from the community collection';
+      'This file was removed from the shared collection';
 
   @override
   String communityFilesRemoved(int count) {
-    return '$count files were removed from community collections';
+    return '$count files were removed from shared collections';
   }
 
   @override
@@ -4802,6 +4833,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importAudioShort => 'Import';
 
   @override
+  String get cancelImport => 'Cancel Import';
+
+  @override
+  String get cancelingImport => 'Canceling Import…';
+
+  @override
   String importAudioSelectedCount(int count) {
     return 'Import $count';
   }
@@ -4875,7 +4912,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get audioDownloadFailed => 'Failed to download audio';
 
   @override
-  String get audioDownloadInProgress => 'Downloading audio';
+  String get audioDownloadInProgress => 'Downloading';
 
   @override
   String get audioImportComplete => 'Import complete';

@@ -200,11 +200,12 @@ void main() async {
   );
 }
 
-/// 匿名 ID 是附加事件属性，不是 PostHog distinct ID；其迟到不得丢弃已入 SDK 队列
-/// 的早期事件，也不得阻塞首帧。
+/// 本地版不安装原生统计的 Widget 包装层。
 Widget _analyticsRoot({required Widget child}) =>
     isLocalEdition ? child : PostHogWidget(child: child);
 
+/// 匿名 ID 是附加事件属性，不是 PostHog distinct ID；其迟到不得丢弃已入 SDK 队列
+/// 的早期事件，也不得阻塞首帧。
 Future<void> _registerAnonymousIdWhenReady(
   Future<String> anonymousIdReady,
   AnalyticsService analyticsService,
@@ -263,24 +264,27 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
         );
 
     WidgetsBinding.instance.addObserver(this);
-    final windowActivator =
-        widget.windowActivator ?? WindowManagerAppWindowActivator();
+    // 本地版没有支付回调，不创建平台链接监听器。
+    if (!isLocalEdition) {
+      final windowActivator =
+          widget.windowActivator ?? WindowManagerAppWindowActivator();
 
-    final paddleDeepLinkHandler = PaddleDeepLinkHandler(
-      refreshEntitlements: () async {
-        await _ensureThirdPartyDependentTasks();
-        if (!mounted || !ref.read(thirdPartyStartupProvider).hasValue) return;
-        await ref
-            .read(subscriptionControllerProvider.notifier)
-            .refreshAfterExternalCheckout();
-      },
-    );
-    final appDeepLinkRouter = AppDeepLinkRouter.forCurrentPlatform(
-      routes: [paddleDeepLinkHandler.route],
-      beforeDispatch: windowActivator.activate,
-    );
-    _appDeepLinkRouter = appDeepLinkRouter;
-    unawaited(appDeepLinkRouter.start());
+      final paddleDeepLinkHandler = PaddleDeepLinkHandler(
+        refreshEntitlements: () async {
+          await _ensureThirdPartyDependentTasks();
+          if (!mounted || !ref.read(thirdPartyStartupProvider).hasValue) return;
+          await ref
+              .read(subscriptionControllerProvider.notifier)
+              .refreshAfterExternalCheckout();
+        },
+      );
+      final appDeepLinkRouter = AppDeepLinkRouter.forCurrentPlatform(
+        routes: [paddleDeepLinkHandler.route],
+        beforeDispatch: windowActivator.activate,
+      );
+      _appDeepLinkRouter = appDeepLinkRouter;
+      unawaited(appDeepLinkRouter.start());
+    }
 
     // 新手引导 showcase 控制器全局注册（替代旧的 ShowCaseWidget InheritedWidget）。
     // 整段 tour 走完或被 dismiss 时，通过 GuideShowcaseBus 触发 controller 的

@@ -442,6 +442,22 @@
   "discoverEntryTitleA": "Discover Resources",
   "discoverEntrySubtitleA": "Podcasts, TOEFL, IELTS, CET-4/6, Interpreting...",
   "communityCollectionEmpty": "This collection has no audio yet",
+  "communityCollectionAuthor": "By {nickname}",
+  "@communityCollectionAuthor": {
+    "placeholders": {
+      "nickname": {"type": "String"}
+    }
+  },
+  "communityCollectionUnknownAuthor": "Unknown author",
+  "communityCollectionUnknownPublishDate": "Date unknown",
+  "communityCollectionCover": "{name} cover",
+  "@communityCollectionCover": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "communityCollectionShowMore": "More",
+  "communityCollectionShowLess": "Less",
   "sortCollections": "Sort",
   "gridView": "Grid View",
   "listView": "List View",
@@ -2090,7 +2106,7 @@
   "resetOnboarding": "Reset Onboarding Survey",
   "resetOnboardingDone": "Onboarding reset; please restart the app to retake the survey",
 
-  "discoverCommunityCollections": "Discover Community Collections",
+  "discoverCommunityCollections": "Discover Resources",
   "discoverEmpty": "No curated collections yet",
   "discoverLoadFailed": "Failed to load, tap to retry",
   "discoverRetry": "Retry",
@@ -2112,12 +2128,15 @@
   "podcastPreviewParseFailed": "This podcast feed format is not supported, so the episode list could not be read.",
   "podcastFeedBlocked": "This podcast source is blocking automated access on the current network. Try again later or switch to a different network.",
   "podcastPreviewEmpty": "No episodes were found yet.",
-  "communityBadge": "Community",
+  "localCollectionBadge": "Local",
+  "communityBadge": "Shared",
   "communityDeprecatedBadge": "Removed",
+  "podcastCollectionBadge": "Podcast",
   "addToMyCollections": "Add to My Collections",
   "communityCollectionSignInRequiredTitle": "Sign in to add collections",
-  "communityCollectionSignInRequiredMessage": "Sign in to add community collections to My Collections and sync new files.",
+  "communityCollectionSignInRequiredMessage": "Sign in to add shared collections to My Collections and sync new files.",
   "goLearn": "Start Practicing",
+  "communityCollectionAdded": "Added",
   "removeFromMyCollections": "Remove from My Collections",
   "enrollNeededTitle": "Add Collection First",
   "enrollNeededMessage": "Add this collection to My Collection, then you can start practicing.",
@@ -2132,8 +2151,8 @@
   "removeCommunityConfirmMessage": "All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.",
   "removeCommunityConfirmConfirm": "Remove",
   "communityCollectionDeprecated": "This collection has been removed. You can still use the local copy.",
-  "communityFileUnavailable": "This file was removed from the community collection",
-  "communityFilesRemoved": "{count} files were removed from community collections",
+  "communityFileUnavailable": "This file was removed from the shared collection",
+  "communityFilesRemoved": "{count} files were removed from shared collections",
   "@communityFilesRemoved": {
     "placeholders": {
       "count": {"type": "int"}
@@ -2414,6 +2433,8 @@
   "baiduNetdiskDisconnect": "Disconnect Baidu Netdisk",
   "baiduNetdiskNoSupportedAudio": "No supported media files found in this folder.",
   "importAudioShort": "Import",
+  "cancelImport": "Cancel Import",
+  "cancelingImport": "Canceling Import…",
   "importAudioSelectedCount": "Import {count}",
   "@importAudioSelectedCount": {
     "placeholders": {
@@ -2457,7 +2478,7 @@
   "audioUrlNotDirectAudio": "This link is not a direct audio file",
   "audioUrlDuplicate": "An audio file with this name already exists",
   "audioDownloadFailed": "Failed to download audio",
-  "audioDownloadInProgress": "Downloading audio",
+  "audioDownloadInProgress": "Downloading",
   "audioImportComplete": "Import complete",
   "audioImportCanceled": "Audio import canceled",
   "cancelDownload": "Cancel Download",

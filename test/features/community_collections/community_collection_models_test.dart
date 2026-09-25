@@ -5,6 +5,35 @@ import 'package:echo_loop/models/collection.dart';
 
 void main() {
   test(
+    'community collection catalog entry caches its optional author nickname',
+    () {
+      final catalogEntry = PublicCollectionCatalogEntry.fromJson({
+        'id': 'collection-1',
+        'name': 'Community English',
+        'description': 'A description',
+        'coverUrl': null,
+        'authorNickname': 'Echo Studio',
+        'fileCount': 3,
+        'publishedAt': '2026-09-22T00:00:00.000Z',
+      });
+
+      expect(catalogEntry.authorNickname, 'Echo Studio');
+      expect(catalogEntry.toJson()['authorNickname'], 'Echo Studio');
+
+      final legacyCatalogEntry = PublicCollectionCatalogEntry.fromJson({
+        'id': 'legacy-collection',
+        'name': 'Legacy collection',
+        'description': null,
+        'coverUrl': null,
+        'fileCount': 0,
+        'publishedAt': '2026-09-22T00:00:00.000Z',
+      });
+      expect(legacyCatalogEntry.authorNickname, isNull);
+      expect(legacyCatalogEntry.updatedAt, legacyCatalogEntry.publishedAt);
+    },
+  );
+
+  test(
     'legacy collection source is read as community and stored canonically',
     () {
       expect(

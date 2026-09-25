@@ -14,6 +14,7 @@
 library;
 
 import '../config/app_capabilities.dart';
+import '../config/local_backend_policy.dart';
 import 'package:dio/dio.dart';
 
 import 'api_log_interceptor.dart';
@@ -60,25 +61,9 @@ Dio createBackendDio({
   );
   if (isLocalEdition) {
     dio.interceptors.add(
-      InterceptorsWrapper(
-        onRequest: (options, handler) {
-          // 仅资源客户端可读取同源白名单；不放行写操作或其它业务接口。
-          if (allowAnonymousResources &&
-              options.method == 'GET' &&
-              options.uri.origin == Uri.parse(baseUrl).origin &&
-              _isAnonymousResourcePath(options.uri.path)) {
-            options.followRedirects = false;
-            handler.next(options);
-            return;
-          }
-          handler.reject(
-            DioException(
-              requestOptions: options,
-              type: DioExceptionType.cancel,
-              message: '本地版已禁用官方业务服务',
-            ),
-          );
-        },
+      LocalBackendPolicy(
+        baseUrl: baseUrl,
+        allowAnonymousResources: allowAnonymousResources,
       ),
     );
   }
@@ -89,12 +74,6 @@ Dio createBackendDio({
   dio.interceptors.add(EntitlementSignalInterceptor());
   return dio;
 }
-
-/// 匿名精选目录、合集元数据和字幕；按完整路径匹配防止扩大后端权限。
-bool _isAnonymousResourcePath(String path) =>
-    path == '/api/v1/catalog' ||
-    path == '/api/v2/collections' ||
-    RegExp(r'^/api/v2/collections/[^/]+(?:/files/[^/]+)?$').hasMatch(path);
 
 /// 构造需要 Supabase 登录的自建后端 Dio。
 ///

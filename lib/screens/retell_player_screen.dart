@@ -420,6 +420,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     if (!mounted) return;
     final l10n = AppLocalizations.of(context);
     await ensureSignedInForAction(
+      access: ActionAccess.ai,
       context: context,
       ref: ref,
       title:

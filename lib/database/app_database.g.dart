@@ -1965,6 +1965,28 @@ class $CollectionsTable extends Collections
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _authorNicknameMeta = const VerificationMeta(
+    'authorNickname',
+  );
+  @override
+  late final GeneratedColumn<String> authorNickname = GeneratedColumn<String>(
+    'author_nickname',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _publishedAtMeta = const VerificationMeta(
+    'publishedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> publishedAt = GeneratedColumn<DateTime>(
+    'published_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _deprecatedAtMeta = const VerificationMeta(
     'deprecatedAt',
   );
@@ -2044,6 +2066,8 @@ class $CollectionsTable extends Collections
     remoteId,
     coverUrl,
     description,
+    authorNickname,
+    publishedAt,
     deprecatedAt,
     podcastInputUrl,
     podcastFeedUrl,
@@ -2137,6 +2161,24 @@ class $CollectionsTable extends Collections
         description.isAcceptableOrUnknown(
           data['description']!,
           _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('author_nickname')) {
+      context.handle(
+        _authorNicknameMeta,
+        authorNickname.isAcceptableOrUnknown(
+          data['author_nickname']!,
+          _authorNicknameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('published_at')) {
+      context.handle(
+        _publishedAtMeta,
+        publishedAt.isAcceptableOrUnknown(
+          data['published_at']!,
+          _publishedAtMeta,
         ),
       );
     }
@@ -2247,6 +2289,14 @@ class $CollectionsTable extends Collections
         DriftSqlType.string,
         data['${effectivePrefix}description'],
       ),
+      authorNickname: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}author_nickname'],
+      ),
+      publishedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}published_at'],
+      ),
       deprecatedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}deprecated_at'],
@@ -2318,6 +2368,12 @@ class Collection extends DataClass implements Insertable<Collection> {
   /// 社区合集描述；用户自建合集目前为 null。
   final String? description;
 
+  /// 社区合集发布者昵称；老数据及匿名发布者保持 null。
+  final String? authorNickname;
+
+  /// 社区合集发布日期；老数据保持 null。
+  final DateTime? publishedAt;
+
   /// 社区合集被后端标记下架的时间；非 null 时 UI 置灰、sync 不再请求。
   /// source='local' 永远为 null。
   final DateTime? deprecatedAt;
@@ -2348,6 +2404,8 @@ class Collection extends DataClass implements Insertable<Collection> {
     this.remoteId,
     this.coverUrl,
     this.description,
+    this.authorNickname,
+    this.publishedAt,
     this.deprecatedAt,
     this.podcastInputUrl,
     this.podcastFeedUrl,
@@ -2376,6 +2434,12 @@ class Collection extends DataClass implements Insertable<Collection> {
     }
     if (!nullToAbsent || description != null) {
       map['description'] = Variable<String>(description);
+    }
+    if (!nullToAbsent || authorNickname != null) {
+      map['author_nickname'] = Variable<String>(authorNickname);
+    }
+    if (!nullToAbsent || publishedAt != null) {
+      map['published_at'] = Variable<DateTime>(publishedAt);
     }
     if (!nullToAbsent || deprecatedAt != null) {
       map['deprecated_at'] = Variable<DateTime>(deprecatedAt);
@@ -2423,6 +2487,12 @@ class Collection extends DataClass implements Insertable<Collection> {
       description: description == null && nullToAbsent
           ? const Value.absent()
           : Value(description),
+      authorNickname: authorNickname == null && nullToAbsent
+          ? const Value.absent()
+          : Value(authorNickname),
+      publishedAt: publishedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(publishedAt),
       deprecatedAt: deprecatedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deprecatedAt),
@@ -2461,6 +2531,8 @@ class Collection extends DataClass implements Insertable<Collection> {
       remoteId: serializer.fromJson<String?>(json['remoteId']),
       coverUrl: serializer.fromJson<String?>(json['coverUrl']),
       description: serializer.fromJson<String?>(json['description']),
+      authorNickname: serializer.fromJson<String?>(json['authorNickname']),
+      publishedAt: serializer.fromJson<DateTime?>(json['publishedAt']),
       deprecatedAt: serializer.fromJson<DateTime?>(json['deprecatedAt']),
       podcastInputUrl: serializer.fromJson<String?>(json['podcastInputUrl']),
       podcastFeedUrl: serializer.fromJson<String?>(json['podcastFeedUrl']),
@@ -2488,6 +2560,8 @@ class Collection extends DataClass implements Insertable<Collection> {
       'remoteId': serializer.toJson<String?>(remoteId),
       'coverUrl': serializer.toJson<String?>(coverUrl),
       'description': serializer.toJson<String?>(description),
+      'authorNickname': serializer.toJson<String?>(authorNickname),
+      'publishedAt': serializer.toJson<DateTime?>(publishedAt),
       'deprecatedAt': serializer.toJson<DateTime?>(deprecatedAt),
       'podcastInputUrl': serializer.toJson<String?>(podcastInputUrl),
       'podcastFeedUrl': serializer.toJson<String?>(podcastFeedUrl),
@@ -2513,6 +2587,8 @@ class Collection extends DataClass implements Insertable<Collection> {
     Value<String?> remoteId = const Value.absent(),
     Value<String?> coverUrl = const Value.absent(),
     Value<String?> description = const Value.absent(),
+    Value<String?> authorNickname = const Value.absent(),
+    Value<DateTime?> publishedAt = const Value.absent(),
     Value<DateTime?> deprecatedAt = const Value.absent(),
     Value<String?> podcastInputUrl = const Value.absent(),
     Value<String?> podcastFeedUrl = const Value.absent(),
@@ -2531,6 +2607,10 @@ class Collection extends DataClass implements Insertable<Collection> {
     remoteId: remoteId.present ? remoteId.value : this.remoteId,
     coverUrl: coverUrl.present ? coverUrl.value : this.coverUrl,
     description: description.present ? description.value : this.description,
+    authorNickname: authorNickname.present
+        ? authorNickname.value
+        : this.authorNickname,
+    publishedAt: publishedAt.present ? publishedAt.value : this.publishedAt,
     deprecatedAt: deprecatedAt.present ? deprecatedAt.value : this.deprecatedAt,
     podcastInputUrl: podcastInputUrl.present
         ? podcastInputUrl.value
@@ -2567,6 +2647,12 @@ class Collection extends DataClass implements Insertable<Collection> {
       description: data.description.present
           ? data.description.value
           : this.description,
+      authorNickname: data.authorNickname.present
+          ? data.authorNickname.value
+          : this.authorNickname,
+      publishedAt: data.publishedAt.present
+          ? data.publishedAt.value
+          : this.publishedAt,
       deprecatedAt: data.deprecatedAt.present
           ? data.deprecatedAt.value
           : this.deprecatedAt,
@@ -2602,6 +2688,8 @@ class Collection extends DataClass implements Insertable<Collection> {
           ..write('remoteId: $remoteId, ')
           ..write('coverUrl: $coverUrl, ')
           ..write('description: $description, ')
+          ..write('authorNickname: $authorNickname, ')
+          ..write('publishedAt: $publishedAt, ')
           ..write('deprecatedAt: $deprecatedAt, ')
           ..write('podcastInputUrl: $podcastInputUrl, ')
           ..write('podcastFeedUrl: $podcastFeedUrl, ')
@@ -2625,6 +2713,8 @@ class Collection extends DataClass implements Insertable<Collection> {
     remoteId,
     coverUrl,
     description,
+    authorNickname,
+    publishedAt,
     deprecatedAt,
     podcastInputUrl,
     podcastFeedUrl,
@@ -2647,6 +2737,8 @@ class Collection extends DataClass implements Insertable<Collection> {
           other.remoteId == this.remoteId &&
           other.coverUrl == this.coverUrl &&
           other.description == this.description &&
+          other.authorNickname == this.authorNickname &&
+          other.publishedAt == this.publishedAt &&
           other.deprecatedAt == this.deprecatedAt &&
           other.podcastInputUrl == this.podcastInputUrl &&
           other.podcastFeedUrl == this.podcastFeedUrl &&
@@ -2667,6 +2759,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
   final Value<String?> remoteId;
   final Value<String?> coverUrl;
   final Value<String?> description;
+  final Value<String?> authorNickname;
+  final Value<DateTime?> publishedAt;
   final Value<DateTime?> deprecatedAt;
   final Value<String?> podcastInputUrl;
   final Value<String?> podcastFeedUrl;
@@ -2686,6 +2780,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.remoteId = const Value.absent(),
     this.coverUrl = const Value.absent(),
     this.description = const Value.absent(),
+    this.authorNickname = const Value.absent(),
+    this.publishedAt = const Value.absent(),
     this.deprecatedAt = const Value.absent(),
     this.podcastInputUrl = const Value.absent(),
     this.podcastFeedUrl = const Value.absent(),
@@ -2706,6 +2802,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     this.remoteId = const Value.absent(),
     this.coverUrl = const Value.absent(),
     this.description = const Value.absent(),
+    this.authorNickname = const Value.absent(),
+    this.publishedAt = const Value.absent(),
     this.deprecatedAt = const Value.absent(),
     this.podcastInputUrl = const Value.absent(),
     this.podcastFeedUrl = const Value.absent(),
@@ -2729,6 +2827,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     Expression<String>? remoteId,
     Expression<String>? coverUrl,
     Expression<String>? description,
+    Expression<String>? authorNickname,
+    Expression<DateTime>? publishedAt,
     Expression<DateTime>? deprecatedAt,
     Expression<String>? podcastInputUrl,
     Expression<String>? podcastFeedUrl,
@@ -2749,6 +2849,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       if (remoteId != null) 'remote_id': remoteId,
       if (coverUrl != null) 'cover_url': coverUrl,
       if (description != null) 'description': description,
+      if (authorNickname != null) 'author_nickname': authorNickname,
+      if (publishedAt != null) 'published_at': publishedAt,
       if (deprecatedAt != null) 'deprecated_at': deprecatedAt,
       if (podcastInputUrl != null) 'podcast_input_url': podcastInputUrl,
       if (podcastFeedUrl != null) 'podcast_feed_url': podcastFeedUrl,
@@ -2773,6 +2875,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     Value<String?>? remoteId,
     Value<String?>? coverUrl,
     Value<String?>? description,
+    Value<String?>? authorNickname,
+    Value<DateTime?>? publishedAt,
     Value<DateTime?>? deprecatedAt,
     Value<String?>? podcastInputUrl,
     Value<String?>? podcastFeedUrl,
@@ -2793,6 +2897,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
       remoteId: remoteId ?? this.remoteId,
       coverUrl: coverUrl ?? this.coverUrl,
       description: description ?? this.description,
+      authorNickname: authorNickname ?? this.authorNickname,
+      publishedAt: publishedAt ?? this.publishedAt,
       deprecatedAt: deprecatedAt ?? this.deprecatedAt,
       podcastInputUrl: podcastInputUrl ?? this.podcastInputUrl,
       podcastFeedUrl: podcastFeedUrl ?? this.podcastFeedUrl,
@@ -2841,6 +2947,12 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
     if (description.present) {
       map['description'] = Variable<String>(description.value);
     }
+    if (authorNickname.present) {
+      map['author_nickname'] = Variable<String>(authorNickname.value);
+    }
+    if (publishedAt.present) {
+      map['published_at'] = Variable<DateTime>(publishedAt.value);
+    }
     if (deprecatedAt.present) {
       map['deprecated_at'] = Variable<DateTime>(deprecatedAt.value);
     }
@@ -2883,6 +2995,8 @@ class CollectionsCompanion extends UpdateCompanion<Collection> {
           ..write('remoteId: $remoteId, ')
           ..write('coverUrl: $coverUrl, ')
           ..write('description: $description, ')
+          ..write('authorNickname: $authorNickname, ')
+          ..write('publishedAt: $publishedAt, ')
           ..write('deprecatedAt: $deprecatedAt, ')
           ..write('podcastInputUrl: $podcastInputUrl, ')
           ..write('podcastFeedUrl: $podcastFeedUrl, ')
@@ -16552,6 +16666,8 @@ typedef $$CollectionsTableCreateCompanionBuilder =
       Value<String?> remoteId,
       Value<String?> coverUrl,
       Value<String?> description,
+      Value<String?> authorNickname,
+      Value<DateTime?> publishedAt,
       Value<DateTime?> deprecatedAt,
       Value<String?> podcastInputUrl,
       Value<String?> podcastFeedUrl,
@@ -16573,6 +16689,8 @@ typedef $$CollectionsTableUpdateCompanionBuilder =
       Value<String?> remoteId,
       Value<String?> coverUrl,
       Value<String?> description,
+      Value<String?> authorNickname,
+      Value<DateTime?> publishedAt,
       Value<DateTime?> deprecatedAt,
       Value<String?> podcastInputUrl,
       Value<String?> podcastFeedUrl,
@@ -16676,6 +16794,16 @@ class $$CollectionsTableFilterComposer
 
   ColumnFilters<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get authorNickname => $composableBuilder(
+    column: $table.authorNickname,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get publishedAt => $composableBuilder(
+    column: $table.publishedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -16799,6 +16927,16 @@ class $$CollectionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get authorNickname => $composableBuilder(
+    column: $table.authorNickname,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get publishedAt => $composableBuilder(
+    column: $table.publishedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get deprecatedAt => $composableBuilder(
     column: $table.deprecatedAt,
     builder: (column) => ColumnOrderings(column),
@@ -16875,6 +17013,16 @@ class $$CollectionsTableAnnotationComposer
 
   GeneratedColumn<String> get description => $composableBuilder(
     column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get authorNickname => $composableBuilder(
+    column: $table.authorNickname,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get publishedAt => $composableBuilder(
+    column: $table.publishedAt,
     builder: (column) => column,
   );
 
@@ -16974,6 +17122,8 @@ class $$CollectionsTableTableManager
                 Value<String?> remoteId = const Value.absent(),
                 Value<String?> coverUrl = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<String?> authorNickname = const Value.absent(),
+                Value<DateTime?> publishedAt = const Value.absent(),
                 Value<DateTime?> deprecatedAt = const Value.absent(),
                 Value<String?> podcastInputUrl = const Value.absent(),
                 Value<String?> podcastFeedUrl = const Value.absent(),
@@ -16993,6 +17143,8 @@ class $$CollectionsTableTableManager
                 remoteId: remoteId,
                 coverUrl: coverUrl,
                 description: description,
+                authorNickname: authorNickname,
+                publishedAt: publishedAt,
                 deprecatedAt: deprecatedAt,
                 podcastInputUrl: podcastInputUrl,
                 podcastFeedUrl: podcastFeedUrl,
@@ -17014,6 +17166,8 @@ class $$CollectionsTableTableManager
                 Value<String?> remoteId = const Value.absent(),
                 Value<String?> coverUrl = const Value.absent(),
                 Value<String?> description = const Value.absent(),
+                Value<String?> authorNickname = const Value.absent(),
+                Value<DateTime?> publishedAt = const Value.absent(),
                 Value<DateTime?> deprecatedAt = const Value.absent(),
                 Value<String?> podcastInputUrl = const Value.absent(),
                 Value<String?> podcastFeedUrl = const Value.absent(),
@@ -17033,6 +17187,8 @@ class $$CollectionsTableTableManager
                 remoteId: remoteId,
                 coverUrl: coverUrl,
                 description: description,
+                authorNickname: authorNickname,
+                publishedAt: publishedAt,
                 deprecatedAt: deprecatedAt,
                 podcastInputUrl: podcastInputUrl,
                 podcastFeedUrl: podcastFeedUrl,

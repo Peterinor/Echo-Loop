@@ -9,10 +9,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../l10n/app_localizations.dart';
+import '../../../theme/app_theme.dart';
+import '../../../widgets/common/collection_added_badge.dart';
 
 /// 单个可订阅播客卡片。
 ///
-/// trailing 三态：[subscribing] → 转圈；[subscribed] → 「去学习」；
+/// trailing 三态：[subscribing] → 转圈；[subscribed] → 对勾和「已添加」角标；
 /// 否则 → 「+」订阅按钮。[onOpen] 为 null 时内容区不可点（无预览页场景）。
 class PodcastSubscribeTile extends StatelessWidget {
   final String? imageUrl;
@@ -24,7 +26,6 @@ class PodcastSubscribeTile extends StatelessWidget {
   /// 点击内容区（打开详情/预览）；为 null 时内容区不可点。
   final VoidCallback? onOpen;
   final VoidCallback onSubscribe;
-  final VoidCallback onGoLearn;
 
   const PodcastSubscribeTile({
     super.key,
@@ -33,7 +34,6 @@ class PodcastSubscribeTile extends StatelessWidget {
     required this.subscribed,
     required this.subscribing,
     required this.onSubscribe,
-    required this.onGoLearn,
     this.subtitle,
     this.onOpen,
   });
@@ -46,49 +46,64 @@ class PodcastSubscribeTile extends StatelessWidget {
       // 横向 margin 交由外层列表控制，保证与同容器内其他控件（如搜索框）左右对齐。
       margin: const EdgeInsets.symmetric(vertical: 3),
       clipBehavior: Clip.antiAlias,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Stack(
         children: [
-          Expanded(
-            child: InkWell(
-              onTap: onOpen,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 12, 0, 12),
-                child: Row(
-                  children: [
-                    PodcastCover(imageUrl: imageUrl, size: 56),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            title,
-                            style: theme.textTheme.titleMedium,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          if ((subtitle ?? '').isNotEmpty) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              subtitle!,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: onOpen,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 0, 12),
+                    child: Row(
+                      children: [
+                        PodcastCover(imageUrl: imageUrl, size: 56),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                title,
+                                style: theme.textTheme.titleMedium,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ],
-                      ),
+                              if ((subtitle ?? '').isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  subtitle!,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
+                ),
+              ),
+              _buildTrailing(context, l10n, theme),
+            ],
+          ),
+          // trailing 的 Stack 只按对勾高度布局，因此角标相对整张卡片定位。
+          if (subscribed && !subscribing)
+            Positioned(
+              top: 4,
+              right: 4,
+              child: ExcludeSemantics(
+                child: CollectionAddedBadge(
+                  label: l10n.communityCollectionAdded,
                 ),
               ),
             ),
-          ),
-          _buildTrailing(context, l10n, theme),
         ],
       ),
     );
@@ -113,17 +128,13 @@ class PodcastSubscribeTile extends StatelessWidget {
     }
     if (subscribed) {
       return SizedBox(
-        width: 72,
-        child: InkWell(
-          onTap: onGoLearn,
-          child: Center(
-            child: Text(
-              l10n.goLearn,
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
+        width: 56,
+        child: Semantics(
+          label: l10n.communityCollectionAdded,
+          child: const Center(
+            child: Icon(
+              Icons.check_circle_outline_rounded,
+              color: AppTheme.successColor,
             ),
           ),
         ),

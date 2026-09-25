@@ -21,6 +21,23 @@ class CommunitySubtitleUnavailable implements Exception {
   String toString() => 'CommunitySubtitleUnavailable($fileId)';
 }
 
+/// v2 文件详情中不存在该文件。
+class CommunityFileNotFound implements Exception {
+  final String fileId;
+
+  const CommunityFileNotFound(this.fileId);
+
+  @override
+  String toString() => 'CommunityFileNotFound($fileId)';
+}
+
+/// v2 公开合集详情中不存在该合集。
+class CommunityCollectionNotFound implements Exception {
+  final String collectionId;
+
+  const CommunityCollectionNotFound(this.collectionId);
+}
+
 /// 社区合集 v2 匿名只读 API 客户端。
 class CommunityCollectionApi {
   final Dio _dio;
@@ -55,30 +72,41 @@ class CommunityCollectionApi {
     return _parsePage(response.data);
   }
 
-  /// 从合集详情读取分页文件；线上 v2 没有独立的 `/files` 列表端点。
-  Future<CommunityCollectionFilesPage> getCollectionFiles(
+  /// 获取指定社区合集元信息和一页文件元数据。
+  Future<CommunityCollectionDetailPage> getCollectionDetail(
     String collectionId, {
     String? cursor,
     CancelToken? cancelToken,
   }) async {
-    final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v2/collections/${Uri.encodeComponent(collectionId)}',
-      queryParameters: _cursorParameters(cursor),
-      cancelToken: cancelToken,
-    );
-    final data = _responseObject(response.data);
-    final items = _list(data, 'items')
-        .map(_object)
-        .map(CommunityCollectionFile.fromJson)
-        .toList(growable: false);
-    return CommunityCollectionFilesPage(
-      items: items,
-      nextCursor: _nullableString(data, 'nextCursor'),
-    );
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/api/v2/collections/${Uri.encodeComponent(collectionId)}',
+        queryParameters: _cursorParameters(cursor),
+        cancelToken: cancelToken,
+      );
+      final data = _responseObject(response.data);
+      final collection = PublicCollectionCatalogEntry.fromJson(
+        _object(data['collection']),
+      );
+      final items = _list(data, 'items')
+          .map(_object)
+          .map(CommunityCollectionFile.fromJson)
+          .toList(growable: false);
+      return CommunityCollectionDetailPage(
+        collection: collection,
+        items: items,
+        nextCursor: _nullableString(data, 'nextCursor'),
+      );
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        throw CommunityCollectionNotFound(collectionId);
+      }
+      rethrow;
+    }
   }
 
-  /// 从文件详情的 subtitle 字段读取字幕，保留现有下载层使用的 DTO。
-  Future<CommunitySubtitle> getSubtitle(
+  /// 获取指定文件元数据和字幕；字幕时间戳在 DTO 边界转为 Dart Duration。
+  Future<CommunityCollectionFileDetail> getFileDetail(
     String collectionId,
     String fileId, {
     CancelToken? cancelToken,
@@ -89,13 +117,15 @@ class CommunityCollectionApi {
         cancelToken: cancelToken,
       );
       final data = _responseObject(response.data);
-      return CommunitySubtitle.fromJson({
-        ..._object(data['subtitle']),
-        'fileId': fileId,
-      });
+      return CommunityCollectionFileDetail(
+        file: CommunityCollectionFile.fromJson(_object(data['file'])),
+        subtitle: CommunitySubtitle.fromJson(_object(data['subtitle'])),
+      );
     } on DioException catch (error) {
-      if (error.response?.statusCode == 404 ||
-          error.response?.statusCode == 422) {
+      if (error.response?.statusCode == 404) {
+        throw CommunityFileNotFound(fileId);
+      }
+      if (error.response?.statusCode == 422) {
         throw CommunitySubtitleUnavailable(fileId);
       }
       rethrow;
@@ -111,7 +141,7 @@ class CommunityCollectionApi {
     final data = _responseObject(raw);
     final items = _list(data, 'items')
         .map(_object)
-        .map(PublicCollectionSummary.fromJson)
+        .map(PublicCollectionCatalogEntry.fromJson)
         .toList(growable: false);
     return PublicCollectionPage(
       items: items,

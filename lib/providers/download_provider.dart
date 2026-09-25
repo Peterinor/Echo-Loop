@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/background_file_download_service.dart';
 import '../services/download/download_resource.dart';
 import '../services/download/download_task_coordinator.dart';
 import '../services/download/download_task_store.dart';
@@ -7,6 +8,12 @@ import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
     show sharedPreferencesProvider;
 
 final downloadResourcesProvider = Provider<List<DownloadResource>>((ref) => const []);
+
+/// 用户文件后台下载服务；模型等专用资源继续使用各自的下载管理器。
+final backgroundFileDownloadServiceProvider =
+    Provider<BackgroundFileDownloadService>(
+      (ref) => BackgroundFileDownloadService(),
+    );
 
 /// 启动后可静默拉取的资源 ID；业务模块注册后由应用壳在首帧后触发。
 final startupDownloadResourceIdsProvider = Provider<List<String>>((ref) => const []);

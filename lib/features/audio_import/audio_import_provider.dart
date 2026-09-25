@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../../models/audio_item.dart';
 import '../../providers/audio_library_provider.dart';
 import '../../providers/collection_provider.dart';
+import '../../providers/download_provider.dart';
 import 'audio_import_models.dart';
 import 'audio_import_service.dart';
 
@@ -13,7 +14,9 @@ part 'audio_import_provider.g.dart';
 
 @riverpod
 AudioImportService audioImportService(AudioImportServiceRef ref) {
-  return AudioImportService();
+  return AudioImportService(
+    backgroundDownloader: ref.watch(backgroundFileDownloadServiceProvider),
+  );
 }
 
 @riverpod
@@ -74,7 +77,9 @@ class AudioImportController extends _$AudioImportController {
       return item;
     } on AudioImportException catch (e) {
       if (sid != _sessionId) return null;
-      state = AudioImportFailed(e);
+      state = e.code == AudioImportFailureCode.canceled
+          ? const AudioImportIdle()
+          : AudioImportFailed(e);
       return null;
     } catch (e) {
       if (sid != _sessionId) return null;
@@ -92,10 +97,7 @@ class AudioImportController extends _$AudioImportController {
   }
 
   Future<void> cancel() async {
-    _sessionId++;
     _cancelToken?.cancel('user-cancelled');
-    _cancelToken = null;
-    state = const AudioImportIdle();
   }
 
   void reset() {

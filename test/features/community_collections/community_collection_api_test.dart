@@ -7,9 +7,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/features/community_collections/data/community_collection_api.dart';
 
 class _ApiAdapter implements HttpClientAdapter {
-  _ApiAdapter({this.statusCode = 200, this.missingSubtitle = false});
   final int statusCode;
   final bool missingSubtitle;
+
+  _ApiAdapter({this.statusCode = 200, this.missingSubtitle = false});
+
   final requests = <RequestOptions>[];
 
   @override
@@ -27,14 +29,25 @@ class _ApiAdapter implements HttpClientAdapter {
             'name': 'Community English',
             'description': null,
             'coverUrl': 'https://cdn.example/cover.jpg',
+            'authorNickname': 'Echo Studio',
             'fileCount': 1,
             'publishedAt': '2026-09-22T00:00:00.000Z',
+            'updatedAt': '2026-09-23T00:00:00.000Z',
           },
         ],
         'nextCursor': 'next-1',
       },
       '/api/v2/collections/collection-1' => {
-        'collection': {'id': 'collection-1'},
+        'collection': {
+          'id': 'collection-1',
+          'name': 'Community English',
+          'description': 'Fresh description',
+          'coverUrl': 'https://cdn.example/cover.jpg',
+          'authorNickname': 'Echo Studio',
+          'fileCount': 1,
+          'publishedAt': '2026-09-22T00:00:00.000Z',
+          'updatedAt': '2026-09-23T00:00:00.000Z',
+        },
         'items': [
           {
             'id': 'file-1',
@@ -52,7 +65,18 @@ class _ApiAdapter implements HttpClientAdapter {
         'nextCursor': null,
       },
       '/api/v2/collections/collection-1/files/file-1' => {
-        'file': {'id': 'file-1'},
+        'file': {
+          'id': 'file-1',
+          'title': 'Lesson 1',
+          'description': null,
+          'mediaType': 'audio',
+          'durationSec': 42,
+          'fileSizeBytes': 1234,
+          'difficulty': 'B1',
+          'publishedAt': '2026-09-21T00:00:00.000Z',
+          'sortOrder': 0,
+          'mediaUrl': 'https://cdn.example/file.m4a',
+        },
         'subtitle': missingSubtitle
             ? null
             : {
@@ -68,7 +92,7 @@ class _ApiAdapter implements HttpClientAdapter {
     };
     return ResponseBody(
       Stream.value(Uint8List.fromList(utf8.encode(jsonEncode(payload)))),
-      payload.isEmpty ? 404 : statusCode,
+      statusCode,
       headers: {
         'content-type': ['application/json'],
       },
@@ -80,34 +104,39 @@ class _ApiAdapter implements HttpClientAdapter {
 }
 
 void main() {
-  for (final statusCode in [404, 422, 503]) {
-    test('文件详情 HTTP $statusCode 保留失败语义', () async {
-      final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
-        ..httpClientAdapter = _ApiAdapter(statusCode: statusCode);
-      addTearDown(dio.close);
-      await expectLater(
-        CommunityCollectionApi.withDio(
-          dio,
-        ).getSubtitle('collection-1', 'file-1'),
-        throwsA(
-          statusCode == 503
-              ? isA<DioException>()
-              : isA<CommunitySubtitleUnavailable>(),
-        ),
-      );
-    });
-  }
   test('缺少 subtitle 对象时明确失败，不生成空字幕', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
       ..httpClientAdapter = _ApiAdapter(missingSubtitle: true);
     addTearDown(dio.close);
     await expectLater(
-      CommunityCollectionApi.withDio(dio).getSubtitle('collection-1', 'file-1'),
+      CommunityCollectionApi.withDio(
+        dio,
+      ).getFileDetail('collection-1', 'file-1'),
       throwsA(isA<FormatException>()),
     );
   });
+  test('文件服务故障保留网络错误，不误报字幕不存在', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
+      ..httpClientAdapter = _ApiAdapter(statusCode: 503);
+    addTearDown(dio.close);
+    await expectLater(
+      CommunityCollectionApi.withDio(
+        dio,
+      ).getFileDetail('collection-1', 'file-1'),
+      throwsA(isA<DioException>()),
+    );
+  });
+  test('合集下架保留独立错误语义', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
+      ..httpClientAdapter = _ApiAdapter(statusCode: 404);
+    addTearDown(dio.close);
+    await expectLater(
+      CommunityCollectionApi.withDio(dio).getCollectionDetail('collection-1'),
+      throwsA(isA<CommunityCollectionNotFound>()),
+    );
+  });
   test(
-    'v2 client uses cursor-only pagination and parses collection summary',
+    'v2 client uses cursor-only pagination and parses collection catalog entry',
     () async {
       final adapter = _ApiAdapter();
       final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
@@ -118,6 +147,8 @@ void main() {
 
       expect(page.items.single.id, 'collection-1');
       expect(page.items.single.fileCount, 1);
+      expect(page.items.single.authorNickname, 'Echo Studio');
+      expect(page.items.single.updatedAt, DateTime.utc(2026, 9, 23));
       expect(adapter.requests.single.queryParameters, {'cursor': 'cursor-2'});
       expect(
         adapter.requests.single.queryParameters.containsKey('page'),
@@ -134,22 +165,49 @@ void main() {
         ..httpClientAdapter = adapter;
       final api = CommunityCollectionApi.withDio(dio);
 
-      final files = await api.getCollectionFiles(
+      final detail = await api.getCollectionDetail(
         'collection-1',
         cursor: 'files-2',
       );
-      final subtitle = await api.getSubtitle('collection-1', 'file-1');
+      expect(adapter.requests.single.queryParameters, {'cursor': 'files-2'});
+      final fileDetail = await api.getFileDetail('collection-1', 'file-1');
 
-      expect(files.items.single.mediaType.name, 'audio');
-      expect(files.items.single.difficulty?.name, 'b1');
-      expect(subtitle.fileId, 'file-1');
-      expect(subtitle.sentences.single.endTime.inMilliseconds, 1250);
-      expect(subtitle.words.single.word, 'Hello');
-      expect(adapter.requests.first.queryParameters, {'cursor': 'files-2'});
-      expect(adapter.requests.map((r) => r.uri.path), [
-        '/api/v2/collections/collection-1',
+      expect(detail.collection.description, 'Fresh description');
+      expect(detail.collection.updatedAt, DateTime.utc(2026, 9, 23));
+      expect(detail.items.single.mediaType.name, 'audio');
+      expect(detail.items.single.difficulty?.name, 'b1');
+      expect(fileDetail.file.fileSizeBytes, 1234);
+      expect(fileDetail.subtitle.sentences.single.endTime.inMilliseconds, 1250);
+      expect(fileDetail.subtitle.words.single.word, 'Hello');
+      expect(adapter.requests[0].uri.path, '/api/v2/collections/collection-1');
+      expect(
+        adapter.requests[1].uri.path,
         '/api/v2/collections/collection-1/files/file-1',
-      ]);
+      );
+    },
+  );
+
+  test(
+    'v2 file detail keeps missing-file and missing-subtitle errors distinct',
+    () async {
+      final missingFileDio = Dio(BaseOptions(baseUrl: 'https://api.example'))
+        ..httpClientAdapter = _ApiAdapter(statusCode: 404);
+      final missingSubtitleDio = Dio(
+        BaseOptions(baseUrl: 'https://api.example'),
+      )..httpClientAdapter = _ApiAdapter(statusCode: 422);
+
+      await expectLater(
+        CommunityCollectionApi.withDio(
+          missingFileDio,
+        ).getFileDetail('collection-1', 'file-1'),
+        throwsA(isA<CommunityFileNotFound>()),
+      );
+      await expectLater(
+        CommunityCollectionApi.withDio(
+          missingSubtitleDio,
+        ).getFileDetail('collection-1', 'file-1'),
+        throwsA(isA<CommunitySubtitleUnavailable>()),
+      );
     },
   );
 }

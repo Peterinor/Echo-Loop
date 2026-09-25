@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../config/app_capabilities.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../providers/collection_provider.dart';
@@ -86,15 +85,15 @@ class _DiscoverCommunityCollectionsScreenState
 
   Widget _buildList(
     BuildContext context,
-    CommunityCollectionPagedState<PublicCollectionSummary> page,
+    CommunityCollectionPagedState<PublicCollectionCatalogEntry> page,
   ) {
     final items = page.items;
     final collectionState = ref.watch(collectionListProvider);
-    final enrolled = <String, String>{};
+    final enrolledRemoteIds = <String>{};
     for (final collection in collectionState.collections) {
       final remoteId = collection.remoteId;
       if (collection.isCommunity && remoteId != null) {
-        enrolled[remoteId] = collection.id;
+        enrolledRemoteIds.add(remoteId);
       }
     }
     if (items.isEmpty) {
@@ -134,18 +133,12 @@ class _DiscoverCommunityCollectionsScreenState
             );
           }
           final item = items[index];
-          final localId = enrolled[item.id];
           return CommunityCollectionCard(
             item: item,
-            enrolled: localId != null,
+            enrolled: enrolledRemoteIds.contains(item.id),
             enrolling: _enrolling.contains(item.id),
             onOpenDetail: () => context.push('/discover/${item.id}'),
             onEnroll: () => _enroll(item),
-            onGoLearn: () {
-              if (localId != null) {
-                context.go(AppRoutes.collectionDetail(localId));
-              }
-            },
           );
         },
       ),
@@ -161,17 +154,15 @@ class _DiscoverCommunityCollectionsScreenState
     ]);
   }
 
-  /// 本地版公开资源无需账号或 AI 配置，官方版保留原有登录流程。
-  Future<void> _enroll(PublicCollectionSummary item) async {
+  Future<void> _enroll(PublicCollectionCatalogEntry item) async {
     final l10n = AppLocalizations.of(context)!;
-    final canEnroll =
-        isLocalEdition ||
-        await ensureSignedInForAction(
-          context: context,
-          ref: ref,
-          title: l10n.communityCollectionSignInRequiredTitle,
-          message: l10n.communityCollectionSignInRequiredMessage,
-        );
+    final canEnroll = await ensureSignedInForAction(
+      access: ActionAccess.publicResource,
+      context: context,
+      ref: ref,
+      title: l10n.communityCollectionSignInRequiredTitle,
+      message: l10n.communityCollectionSignInRequiredMessage,
+    );
     if (!mounted || !canEnroll) return;
     setState(() => _enrolling.add(item.id));
     try {

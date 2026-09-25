@@ -587,11 +587,21 @@ class _CollectionListTile extends ConsumerWidget {
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
-                            if (collection.isPodcast &&
-                                podcastHasRefreshError(collection)) ...[
-                              const SizedBox(height: 6),
-                              _PodcastRefreshFailedChip(l10n: l10n),
-                            ],
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                CollectionSourceCornerBadge(
+                                  source: collection.source,
+                                  isDeprecated: collection.isDeprecated,
+                                ),
+                                if (collection.isPodcast &&
+                                    podcastHasRefreshError(collection))
+                                  _PodcastRefreshFailedChip(l10n: l10n),
+                              ],
+                            ),
                           ],
                         ),
                       ),
@@ -680,17 +690,17 @@ class _CollectionListTile extends ConsumerWidget {
 
   /// 左侧 leading（尺寸 / 样式与 Discover 卡片完全一致）：
   /// - 社区合集且有 coverUrl：网络封面图（BoxFit.contain）
-  /// - 其它情况：渐变背景 + 合集名首字母
-  ///
-  /// 社区合集会在右上角叠加社区角标（已下架则换成灰色 block 角标）。
+  /// - Podcast 合集且有 coverUrl：网络封面图（BoxFit.cover）
+  /// - 其它情况：渐变背景 + 合集名首字母或 Podcast 图标
   Widget _buildLeadingIcon(ThemeData theme) {
     const size = 56.0;
     final coverUrl = collection.coverUrl;
 
-    // podcast 合集：有封面显示封面图，否则用 podcast 图标
+    // podcast 合集：有封面显示封面图，否则用 podcast 图标。
+    final Widget icon;
     if (collection.isPodcast) {
       if (coverUrl != null && coverUrl.isNotEmpty) {
-        return ClipRRect(
+        icon = ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: CachedNetworkImage(
             imageUrl: coverUrl,
@@ -705,47 +715,30 @@ class _CollectionListTile extends ConsumerWidget {
             errorWidget: (_, __, ___) => _podcastIconPlaceholder(theme, size),
           ),
         );
+      } else {
+        icon = _podcastIconPlaceholder(theme, size);
       }
-      return _podcastIconPlaceholder(theme, size);
+    } else {
+      icon = (collection.isCommunity && coverUrl != null && coverUrl.isNotEmpty)
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: coverUrl,
+                cacheManager: AppNetworkImageCache.instance,
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                // 缓存命中时立即显示，去掉默认 500ms 淡入造成的延迟感
+                fadeInDuration: Duration.zero,
+                placeholderFadeInDuration: Duration.zero,
+                placeholder: (_, __) => _letterPlaceholder(theme, size),
+                errorWidget: (_, __, ___) => _letterPlaceholder(theme, size),
+              ),
+            )
+          : _letterPlaceholder(theme, size);
     }
 
-    final Widget icon =
-        (collection.isCommunity && coverUrl != null && coverUrl.isNotEmpty)
-        ? ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: CachedNetworkImage(
-              imageUrl: coverUrl,
-              cacheManager: AppNetworkImageCache.instance,
-              width: size,
-              height: size,
-              fit: BoxFit.contain,
-              // 缓存命中时立即显示，去掉默认 500ms 淡入造成的延迟感
-              fadeInDuration: Duration.zero,
-              placeholderFadeInDuration: Duration.zero,
-              placeholder: (_, __) => _letterPlaceholder(theme, size),
-              errorWidget: (_, __, ___) => _letterPlaceholder(theme, size),
-            ),
-          )
-        : _letterPlaceholder(theme, size);
-
-    if (!collection.isCommunity) return icon;
-
-    // Stack 不裁剪溢出，让角标向外偏移 4px，营造贴在图标外缘的"app 角标"观感
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          icon,
-          Positioned(
-            top: -4,
-            right: -4,
-            child: CommunityCornerBadge(isDeprecated: collection.isDeprecated),
-          ),
-        ],
-      ),
-    );
+    return icon;
   }
 
   Widget _podcastIconPlaceholder(ThemeData theme, double size) {

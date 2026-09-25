@@ -1,8 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:path/path.dart' as p;
 import 'package:universal_io/io.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../services/app_logger.dart';
 import '../../utils/audio_fingerprint.dart';
+import 'audio_import_cancel.dart';
+import 'audio_import_file_copy.dart';
 import 'audio_import_models.dart';
 import 'audio_transcode_service.dart';
 
@@ -36,13 +40,20 @@ class AudioFinalizationService {
   AudioFinalizationService({
     AudioTranscodeService? transcodeService,
     Future<String> Function(String absolutePath)? computeSha256,
+    Future<String> Function(String absolutePath, {CancelToken? cancelToken})?
+    computeSha256WithCancellation,
     Uuid? uuid,
   }) : _transcodeService = transcodeService ?? AudioTranscodeService(),
-       _computeSha256 = computeSha256 ?? computeAudioSha256,
+       _computeSha256 =
+           computeSha256WithCancellation ??
+           (computeSha256 == null
+               ? computeAudioSha256
+               : (path, {CancelToken? cancelToken}) => computeSha256(path)),
        _uuid = uuid ?? const Uuid();
 
   final AudioTranscodeService _transcodeService;
-  final Future<String> Function(String absolutePath) _computeSha256;
+  final Future<String> Function(String absolutePath, {CancelToken? cancelToken})
+  _computeSha256;
   final Uuid _uuid;
 
   /// 按内容指纹把 [tempRelativePath] 指向的临时音频落盘到 [targetSubdir]。
@@ -55,30 +66,60 @@ class AudioFinalizationService {
     required Directory dataDir,
     required String tempRelativePath,
     required String targetSubdir,
+    CancelToken? cancelToken,
   }) async {
+    final traceId = cancelToken?.hashCode.toRadixString(16) ?? 'none';
+    final stopwatch = Stopwatch()..start();
     final targetDir = Directory(p.join(dataDir.path, targetSubdir));
-    await targetDir.create(recursive: true);
-
     final sourceFile = File(p.join(dataDir.path, tempRelativePath));
-    final sha256 = await _fingerprint(sourceFile);
-    final finalName = '$sha256${p.extension(sourceFile.path)}';
-    final finalFile = File(p.join(targetDir.path, finalName));
+    AppLogger.log('AudioImportFinalize', 'begin trace=$traceId');
+    try {
+      cancelToken?.throwIfCanceled();
+      await targetDir.create(recursive: true);
 
-    final created = !await finalFile.exists();
-    if (created) {
-      await _moveToFinal(sourceFile: sourceFile, finalFile: finalFile);
-    } else {
+      AppLogger.log('AudioImportFinalize', 'fingerprint_begin trace=$traceId');
+      final sha256 = await _fingerprint(sourceFile, cancelToken);
+      AppLogger.log(
+        'AudioImportFinalize',
+        'fingerprint_complete trace=$traceId '
+            'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      cancelToken?.throwIfCanceled();
+      final finalName = '$sha256${p.extension(sourceFile.path)}';
+      final finalFile = File(p.join(targetDir.path, finalName));
+
+      final created = !await finalFile.exists();
+      if (created) {
+        cancelToken?.throwIfCanceled();
+        await _moveToFinal(
+          sourceFile: sourceFile,
+          finalFile: finalFile,
+          cancelToken: cancelToken,
+        );
+      } else {
+        await _deleteIfExists(sourceFile);
+      }
+
+      AppLogger.log(
+        'AudioImportFinalize',
+        'complete trace=$traceId created=$created '
+            'elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
+      return FinalizedAudio(
+        relativePath: p.join(targetSubdir, finalName),
+        sha256: sha256,
+        originalSha256: sha256,
+        created: created,
+      );
+    } catch (error) {
+      AppLogger.log(
+        'AudioImportFinalize',
+        'failed trace=$traceId canceled=${cancelToken?.isCancelled ?? false} '
+            'error=${error.runtimeType} elapsed_ms=${stopwatch.elapsedMilliseconds}',
+      );
       await _deleteIfExists(sourceFile);
+      rethrow;
     }
-    // 命中已有文件时 sourceFile 即原始临时文件，已在上面删除；这里兜底再清一次。
-    await _deleteIfExists(sourceFile);
-
-    return FinalizedAudio(
-      relativePath: p.join(targetSubdir, finalName),
-      sha256: sha256,
-      originalSha256: sha256,
-      created: created,
-    );
   }
 
   /// 把已落盘的原始音频 [relativePath] 转码为 m4a，按转码后指纹落盘到同目录。
@@ -131,10 +172,11 @@ class AudioFinalizationService {
   }
 
   /// 计算指纹，失败统一抛存储类异常，便于上层归一处理。
-  Future<String> _fingerprint(File file) async {
+  Future<String> _fingerprint(File file, [CancelToken? cancelToken]) async {
     try {
-      return await _computeSha256(file.path);
+      return await _computeSha256(file.path, cancelToken: cancelToken);
     } catch (e) {
+      if (e is DioException && CancelToken.isCancel(e)) rethrow;
       throw AudioImportException(
         AudioImportFailureCode.storage,
         'Failed to fingerprint audio',
@@ -147,17 +189,24 @@ class AudioFinalizationService {
   Future<void> _moveToFinal({
     required File sourceFile,
     required File finalFile,
+    CancelToken? cancelToken,
   }) async {
     try {
       await sourceFile.rename(finalFile.path);
       return;
     } on FileSystemException {
       try {
-        await sourceFile.copy(finalFile.path);
+        await copyAudioImportStreamToFile(
+          source: sourceFile.openRead(),
+          destination: finalFile,
+          cancelToken: cancelToken,
+        );
         await _deleteIfExists(sourceFile);
         return;
-      } on FileSystemException catch (e) {
+      } catch (e) {
         await _deleteIfExists(finalFile);
+        if (e is DioException && CancelToken.isCancel(e)) rethrow;
+        if (e is! FileSystemException) rethrow;
         throw AudioImportException(
           AudioImportFailureCode.storage,
           'Failed to save audio',

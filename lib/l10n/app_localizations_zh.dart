@@ -850,6 +850,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionEmpty => '该合集暂无文件';
 
   @override
+  String communityCollectionAuthor(String nickname) {
+    return '作者：$nickname';
+  }
+
+  @override
+  String get communityCollectionUnknownAuthor => '未知作者';
+
+  @override
+  String get communityCollectionUnknownPublishDate => '日期未知';
+
+  @override
+  String communityCollectionCover(String name) {
+    return '$name封面';
+  }
+
+  @override
+  String get communityCollectionShowMore => '展开';
+
+  @override
+  String get communityCollectionShowLess => '收起';
+
+  @override
   String get sortCollections => '排序';
 
   @override
@@ -3752,7 +3774,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resetOnboardingDone => 'Onboarding 已重置，请重启 App 以重新进入问卷';
 
   @override
-  String get discoverCommunityCollections => '发现社区合集';
+  String get discoverCommunityCollections => '发现资源';
 
   @override
   String get discoverEmpty => '暂无精选合集';
@@ -3809,10 +3831,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get podcastPreviewEmpty => '暂未获取到单集。';
 
   @override
-  String get communityBadge => '社区';
+  String get localCollectionBadge => '本地';
+
+  @override
+  String get communityBadge => '共享';
 
   @override
   String get communityDeprecatedBadge => '已下架';
+
+  @override
+  String get podcastCollectionBadge => '播客';
 
   @override
   String get addToMyCollections => '添加到我的合集';
@@ -3822,10 +3850,13 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get communityCollectionSignInRequiredMessage =>
-      '登录后可以将社区合集添加到我的合集，并同步后续内容。';
+      '登录后可以将共享合集添加到我的合集，并同步后续内容。';
 
   @override
   String get goLearn => '去学习';
+
+  @override
+  String get communityCollectionAdded => '已添加';
 
   @override
   String get removeFromMyCollections => '从我的合集移除';
@@ -3857,11 +3888,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionDeprecated => '该合集已移除，本地副本仍可继续使用。';
 
   @override
-  String get communityFileUnavailable => '该文件已从社区合集移除';
+  String get communityFileUnavailable => '该文件已从共享合集中移除';
 
   @override
   String communityFilesRemoved(int count) {
-    return '社区合集有 $count 个文件已移除';
+    return '共享合集中有 $count 个文件已移除';
   }
 
   @override
@@ -4582,6 +4613,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importAudioShort => '导入';
 
   @override
+  String get cancelImport => '取消导入';
+
+  @override
+  String get cancelingImport => '正在取消导入…';
+
+  @override
   String importAudioSelectedCount(int count) {
     return '导入 $count 个';
   }
@@ -4652,7 +4689,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get audioDownloadFailed => '下载音频失败';
 
   @override
-  String get audioDownloadInProgress => '正在下载音频';
+  String get audioDownloadInProgress => '正在下载';
 
   @override
   String get audioImportComplete => '导入完成';

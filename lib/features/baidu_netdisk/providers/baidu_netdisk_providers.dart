@@ -4,6 +4,7 @@ library;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers/package_info_provider.dart';
+import '../../../providers/download_provider.dart';
 import '../../../utils/transcript_picker.dart';
 import '../data/baidu_credential_repository.dart';
 import '../data/baidu_credential_store.dart';
@@ -39,7 +40,9 @@ final baiduOAuthLauncherProvider = Provider<BaiduOAuthLauncher>((ref) {
 
 /// 百度网盘文件 API provider。
 final baiduNetdiskApiProvider = Provider<BaiduNetdiskApi>((ref) {
-  return DefaultBaiduNetdiskApi();
+  return DefaultBaiduNetdiskApi(
+    backgroundDownloader: ref.watch(backgroundFileDownloadServiceProvider),
+  );
 });
 
 /// 百度网盘音频导入服务 provider。

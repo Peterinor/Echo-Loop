@@ -20,7 +20,7 @@ enum CommunityFileRemovalResult {
   /// 有学习记录，保留条目但标记为不可用。
   markedUnavailable,
 
-  /// 条目不存在或当前关联已经被其它操作处理。
+  /// 条目不存在、当前关联已处理，或音频仍由其它合集引用。
   unchanged,
 }
 
@@ -67,6 +67,16 @@ class CommunityFileLifecycleService {
     final now = DateTime.now();
     final shouldRemoveRow = !learningDataExists && !hasOtherCollectionReference;
     await _db.transaction(() async {
+      if (hasOtherCollectionReference) {
+        await (_db.delete(_db.collectionAudioItems)..where(
+              (table) =>
+                  table.collectionId.equals(localCollectionId) &
+                  table.audioItemId.equals(audioItemId),
+            ))
+            .go();
+        return;
+      }
+
       if (shouldRemoveRow) {
         await (_db.delete(_db.collectionAudioItems)..where(
               (table) =>
@@ -76,16 +86,6 @@ class CommunityFileLifecycleService {
             .go();
         await _deleteLearningData(audioItemId);
         await _db.audioItemDao.hardDelete(audioItemId);
-        return;
-      }
-
-      if (!learningDataExists && hasOtherCollectionReference) {
-        await (_db.delete(_db.collectionAudioItems)..where(
-              (table) =>
-                  table.collectionId.equals(localCollectionId) &
-                  table.audioItemId.equals(audioItemId),
-            ))
-            .go();
         return;
       }
 
@@ -106,8 +106,8 @@ class CommunityFileLifecycleService {
       await _deleteFiles(row, deleteTranscript: true);
       return CommunityFileRemovalResult.removed;
     }
-    if (!learningDataExists && hasOtherCollectionReference) {
-      // 当前条目仍被其它合集引用，即使移除了本次关联，也必须保留媒体。
+    if (hasOtherCollectionReference) {
+      // 共享音频仍可由其它合集使用，只解除当前合集关联并保留全局状态。
       return CommunityFileRemovalResult.unchanged;
     }
 

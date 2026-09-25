@@ -9,10 +9,11 @@ import '../../models/audio_item.dart';
 import '../../providers/audio_library_provider.dart';
 import '../../providers/collection_provider.dart';
 import '../../services/app_logger.dart';
-import '../../services/reliable_http_downloader.dart';
+import '../../services/background_file_download_service.dart';
 import '../../utils/app_data_dir.dart';
 import '../../utils/audio_duration.dart';
 import 'audio_finalization_service.dart';
+import 'audio_import_cancel.dart';
 import 'audio_import_models.dart';
 import 'audio_registration_service.dart';
 import 'audio_transcode_service.dart';
@@ -35,6 +36,7 @@ class AudioImportService {
     Future<int> Function(String relativePath)? readDurationSeconds,
     AudioRegistrationService? registrationService,
     AudioTranscodeService? transcodeService,
+    BackgroundFileDownloadService? backgroundDownloader,
   }) : _dio = dio ?? Dio(),
        _uuid = uuid ?? const Uuid(),
        _resolveDataDir = resolveDataDir ?? getAppDataDirectory,
@@ -45,15 +47,13 @@ class AudioImportService {
          transcodeService: transcodeService ?? AudioTranscodeService(),
          computeSha256: computeSha256,
          uuid: uuid,
-       ) {
-    _downloader = DioReliableHttpDownloader(dio: _dio);
-  }
+       ),
+       _backgroundDownloader =
+           backgroundDownloader ?? BackgroundFileDownloadService();
 
   final Dio _dio;
 
-  /// `ReliableHttpDownloader` 接口本身不提供释放能力，本类也不做 `dispose`
-  /// （复用调用方注入的 [_dio] 或全局默认 Dio，生命周期不归本类管）。
-  late final ReliableHttpDownloader _downloader;
+  final BackgroundFileDownloadService _backgroundDownloader;
   final Uuid _uuid;
   final Future<Directory> Function() _resolveDataDir;
   final Future<int> Function(String relativePath) _readDurationSeconds;
@@ -82,46 +82,61 @@ class AudioImportService {
       cancelToken: cancelToken,
       onProgress: onProgress,
     );
-    final finalizedAudio = await _finalizeDownloadedAudio(
-      dataDir: dataDir,
-      tempRelativePath: downloadedPath,
-    );
+    FinalizedAudio? finalizedAudio;
+    try {
+      finalizedAudio = await _finalizeDownloadedAudio(
+        dataDir: dataDir,
+        tempRelativePath: downloadedPath,
+        cancelToken: cancelToken,
+      );
+      cancelToken?.throwIfCanceled();
 
-    final result = await _registrationService.registerSandboxedAudio(
-      input: SandboxedAudioRegistrationInput(
-        name: resolved.displayName,
-        relativePath: finalizedAudio.relativePath,
-        importSourceType: AudioImportSourceType.directUrl,
-        importSourceUrl: resolved.uri.toString(),
-        audioSha256: finalizedAudio.sha256,
-        originalAudioSha256: finalizedAudio.originalSha256,
-      ),
-      audioLibrary: audioLibrary,
-      audioLibraryState: audioLibraryState,
-      collectionList: collectionList,
-      collectionState: collectionState,
-      collectionId: collectionId,
-    );
+      final result = await _registrationService.registerSandboxedAudio(
+        input: SandboxedAudioRegistrationInput(
+          name: resolved.displayName,
+          relativePath: finalizedAudio.relativePath,
+          importSourceType: AudioImportSourceType.directUrl,
+          importSourceUrl: resolved.uri.toString(),
+          audioSha256: finalizedAudio.sha256,
+          originalAudioSha256: finalizedAudio.originalSha256,
+        ),
+        audioLibrary: audioLibrary,
+        audioLibraryState: audioLibraryState,
+        collectionList: collectionList,
+        collectionState: collectionState,
+        collectionId: collectionId,
+        cancelToken: cancelToken,
+      );
 
-    switch (result) {
-      case AudioRegistrationAdded(:final item):
-        if (finalizedAudio.created &&
-            item.audioPath != finalizedAudio.relativePath) {
-          await _deleteIfExists(
-            File(p.join(dataDir.path, finalizedAudio.relativePath)),
+      switch (result) {
+        case AudioRegistrationAdded(:final item):
+          if (finalizedAudio.created &&
+              item.audioPath != finalizedAudio.relativePath) {
+            await _deleteIfExists(
+              File(p.join(dataDir.path, finalizedAudio.relativePath)),
+            );
+          }
+          return item;
+        case AudioRegistrationDuplicate(:final name):
+          throw AudioImportException(
+            AudioImportFailureCode.duplicate,
+            'Audio already exists: $name',
           );
-        }
-        return item;
-      case AudioRegistrationDuplicate(:final name):
-        if (finalizedAudio.created) {
-          await _deleteIfExists(
-            File(p.join(dataDir.path, finalizedAudio.relativePath)),
-          );
-        }
-        throw AudioImportException(
-          AudioImportFailureCode.duplicate,
-          'Audio already exists: $name',
+      }
+    } catch (error) {
+      final savedAudio = finalizedAudio;
+      if (savedAudio != null && savedAudio.created) {
+        await _deleteIfExists(
+          File(p.join(dataDir.path, savedAudio.relativePath)),
         );
+      }
+      if (error is DioException && CancelToken.isCancel(error)) {
+        throw const AudioImportException(
+          AudioImportFailureCode.canceled,
+          'Audio import canceled',
+        );
+      }
+      rethrow;
     }
   }
 
@@ -178,6 +193,7 @@ class AudioImportService {
     final finalizedAudio = await _finalizeDownloadedAudio(
       dataDir: dataDir,
       tempRelativePath: downloadedPath,
+      cancelToken: cancelToken,
     );
 
     final duration = await _tryReadDuration(finalizedAudio.relativePath);
@@ -217,7 +233,6 @@ class AudioImportService {
     }
 
     String? mimeType;
-    int? contentLength;
     try {
       final response = await _dio.head<Object>(
         trimmed,
@@ -227,9 +242,6 @@ class AudioImportService {
       final statusCode = response.statusCode ?? 0;
       if (statusCode >= 200 && statusCode < 400) {
         mimeType = response.headers.value(Headers.contentTypeHeader);
-        contentLength = int.tryParse(
-          response.headers.value(Headers.contentLengthHeader) ?? '',
-        );
       }
     } on DioException catch (e) {
       if (CancelToken.isCancel(e)) {
@@ -279,7 +291,6 @@ class AudioImportService {
       fileName: '$safeBaseName.$extension',
       extension: extension,
       mimeType: mimeType,
-      contentLength: contentLength,
     );
   }
 
@@ -297,27 +308,22 @@ class AudioImportService {
       p.join(tmpDir.path, '$audioId.${resolved.extension}'),
     );
     try {
-      // allowResume: false——导入取消/失败不需要跨调用续传，失败即清理
-      // `.part`，与迁移前手写 finally 删临时文件的既有语义一致。
-      await _downloader.download(
+      await _backgroundDownloader.download(
         uri: resolved.uri,
         savePath: downloadedFile.path,
-        allowResume: false,
         cancelToken: cancelToken,
         onProgress: (received, total) => onProgress?.call(received, total),
       );
       return p.join('tmp', 'audio_import', p.basename(downloadedFile.path));
-    } on ReliableDownloadException catch (e) {
-      if (e.kind == ReliableDownloadFailure.cancelled) {
+    } on BackgroundFileDownloadException catch (e) {
+      if (e.isCanceled) {
         throw const AudioImportException(
           AudioImportFailureCode.canceled,
           'Audio import canceled',
         );
       }
       _logDownloadFailure(resolved.uri, e);
-      // 磁盘写入失败已被下载器内部归类为 storage（如空间不足），单独区分，
-      // 不与「网络请求失败」混为一谈。
-      if (e.kind == ReliableDownloadFailure.storage) {
+      if (e.isStorageFailure) {
         throw AudioImportException(
           AudioImportFailureCode.storage,
           'Failed to save audio',
@@ -341,11 +347,13 @@ class AudioImportService {
   Future<FinalizedAudio> _finalizeDownloadedAudio({
     required Directory dataDir,
     required String tempRelativePath,
+    CancelToken? cancelToken,
   }) {
     return _finalizationService.finalize(
       dataDir: dataDir,
       tempRelativePath: tempRelativePath,
       targetSubdir: p.join('audios', 'imported'),
+      cancelToken: cancelToken,
     );
   }
 
@@ -364,8 +372,31 @@ class AudioImportService {
   }
 
   /// BBC RSS 历史数据常落库为 HTTP enclosure，而同一 feed 同时提供 HTTPS 版本。
-  /// 下载前在这里做最小兜底，避免 Android cleartext 策略或中间网络拦截 HTTP。
+  /// Anchor 的 podcast/play enclosure 会把真实媒体 URL 编码在路径最后一段；
+  /// 直接请求该地址，避免下载器依赖 Anchor 重定向服务。
+  /// BBC RSS 历史数据则升级到 HTTPS，避免 Android cleartext 策略拦截 HTTP。
   Uri _normalizePodcastAudioUri(Uri uri) {
+    if (uri.host == 'anchor.fm' || uri.host == 'www.anchor.fm') {
+      final segments = uri.pathSegments;
+      if (segments.length >= 5 &&
+          segments[2] == 'podcast' &&
+          segments[3] == 'play') {
+        try {
+          final mediaUri = Uri.tryParse(Uri.decodeComponent(segments.last));
+          if (mediaUri != null &&
+              (mediaUri.scheme == 'http' || mediaUri.scheme == 'https') &&
+              mediaUri.host.isNotEmpty) {
+            AppLogger.log(
+              _logTag,
+              'resolved Anchor media URL host=${mediaUri.host}',
+            );
+            return mediaUri;
+          }
+        } on FormatException {
+          // URL 编码损坏时保留原始 enclosure，让下载器返回实际错误。
+        }
+      }
+    }
     if (uri.scheme != 'http' || uri.host != 'open.live.bbc.co.uk') {
       return uri;
     }
@@ -381,14 +412,12 @@ class AudioImportService {
     return uri.replace(scheme: 'https', pathSegments: nextSegments);
   }
 
-  void _logDownloadFailure(Uri uri, ReliableDownloadException error) {
+  void _logDownloadFailure(Uri uri, BackgroundFileDownloadException error) {
     AppLogger.log(
       _logTag,
-      'download failed url=$uri '
-      'kind=${error.kind} '
+      'download failed host=${uri.host} '
       'status=${error.statusCode ?? "(null)"} '
-      'message=${error.message} '
-      'cause=${error.cause ?? "(null)"}',
+      'storage=${error.isStorageFailure}',
     );
   }
 
