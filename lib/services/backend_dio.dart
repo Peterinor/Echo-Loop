@@ -94,9 +94,7 @@ Dio createBackendDio({
 bool _isAnonymousResourcePath(String path) =>
     path == '/api/v1/catalog' ||
     path == '/api/v2/collections' ||
-    RegExp(
-      r'^/api/v2/collections/[^/]+/files(?:/[^/]+/subtitle)?$',
-    ).hasMatch(path);
+    RegExp(r'^/api/v2/collections/[^/]+(?:/files/[^/]+)?$').hasMatch(path);
 
 /// 构造需要 Supabase 登录的自建后端 Dio。
 ///

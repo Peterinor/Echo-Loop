@@ -1,10 +1,15 @@
-/// 真机/模拟器验证：匿名发现目录、Apple 搜索和 RSS 订阅，不读取模型密钥。
+/// 真机/模拟器验证：匿名合集预览/加入/下载、Apple 搜索和 RSS 订阅。
 library;
 
 import 'dart:io';
 import 'package:echo_loop/main.dart' as app;
 import 'package:echo_loop/config/app_capabilities.dart';
 import 'package:echo_loop/features/auth/providers/auth_providers.dart';
+import 'package:echo_loop/database/providers.dart';
+import 'package:echo_loop/features/community_collections/providers/community_collection_detail_provider.dart';
+import 'package:echo_loop/features/community_collections/providers/community_enrollment_provider.dart';
+import 'package:echo_loop/features/community_collections/download/community_download_notifier.dart';
+import 'package:echo_loop/utils/app_data_dir.dart';
 import 'package:echo_loop/features/community_collections/providers/discover_community_collections_provider.dart';
 import 'package:echo_loop/features/community_collections/widgets/discover_entry_banner.dart';
 import 'package:echo_loop/features/podcast/podcast_search_service.dart';
@@ -93,7 +98,73 @@ void main() {
     expect(collections.items, isNotEmpty);
     debugPrint('[LocalResources] anonymous community catalog loaded');
 
-    router.push(AppRoutes.podcastSubscribe);
+    // 验证截图中失败的真实合集，覆盖详情、加入、字幕和媒体下载完整链路。
+    final example = collections.items.firstWhere(
+      (item) => item.name == 'Example',
+    );
+    router.push('/discover/${example.id}');
+    await _until(
+      tester,
+      () =>
+          container.read(communityCollectionFilesProvider(example.id)).hasValue,
+      'Example detail',
+    );
+    final files = await container.read(
+      communityCollectionFilesProvider(example.id).future,
+    );
+    expect(files.items, isNotEmpty);
+    final enrollment = await container
+        .read(communityEnrollmentProvider.notifier)
+        .enroll(example.id);
+    final database = container.read(appDatabaseProvider);
+    final firstFile = files.items.first;
+    final audio = container
+        .read(audioLibraryProvider)
+        .audioItems
+        .firstWhere((item) => item.remoteAudioId == firstFile.id);
+    final downloader = container.read(communityDownloadProvider.notifier);
+    final result = await downloader.start(
+      audioItemId: audio.id,
+      displayName: audio.name,
+    );
+    expect(result, anyOf(StartResult.started, StartResult.alreadyDownloaded));
+    if (result == StartResult.started) {
+      expect(await downloader.awaitCompletion(), isTrue);
+    }
+    final stored = await database.audioItemDao.getById(audio.id);
+    expect(stored?.transcriptSrt, isNotEmpty);
+    final audioPath = stored?.audioPath;
+    expect(audioPath, isNotNull);
+    final root = await getAppDataDirectory();
+    expect(
+      await File('${root.path}/$audioPath').length(),
+      firstFile.fileSizeBytes,
+    );
+    expect(
+      container
+          .read(collectionListProvider)
+          .rawCollections
+          .any((item) => item.id == enrollment.localCollectionId),
+      isTrue,
+    );
+    debugPrint(
+      '[LocalResources] Example preview, anonymous enrollment, subtitles and audio download verified',
+    );
+
+    // 重新从资源库进入，避免测试直接 push 嵌套路由后依赖隐含返回栈。
+    router.go(AppRoutes.collections);
+    await _until(
+      tester,
+      () => find.byType(DiscoverEntryBanner).evaluate().isNotEmpty,
+      'return to resource library',
+    );
+    await tester.tap(find.byType(DiscoverEntryBanner));
+    await _until(
+      tester,
+      () => find.text('Apple Podcasts').evaluate().isNotEmpty,
+      'visible Apple Podcasts entry',
+    );
+    await tester.tap(find.text('Apple Podcasts'));
     await _until(
       tester,
       () =>

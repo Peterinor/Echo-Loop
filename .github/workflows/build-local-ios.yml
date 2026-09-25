@@ -17,6 +17,8 @@ on:
       - 'scripts/verify_local_ios_build.py'
       - 'test/scripts/**'
       - 'test/features/custom_ai/**'
+      - 'test/features/community_collections/**'
+      - 'test/features/podcast/**'
 
 permissions:
   contents: read
@@ -57,6 +59,7 @@ jobs:
         run: |
           python3 -m unittest discover -s test/scripts -p '*_test.py' -v
           flutter test --dart-define=APP_EDITION=local test/features/custom_ai/local_edition_test.dart
+          flutter test --dart-define=APP_EDITION=local test/features/community_collections test/features/podcast/podcast_discovery_screen_test.dart
           flutter test test/features/custom_ai/custom_ai_client_test.dart
 
       # 交由 Flutter 安装 Pods，避免复用与 pub-cache 中原生库不匹配的独立 Pods 缓存。

@@ -3,6 +3,7 @@
 > 仅保留未完成任务；历史完成记录见 [docs/tasks-archive/tasks-2026-08-28-full.md](./docs/tasks-archive/tasks-2026-08-28-full.md)。
 
 ## 最近完成
+- [x] 修复 iPhone 社区合集 404 与 Apple Podcasts 首装入口缺失：参考上游 `a7fb15ee` 修正合集/文件详情 API 及本地版匿名白名单，入口不再依赖精选缓存或社区请求成功，详情错误改为本地化重试按钮；仅改动 4 个运行时代码文件。先补测试复现 7 项失败，修复后本地相关 46 项、官方相关 49 项及静态分析通过；模拟器已实测 Example 加入及 268333 字节音频与字幕下载成功，完整 UI 验收与新版 iOS 构建继续执行中。iOS 工作流加入资源回归测试；未运行全量 scripts/check.sh（局部修复），Maestro CLI 不可用，使用 Flutter integration_test。**完成时间**: 2026-09-25 12:02
 - [x] 完成匿名资源新版 iOS 云端构建及 IPA 交付：资源修改提交 `22b0b7ba` 已推送至 `codex/local-edition`，GitHub Actions [运行 #3](https://github.com/Peterinor/Echo-Loop/actions/runs/36089026211) 成功，19 项测试和 ARM64/本地配置检查通过；下载后校验 SHA256、模型密钥未打包及 684 个应用条目内容/权限，生成 `D:\env\echo-loop\ios-build\run-3\Echo-Loop-local-1.0.35-3.ipa`（待 Sideloadly 签名）。更新 PLAN、构建说明及本地版记录；仅构建打包，未运行全量 scripts/check.sh 或重复 UI / Maestro，新版尚未安装到 iPhone。**完成时间**: 2026-09-25 11:35
 - [x] 本地版恢复“发现资源”、公开合集与播客入口；加入资源不要求登录或配置 AI，恢复未下载单集展示、按需下载和 RSS 刷新；仅显式资源客户端的同源白名单 GET 可访问官方匿名接口，账号/支付/官方 AI 保持禁用，补齐进入播客页时加载空缓存。相关静态分析通过；官方回归 185 项、本地相关回归 130 项、下载交互 17 项及最后补充回归通过；Android 模拟器真实验证匿名目录、精选播客、Apple 搜索、RSS 订阅/更新和 342 期 BBC 单集入库与显示，普通 APK 构建并覆盖安装成功。官方合集 v2 文件接口线上抽查仍返回 404，完整合集下载尚未验证。Maestro CLI 未安装，改用 Flutter integration_test；未运行全量 scripts/check.sh（局部改动）。未推送或重新构建 iOS。详见 [修改清单与验收记录](docs/local-edition-plan.md)。**完成时间**: 2026-09-25 11:04
 - [x] 整理无官方业务后端版本的实施方案：保留词典/发音包及 ASR/TTS 官方资源下载，AI 改为用户云端 API 直连，分阶段列明启动隔离、访问策略、设置页、协议适配与验收；仅完成方案，功能尚未实现。见 [实施方案](docs/local-edition-plan.md)。**完成时间**: 2026-09-24

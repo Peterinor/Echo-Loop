@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_models.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_paging.dart';
 import 'package:echo_loop/features/community_collections/providers/community_collection_detail_provider.dart';
@@ -12,6 +13,38 @@ import '../../helpers/mock_providers.dart';
 import '../../helpers/test_app.dart';
 
 void main() {
+  testWidgets('详情失败显示重试按钮且重试后恢复素材列表', (tester) async {
+    var attempts = 0;
+    await tester.pumpWidget(
+      createTestApp(
+        const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
+        overrides: [
+          discoverCommunityCollectionsProvider.overrideWith(
+            () => _TestDiscoverCommunityCollections(
+              PublicCollectionSummary(
+                id: 'collection-1',
+                name: 'Example',
+                description: null,
+                coverUrl: null,
+                fileCount: 0,
+                publishedAt: DateTime(2026),
+              ),
+            ),
+          ),
+          communityCollectionFilesProvider(
+            'collection-1',
+          ).overrideWith(() => _RetryFiles(() => ++attempts)),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('DioException'), findsNothing);
+    await tester.tap(find.text('Failed to load, tap to retry'));
+    await tester.pumpAndSettle();
+    expect(attempts, 2);
+    expect(find.text('0 items'), findsOneWidget);
+    expect(find.text('Failed to load, tap to retry'), findsNothing);
+  });
   final files = [
     const CommunityCollectionFile(
       id: 'file-1',
@@ -137,6 +170,26 @@ void main() {
     expect(find.text('0 items'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
+}
+
+class _RetryFiles extends CommunityCollectionFiles {
+  _RetryFiles(this.attempt);
+  final int Function() attempt;
+
+  @override
+  Future<CommunityCollectionPagedState<CommunityCollectionFile>> build(
+    String collectionId,
+  ) async {
+    if (attempt() == 1) {
+      final request = RequestOptions(path: '/api/v2/collections/collection-1');
+      throw DioException.badResponse(
+        statusCode: 404,
+        requestOptions: request,
+        response: Response<Object?>(requestOptions: request, statusCode: 404),
+      );
+    }
+    return const CommunityCollectionPagedState(pages: []);
+  }
 }
 
 class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {

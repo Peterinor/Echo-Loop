@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/features/community_collections/data/community_collection_api.dart';
 
 class _ApiAdapter implements HttpClientAdapter {
+  _ApiAdapter({this.statusCode = 200, this.missingSubtitle = false});
+  final int statusCode;
+  final bool missingSubtitle;
   final requests = <RequestOptions>[];
 
   @override
@@ -30,7 +33,8 @@ class _ApiAdapter implements HttpClientAdapter {
         ],
         'nextCursor': 'next-1',
       },
-      '/api/v2/collections/collection-1/files' => {
+      '/api/v2/collections/collection-1' => {
+        'collection': {'id': 'collection-1'},
         'items': [
           {
             'id': 'file-1',
@@ -47,20 +51,24 @@ class _ApiAdapter implements HttpClientAdapter {
         ],
         'nextCursor': null,
       },
-      '/api/v2/collections/collection-1/files/file-1/subtitle' => {
-        'fileId': 'file-1',
-        'sentences': [
-          {'text': 'Hello.', 'startTime': 0.0, 'endTime': 1.25},
-        ],
-        'words': [
-          {'word': 'Hello', 'startTime': 0.0, 'endTime': 0.8},
-        ],
+      '/api/v2/collections/collection-1/files/file-1' => {
+        'file': {'id': 'file-1'},
+        'subtitle': missingSubtitle
+            ? null
+            : {
+                'sentences': [
+                  {'text': 'Hello.', 'startTime': 0.0, 'endTime': 1.25},
+                ],
+                'words': [
+                  {'word': 'Hello', 'startTime': 0.0, 'endTime': 0.8},
+                ],
+              },
       },
       _ => <String, Object?>{},
     };
     return ResponseBody(
       Stream.value(Uint8List.fromList(utf8.encode(jsonEncode(payload)))),
-      200,
+      payload.isEmpty ? 404 : statusCode,
       headers: {
         'content-type': ['application/json'],
       },
@@ -72,6 +80,32 @@ class _ApiAdapter implements HttpClientAdapter {
 }
 
 void main() {
+  for (final statusCode in [404, 422, 503]) {
+    test('文件详情 HTTP $statusCode 保留失败语义', () async {
+      final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
+        ..httpClientAdapter = _ApiAdapter(statusCode: statusCode);
+      addTearDown(dio.close);
+      await expectLater(
+        CommunityCollectionApi.withDio(
+          dio,
+        ).getSubtitle('collection-1', 'file-1'),
+        throwsA(
+          statusCode == 503
+              ? isA<DioException>()
+              : isA<CommunitySubtitleUnavailable>(),
+        ),
+      );
+    });
+  }
+  test('缺少 subtitle 对象时明确失败，不生成空字幕', () async {
+    final dio = Dio(BaseOptions(baseUrl: 'https://api.example'))
+      ..httpClientAdapter = _ApiAdapter(missingSubtitle: true);
+    addTearDown(dio.close);
+    await expectLater(
+      CommunityCollectionApi.withDio(dio).getSubtitle('collection-1', 'file-1'),
+      throwsA(isA<FormatException>()),
+    );
+  });
   test(
     'v2 client uses cursor-only pagination and parses collection summary',
     () async {
@@ -100,7 +134,10 @@ void main() {
         ..httpClientAdapter = adapter;
       final api = CommunityCollectionApi.withDio(dio);
 
-      final files = await api.getCollectionFiles('collection-1');
+      final files = await api.getCollectionFiles(
+        'collection-1',
+        cursor: 'files-2',
+      );
       final subtitle = await api.getSubtitle('collection-1', 'file-1');
 
       expect(files.items.single.mediaType.name, 'audio');
@@ -108,6 +145,11 @@ void main() {
       expect(subtitle.fileId, 'file-1');
       expect(subtitle.sentences.single.endTime.inMilliseconds, 1250);
       expect(subtitle.words.single.word, 'Hello');
+      expect(adapter.requests.first.queryParameters, {'cursor': 'files-2'});
+      expect(adapter.requests.map((r) => r.uri.path), [
+        '/api/v2/collections/collection-1',
+        '/api/v2/collections/collection-1/files/file-1',
+      ]);
     },
   );
 }

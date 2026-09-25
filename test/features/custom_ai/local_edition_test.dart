@@ -108,8 +108,8 @@ void main() {
       for (final path in [
         '/api/v1/catalog',
         '/api/v2/collections',
-        '/api/v2/collections/example/files',
-        '/api/v2/collections/example/files/audio/subtitle',
+        '/api/v2/collections/example',
+        '/api/v2/collections/example/files/audio',
       ]) {
         await dio.get<Object?>(path);
       }
@@ -128,6 +128,8 @@ void main() {
         '/api/entitlements',
         '/api/v1/ai/translate',
         '/api/v2/collections/example/delete',
+        '/api/v2/collections/example/files',
+        '/api/v2/collections/example/files/audio/subtitle',
         'https://other.invalid/api/v1/catalog',
       ]) {
         await expectLater(dio.get<Object?>(path), throwsA(isA<DioException>()));

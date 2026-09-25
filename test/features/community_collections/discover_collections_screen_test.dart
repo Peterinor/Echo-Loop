@@ -14,6 +14,27 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../helpers/test_app.dart';
 
 void main() {
+  for (final catalog in <List<PodcastCatalogItem>?>[null, const []]) {
+    for (final failCommunity in [false, true]) {
+      testWidgets('Podcast 入口不依赖精选目录 $catalog 或合集成功 ${!failCommunity}', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          createTestApp(
+            const DiscoverCommunityCollectionsScreen(),
+            overrides: [
+              discoverPodcastsProvider.overrideWithValue(catalog),
+              discoverCommunityCollectionsProvider.overrideWith(
+                () => _EmptyDiscover(failCommunity),
+              ),
+            ],
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Apple Podcasts'), findsOneWidget);
+      });
+    }
+  }
   testWidgets('匿名加入合集：本地版直接加入，官方版仍要求登录', (tester) async {
     final enrollment = _TestEnrollment();
     await tester.pumpWidget(
@@ -87,6 +108,17 @@ void main() {
     expect(find.text('Apple Podcasts'), findsOneWidget);
     expect(find.text('Search podcasts'), findsNothing);
   });
+}
+
+class _EmptyDiscover extends DiscoverCommunityCollections {
+  _EmptyDiscover(this.failCommunity);
+  final bool failCommunity;
+
+  @override
+  Future<CommunityCollectionPagedState<PublicCollectionSummary>> build() async {
+    if (failCommunity) throw StateError('catalog offline');
+    return const CommunityCollectionPagedState(pages: []);
+  }
 }
 
 class _TestEnrollment extends CommunityEnrollment {

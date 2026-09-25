@@ -55,14 +55,14 @@ class CommunityCollectionApi {
     return _parsePage(response.data);
   }
 
-  /// 获取指定社区合集的文件元数据。
+  /// 从合集详情读取分页文件；线上 v2 没有独立的 `/files` 列表端点。
   Future<CommunityCollectionFilesPage> getCollectionFiles(
     String collectionId, {
     String? cursor,
     CancelToken? cancelToken,
   }) async {
     final response = await _dio.get<Map<String, dynamic>>(
-      '/api/v2/collections/${Uri.encodeComponent(collectionId)}/files',
+      '/api/v2/collections/${Uri.encodeComponent(collectionId)}',
       queryParameters: _cursorParameters(cursor),
       cancelToken: cancelToken,
     );
@@ -77,7 +77,7 @@ class CommunityCollectionApi {
     );
   }
 
-  /// 获取指定文件字幕，时间戳由 DTO 转换为 Dart Duration。
+  /// 从文件详情的 subtitle 字段读取字幕，保留现有下载层使用的 DTO。
   Future<CommunitySubtitle> getSubtitle(
     String collectionId,
     String fileId, {
@@ -85,10 +85,14 @@ class CommunityCollectionApi {
   }) async {
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        '/api/v2/collections/${Uri.encodeComponent(collectionId)}/files/${Uri.encodeComponent(fileId)}/subtitle',
+        '/api/v2/collections/${Uri.encodeComponent(collectionId)}/files/${Uri.encodeComponent(fileId)}',
         cancelToken: cancelToken,
       );
-      return CommunitySubtitle.fromJson(_responseObject(response.data));
+      final data = _responseObject(response.data);
+      return CommunitySubtitle.fromJson({
+        ..._object(data['subtitle']),
+        'fileId': fileId,
+      });
     } on DioException catch (error) {
       if (error.response?.statusCode == 404 ||
           error.response?.statusCode == 422) {

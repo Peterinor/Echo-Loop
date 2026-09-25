@@ -203,9 +203,9 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 
 ## 2026-09-25：匿名发现资源例外
 
-资源客户端只放行 `/api/v1/catalog`、`/api/v2/collections`、`/api/v2/collections/{id}/files` 和 `/api/v2/collections/{id}/files/{fileId}/subtitle` 的同源 GET。本地版资源地址由 `RESOURCE_API_BASE_URL` 指定，默认 `https://www.echo-loop.top`；官方版仍使用 `API_BASE_URL`。保持启动/回前台的官方资源后台同步禁用，资源由用户打开页面或刷新时获取。
+资源客户端只放行 `/api/v1/catalog`、`/api/v2/collections`、`/api/v2/collections/{id}` 和 `/api/v2/collections/{id}/files/{fileId}` 的同源 GET。本地版资源地址由 `RESOURCE_API_BASE_URL` 指定，默认 `https://www.echo-loop.top`；官方版仍使用 `API_BASE_URL`。保持启动/回前台的官方资源后台同步禁用，资源由用户打开页面或刷新时获取。
 
-线上抽查：匿名目录接口返回 200；两个合集的 v2 文件接口返回 404，尚未验证官方合集音频与字幕的完整下载链路，保留原有失败提示，不将 404 当作成功或登录问题。
+初次线上抽查时目录返回 200、旧文件地址返回 404，未完成合集下载验收。随后根据 iPhone 反馈核对上游 `a7fb15ee`，确认是客户端 API 路径不匹配，而非必须登录或服务端整体不可用；上面的白名单已修正为实际接口。修复记录见下节。
 
 本次修改文件：
 
@@ -228,4 +228,13 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - iPhone 上现有安装包仍为此前版本；后续已完成 [iOS 第 3 次构建及 IPA 打包](local-ios-build.md)，更新 iPhone 可使用该 IPA 和同一 Apple 账号覆盖签名安装。
 - 原入口 Android dev Debug（x86_64）普通包构建、覆盖安装和启动成功；模拟器已恢复普通运行入口，最新包位于 `D:\env\echo-loop\echo-loop-local-emulator.apk`，未清除原有学习数据。
 
-下一步手动验证：以 `APP_EDITION=local` 运行原入口，进入“资源库 → 发现资源 → Apple Podcasts”，搜索或粘贴公开 RSS 后加入，确认无需登录或配置模型；进入合集点击未下载单集验证音频下载。官方合集文件 404 应展示失败状态，不能计为下载成功。
+下一步手动验证：以 `APP_EDITION=local` 运行原入口，进入“资源库 → 发现资源 → Apple Podcasts”，搜索或粘贴公开 RSS 后加入，确认无需登录或配置模型；进入 Example 合集添加并下载一条素材，确认字幕和音频可用。
+
+## 2026-09-25：修复 iPhone 反馈的合集 404 与播客入口缺失
+
+- 合集文件列表改为读取 `GET /api/v2/collections/{id}`；字幕改为从 `GET /api/v2/collections/{id}/files/{fileId}` 的 `subtitle` 对象读取。参考上游 `a7fb15ee` 的实际契约，仅适配客户端边界，未合并上游其它 UI、数据库或目录重构。
+- 本地版资源白名单同步修正；旧错误端点、写请求、跨域及账号/支付/官方 AI 接口仍不放行。
+- Apple Podcasts 入口独立于精选缓存、社区列表加载/错误/空状态，进入播客页后使用已有目录刷新逻辑。此前模拟器已有精选缓存，掩盖了 iPhone 首装缺少入口的问题。
+- 合集详情请求失败改为本地化重试按钮，不再将 Dio 英文异常直接显示到页面。
+- 先补回归测试，修复前 7 项失败；修复后本地相关测试 46 项、官方相关测试 49 项通过（另 1 项仅本地模式用例按既有规则不在官方配置运行），相关静态分析通过。iOS 工作流加入社区合集和播客页面回归测试。
+- 模拟器原安装包日志同样记录 CATTI 与天津高考合集加入时 404，确认不是 GitHub/iOS 独有问题。

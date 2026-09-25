@@ -68,7 +68,16 @@ class _CommunityCollectionDetailScreenState
       appBar: AppBar(title: Text(summary?.name ?? '')),
       body: files.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(child: Text('$error')),
+        // 原始请求异常保留在数据层日志，界面只展示可重试的本地化提示。
+        error: (error, _) => Center(
+          child: FilledButton.icon(
+            onPressed: () => ref.invalidate(
+              communityCollectionFilesProvider(widget.remoteId),
+            ),
+            icon: const Icon(Icons.refresh),
+            label: Text(AppLocalizations.of(context)?.discoverLoadFailed ?? ''),
+          ),
+        ),
         data: (page) => _Content(
           summary: summary,
           remotePage: page,
