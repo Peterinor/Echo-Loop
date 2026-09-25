@@ -22,7 +22,20 @@
 工作流会先执行本地版行为测试和 Apple 配置测试，再验证编译产物。
 现有上游 `CI`、`Release` 工作流保持原样；不要通过 `Release` 打包本地版。
 
-## 最新构建：恢复匿名发现资源（2026-09-25）
+## 最新构建：修复合集 404 与首装播客入口（2026-09-25）
+
+- [成功运行 #4](https://github.com/Peterinor/Echo-Loop/actions/runs/36092777859)，源码 `70f3df5dbe3f7a959ff4c80ec88c5e569766bb01`，耗时 17 分 35 秒。
+- 修正社区合集与字幕 API 路径，Apple Podcasts 入口不再依赖精选缓存，详情请求失败显示本地化重试按钮。该问题不由 GitHub 打包引起，原 Android 包日志也存在相同 404。
+- 云端 6 项 Python、6 项本地版、40 项资源与播客页面、7 项 AI 客户端测试全部通过，共 59 项。
+- iPhone ARM64 Release，版本 `1.0.35 (4)`，最低 iOS 15.0；本地模式、原生埋点关闭及模型密钥未打包检查通过。
+- 下载后校验 SHA256，重新打包为 `Payload/Runner.app`；684 个应用条目的字节内容与权限均与云端产物一致。
+- IPA：`D:\env\echo-loop\ios-build\run-4\Echo-Loop-local-1.0.35-4.ipa`，61,600,457 字节，仍需 Sideloadly 使用原 Apple 账号与 Bundle ID 配置覆盖签名安装。
+- IPA SHA256：`464f7f8626dee35f3e6464332f973168bb7cd760915305b77c1035a171449d7e`。
+- 原始 ZIP SHA256：`fb83efb41110fed3da069e1ea8ce33f71b8e14153d6a876a711486e2d48ec3ca`。
+
+本地相关测试 46 项、官方相关测试 49 项及静态分析通过；Android 模拟器真实验证 Example 加入、音频/字幕下载及播客入口、搜索、RSS 订阅和单集列表。Maestro CLI 未安装，使用 Flutter integration_test；未运行全量 `scripts/check.sh`（本次是局部修复及构建验证）。已恢复模拟器普通运行包，新 IPA 尚未安装到 iPhone。
+
+## 历史构建：恢复匿名发现资源（2026-09-25）
 
 - [成功运行 #3](https://github.com/Peterinor/Echo-Loop/actions/runs/36089026211)，源码提交 `22b0b7baf0945fb5464207e011e6b078d2f57451`，耗时 15 分 22 秒。
 - 包含“发现资源”、免登录加入合集/订阅播客、资源接口白名单和播客首启目录刷新修改。
@@ -33,7 +46,7 @@
 - IPA SHA256：`cb50db54ad72686fc91b37b27c0837efa0ed39d9ef09eaf8b8f823eae4d9d79e`。
 - 原始 ZIP SHA256：`9c49667f8dd5618996d4a5bc2b3a844a953226fcdcee4b9a32750f52ea30eb79`。
 
-本轮只进行云端构建和本地打包校验，未运行全量 `scripts/check.sh` 或重新执行 UI / Maestro；资源修改的 Android 验收见本地版实施记录。此新版尚未在 iPhone 上运行验证，官方合集文件接口此前返回 404 的限制仍存在。
+此轮仅进行云端构建和本地打包校验，未运行全量 `scripts/check.sh` 或重新执行 UI / Maestro。用户随后在 iPhone 上反馈 404 与播客入口缺失；后续确认是客户端接口路径和缓存依赖问题，第 4 包已修复，详见上节。
 
 ## 首次成功构建记录（2026-09-25）
 

@@ -241,3 +241,5 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - Android 模拟器完整 integration_test 已通过：Example 匿名预览/加入，下载音频 268333 字节与字幕并校验本地落盘；从可见 Apple 播客入口进入精选、Apple 搜索、RSS 订阅和单集列表。已有学习记录与配置保留，测试可在已加入合集状态重复运行。
 - 首轮补充设备测试已下载成功，但脚本按英文寻找中文按钮导致后续等待超时；已改为读取当前语言，并保留详情 Provider 监听及明确返回资源库步骤，最终完整通过。此过程未改动额外应用业务逻辑。
 - 本轮未运行 `scripts/check.sh`（局部接口与入口修复）；Maestro CLI 未安装，使用 Flutter integration_test。iPhone 仍需安装新包后复核。
+- 修复提交 `70f3df5d` 已推送；第 4 次 iOS 构建成功，59 项云端测试通过，IPA 校验与位置见 [最新构建记录](local-ios-build.md)。后续 `b7372d20` 只补充设备测试与记录，不改变安装包运行时代码。
+- Android 普通入口包已重新构建、覆盖安装并启动，最新 APK 为 `D:\env\echo-loop\echo-loop-local-emulator.apk`，启动崩溃日志为空；没有卸载应用或清除学习数据。
