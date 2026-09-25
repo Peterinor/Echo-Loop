@@ -40,6 +40,40 @@ abstract interface class BaiduNetdiskApi {
     CancelToken? cancelToken,
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   });
+
+  /// 将多个已有 dlink 提交给共享后台队列；返回顺序与请求顺序一致。
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  });
+}
+
+/// 百度网盘批量下载中的单个文件请求。
+class BaiduNetdiskDownloadRequest {
+  const BaiduNetdiskDownloadRequest({
+    required this.id,
+    required this.fsId,
+    required this.dlink,
+    required this.savePath,
+  });
+
+  final String id;
+  final int fsId;
+  final String dlink;
+  final String savePath;
+}
+
+/// 百度网盘批量下载的单文件终态。
+class BaiduNetdiskDownloadItemResult {
+  const BaiduNetdiskDownloadItemResult({required this.request, this.failure});
+
+  final BaiduNetdiskDownloadRequest request;
+  final BaiduNetdiskFileException? failure;
+
+  bool get succeeded => failure == null;
 }
 
 /// 默认百度网盘文件 API 实现。
@@ -196,6 +230,53 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
     } on BackgroundFileDownloadException catch (error) {
       throw _mapBackgroundDownloadException(error);
     }
+  }
+
+  @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) async {
+    final downloadRequests = requests
+        .map(
+          (request) => BackgroundFileDownloadRequest(
+            id: request.id,
+            uri: _downloadUri(request.dlink, accessToken),
+            savePath: request.savePath,
+            headers: const {'User-Agent': _baiduUserAgent},
+          ),
+        )
+        .toList(growable: false);
+    final results = await _backgroundDownloader.downloadBatch(
+      requests: downloadRequests,
+      cancelToken: cancelToken,
+      onProgress: (id, received, total) {
+        onProgress?.call(id, received, total);
+      },
+    );
+    return [
+      for (var index = 0; index < requests.length; index++)
+        BaiduNetdiskDownloadItemResult(
+          request: requests[index],
+          failure: switch (results[index].error) {
+            final error? => _mapBackgroundDownloadException(error),
+            null => null,
+          },
+        ),
+    ];
+  }
+
+  Uri _downloadUri(String dlink, String accessToken) {
+    final uri = Uri.parse(dlink);
+    return uri.replace(
+      queryParameters: <String, String>{
+        ...uri.queryParameters,
+        'access_token': accessToken,
+      },
+    );
   }
 
   Future<Map<dynamic, dynamic>> _getJson(

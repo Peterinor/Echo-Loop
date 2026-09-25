@@ -12,6 +12,34 @@ import '../utils/app_data_dir.dart';
 
 typedef BackgroundFileDownloadProgress =
     void Function(int receivedBytes, int? totalBytes);
+typedef BackgroundFileDownloadBatchProgress =
+    void Function(String taskId, int receivedBytes, int? totalBytes);
+
+/// A single file request submitted to the shared background download queue.
+class BackgroundFileDownloadRequest {
+  const BackgroundFileDownloadRequest({
+    required this.id,
+    required this.uri,
+    required this.savePath,
+    this.headers = const <String, String>{},
+  });
+
+  /// Stable identifier used to associate progress and results with this request.
+  final String id;
+  final Uri uri;
+  final String savePath;
+  final Map<String, String> headers;
+}
+
+/// The terminal outcome for one request in a background download batch.
+class BackgroundFileDownloadItemResult {
+  const BackgroundFileDownloadItemResult({required this.request, this.error});
+
+  final BackgroundFileDownloadRequest request;
+  final BackgroundFileDownloadException? error;
+
+  bool get succeeded => error == null;
+}
 
 /// 后台文件任务的最终状态。
 enum BackgroundDownloadStatus { complete, notFound, failed, canceled }
@@ -55,6 +83,16 @@ abstract interface class BackgroundDownloadRunner {
   });
 }
 
+/// Optional capability for platform runners that can queue an entire batch
+/// natively before Dart waits for completion.
+abstract interface class BackgroundDownloadBatchRunner {
+  Future<List<BackgroundDownloadResult>> enqueueBatch({
+    required List<BackgroundFileDownloadRequest> requests,
+    required BackgroundFileDownloadBatchProgress? onProgress,
+    required CancelToken? cancelToken,
+  });
+}
+
 /// 文件后台下载服务。
 ///
 /// 应用层只依据平台下载任务的终态和目标文件是否存在判断成功，不拿来源
@@ -85,33 +123,136 @@ class BackgroundFileDownloadService {
     CancelToken? cancelToken,
     BackgroundFileDownloadProgress? onProgress,
   }) async {
-    AppLogger.log(
-      'BackgroundFileDownload',
-      'download started host=${uri.host} url=${_safeDownloadUrl(uri)} '
-          'file=${p.basename(savePath)}',
-    );
-    try {
-      onProgress?.call(0, null);
-      final BackgroundDownloadResult result;
-      try {
-        result = await _runner.enqueue(
+    onProgress?.call(0, null);
+    final outcomes = await downloadBatch(
+      requests: [
+        BackgroundFileDownloadRequest(
+          id: savePath,
           uri: uri,
           savePath: savePath,
           headers: headers,
+        ),
+      ],
+      cancelToken: cancelToken,
+      onProgress: (_, received, total) => onProgress?.call(received, total),
+    );
+    final error = outcomes.single.error;
+    if (error != null) throw error;
+  }
+
+  /// Submits a batch to the shared queue and returns one terminal result per file.
+  ///
+  /// Mobile platform tasks are all enqueued before this method waits, allowing
+  /// the native queue to start the next file while the app is suspended. Runners
+  /// without native batch support use the same serial behavior in Dart.
+  Future<List<BackgroundFileDownloadItemResult>> downloadBatch({
+    required List<BackgroundFileDownloadRequest> requests,
+    CancelToken? cancelToken,
+    BackgroundFileDownloadBatchProgress? onProgress,
+  }) async {
+    if (requests.isEmpty) return const <BackgroundFileDownloadItemResult>[];
+
+    for (final request in requests) {
+      AppLogger.log(
+        'BackgroundFileDownload',
+        'download queued host=${request.uri.host} '
+            'url=${_safeDownloadUrl(request.uri)} '
+            'file=${p.basename(request.savePath)} task=${request.id}',
+      );
+    }
+
+    final List<BackgroundDownloadResult> results;
+    try {
+      final runner = _runner;
+      if (runner case final BackgroundDownloadBatchRunner batchRunner) {
+        results = await batchRunner.enqueueBatch(
+          requests: requests,
           cancelToken: cancelToken,
           onProgress: onProgress,
         );
-      } on FileSystemException catch (error) {
-        throw BackgroundFileDownloadException(
-          'Failed to save downloaded file.',
-          isStorageFailure: true,
-          cause: error,
+      } else {
+        results = await _enqueueSerially(
+          requests,
+          cancelToken: cancelToken,
+          onProgress: onProgress,
         );
       }
+    } on Object catch (error) {
+      return [
+        for (final request in requests)
+          BackgroundFileDownloadItemResult(
+            request: request,
+            error: _exceptionFromError(error),
+          ),
+      ];
+    }
 
+    if (results.length != requests.length) {
+      final error = BackgroundFileDownloadException(
+        'The download queue returned an incomplete batch result.',
+      );
+      return [
+        for (final request in requests)
+          BackgroundFileDownloadItemResult(request: request, error: error),
+      ];
+    }
+
+    final outcomes = <BackgroundFileDownloadItemResult>[];
+    for (var index = 0; index < requests.length; index++) {
+      final request = requests[index];
+      final result = results[index];
+      final error = await _validateResult(request, result);
+      if (error != null) _logFailure(request, error);
+      outcomes.add(
+        BackgroundFileDownloadItemResult(request: request, error: error),
+      );
+    }
+    return outcomes;
+  }
+
+  Future<List<BackgroundDownloadResult>> _enqueueSerially(
+    List<BackgroundFileDownloadRequest> requests, {
+    required CancelToken? cancelToken,
+    required BackgroundFileDownloadBatchProgress? onProgress,
+  }) async {
+    final results = <BackgroundDownloadResult>[];
+    for (final request in requests) {
+      if (cancelToken?.isCancelled ?? false) {
+        results.add(
+          const BackgroundDownloadResult(
+            status: BackgroundDownloadStatus.canceled,
+            message: 'Download canceled before enqueue.',
+          ),
+        );
+        continue;
+      }
+      onProgress?.call(request.id, 0, null);
+      try {
+        results.add(
+          await _runner.enqueue(
+            uri: request.uri,
+            savePath: request.savePath,
+            headers: request.headers,
+            cancelToken: cancelToken,
+            onProgress: (received, total) =>
+                onProgress?.call(request.id, received, total),
+          ),
+        );
+      } on Object catch (error) {
+        results.add(_resultFromError(error));
+      }
+    }
+    return results;
+  }
+
+  Future<BackgroundFileDownloadException?> _validateResult(
+    BackgroundFileDownloadRequest request,
+    BackgroundDownloadResult result,
+  ) async {
+    try {
       switch (result.status) {
         case BackgroundDownloadStatus.complete:
-          final file = File(savePath);
+          final file = File(request.savePath);
           if (!await file.exists()) {
             throw BackgroundFileDownloadException(
               'Download completed without creating the target file.',
@@ -121,15 +262,17 @@ class BackgroundFileDownloadService {
           final actualBytes = await file.length();
           AppLogger.log(
             'BackgroundFileDownload',
-            'download complete host=${uri.host} url=${_safeDownloadUrl(uri)} '
-                'file=${p.basename(savePath)} '
+            'download complete host=${request.uri.host} '
+                'url=${_safeDownloadUrl(request.uri)} '
+                'file=${p.basename(request.savePath)} '
                 'statusCode=${result.statusCode ?? "(null)"} '
                 'bytes=$actualBytes '
                 'expectedBytes=${result.expectedBytes ?? "(unknown)"}'
                 '${result.contentType == null ? '' : ' contentType=${result.contentType}'}',
           );
+          return null;
         case BackgroundDownloadStatus.notFound:
-          throw BackgroundFileDownloadException(
+          return BackgroundFileDownloadException(
             result.message ?? 'Download URL was not found.',
             statusCode: result.statusCode ?? 404,
             cause: result.cause,
@@ -139,7 +282,7 @@ class BackgroundFileDownloadService {
             errorCode: result.errorCode,
           );
         case BackgroundDownloadStatus.failed:
-          throw BackgroundFileDownloadException(
+          return BackgroundFileDownloadException(
             result.message ?? 'Background download failed.',
             statusCode: result.statusCode,
             isStorageFailure: result.isStorageFailure,
@@ -150,7 +293,7 @@ class BackgroundFileDownloadService {
             errorCode: result.errorCode,
           );
         case BackgroundDownloadStatus.canceled:
-          throw BackgroundFileDownloadException(
+          return BackgroundFileDownloadException(
             result.message ?? 'Download canceled.',
             isCanceled: true,
             cause: result.cause,
@@ -160,36 +303,71 @@ class BackgroundFileDownloadService {
             errorCode: result.errorCode,
           );
       }
-    } on Object catch (error) {
-      final details = switch (error) {
-        BackgroundFileDownloadException(
-          :final statusCode,
-          :final isStorageFailure,
-          :final isCanceled,
-          :final receivedBytes,
-          :final expectedBytes,
-          :final errorDomain,
-          :final errorCode,
-          :final message,
-          :final cause,
-        ) =>
-          ' statusCode=${statusCode ?? "(null)"} storage=$isStorageFailure '
-              'canceled=$isCanceled bytes=${receivedBytes ?? "(unknown)"} '
-              'expectedBytes=${expectedBytes ?? "(unknown)"}'
-              '${errorDomain == null ? '' : ' errorDomain=$errorDomain'}'
-              '${errorCode == null ? '' : ' errorCode=$errorCode'} '
-              'message=${_safeDiagnosticText(message)}'
-              '${cause == null ? '' : ' causeType=${cause.runtimeType} cause=${_safeDiagnosticText(cause.toString())}'}',
-        _ => ' detail=${_safeDiagnosticText(error.toString())}',
-      };
-      AppLogger.log(
-        'BackgroundFileDownload',
-        'download failed host=${uri.host} url=${_safeDownloadUrl(uri)} '
-            'file=${p.basename(savePath)} '
-            'errorType=${error.runtimeType}$details',
+    } on BackgroundFileDownloadException catch (error) {
+      return error;
+    } on FileSystemException catch (error) {
+      return BackgroundFileDownloadException(
+        'Failed to save downloaded file.',
+        isStorageFailure: true,
+        cause: error,
       );
-      rethrow;
+    } on Object catch (error) {
+      return _exceptionFromError(error);
     }
+  }
+
+  BackgroundFileDownloadException _exceptionFromError(Object error) {
+    if (error case BackgroundFileDownloadException()) return error;
+    if (error case FileSystemException()) {
+      return BackgroundFileDownloadException(
+        'Failed to save downloaded file.',
+        isStorageFailure: true,
+        cause: error,
+      );
+    }
+    return BackgroundFileDownloadException(
+      'Background download failed.',
+      cause: error,
+    );
+  }
+
+  BackgroundDownloadResult _resultFromError(Object error) {
+    final exception = _exceptionFromError(error);
+    return BackgroundDownloadResult(
+      status: exception.isCanceled
+          ? BackgroundDownloadStatus.canceled
+          : BackgroundDownloadStatus.failed,
+      message: exception.message,
+      statusCode: exception.statusCode,
+      isStorageFailure: exception.isStorageFailure,
+      cause: exception.cause,
+      receivedBytes: exception.receivedBytes,
+      expectedBytes: exception.expectedBytes,
+      errorDomain: exception.errorDomain,
+      errorCode: exception.errorCode,
+    );
+  }
+
+  void _logFailure(
+    BackgroundFileDownloadRequest request,
+    BackgroundFileDownloadException error,
+  ) {
+    final details =
+        ' statusCode=${error.statusCode ?? "(null)"} '
+        'storage=${error.isStorageFailure} canceled=${error.isCanceled} '
+        'bytes=${error.receivedBytes ?? "(unknown)"} '
+        'expectedBytes=${error.expectedBytes ?? "(unknown)"}'
+        '${error.errorDomain == null ? '' : ' errorDomain=${error.errorDomain}'}'
+        '${error.errorCode == null ? '' : ' errorCode=${error.errorCode}'} '
+        'message=${_safeDiagnosticText(error.message)}'
+        '${error.cause == null ? '' : ' causeType=${error.cause.runtimeType} cause=${_safeDiagnosticText(error.cause.toString())}'}';
+    AppLogger.log(
+      'BackgroundFileDownload',
+      'download failed host=${request.uri.host} '
+          'url=${_safeDownloadUrl(request.uri)} '
+          'file=${p.basename(request.savePath)} '
+          'errorType=${error.runtimeType}$details',
+    );
   }
 }
 
@@ -222,7 +400,8 @@ class BackgroundFileDownloadException implements Exception {
 }
 
 /// `background_downloader` 的平台队列适配器。
-class PluginBackgroundDownloadRunner implements BackgroundDownloadRunner {
+class PluginBackgroundDownloadRunner
+    implements BackgroundDownloadRunner, BackgroundDownloadBatchRunner {
   PluginBackgroundDownloadRunner({
     required Future<Directory> Function() resolveDataDir,
     FileDownloader? downloader,
@@ -327,6 +506,38 @@ class PluginBackgroundDownloadRunner implements BackgroundDownloadRunner {
     }
   }
 
+  @override
+  Future<List<BackgroundDownloadResult>> enqueueBatch({
+    required List<BackgroundFileDownloadRequest> requests,
+    required BackgroundFileDownloadBatchProgress? onProgress,
+    required CancelToken? cancelToken,
+  }) {
+    return Future.wait(
+      requests.map((request) async {
+        try {
+          return await enqueue(
+            uri: request.uri,
+            savePath: request.savePath,
+            headers: request.headers,
+            cancelToken: cancelToken,
+            onProgress: (received, total) =>
+                onProgress?.call(request.id, received, total),
+          );
+        } on Object catch (error) {
+          final isStorageFailure = error is FileSystemException;
+          return BackgroundDownloadResult(
+            status: BackgroundDownloadStatus.failed,
+            message: isStorageFailure
+                ? 'Failed to save downloaded file.'
+                : 'Background download failed.',
+            isStorageFailure: isStorageFailure,
+            cause: error,
+          );
+        }
+      }),
+    );
+  }
+
   Future<void> _ensureInitialized() {
     final initialization = _initialization;
     if (initialization != null) return initialization;
@@ -344,6 +555,9 @@ class PluginBackgroundDownloadRunner implements BackgroundDownloadRunner {
       'initializing plugin group=$_group',
     );
     try {
+      await _downloader.configure(
+        globalConfig: (Config.holdingQueue, (null, null, 1)),
+      );
       _downloader.configureNotificationForGroup(
         _group,
         running: const TaskNotification('Downloading', '{displayName}'),

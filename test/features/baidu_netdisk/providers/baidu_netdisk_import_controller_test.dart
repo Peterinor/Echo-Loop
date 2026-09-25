@@ -106,6 +106,15 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   }
 
   @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) => throw UnimplementedError();
+
+  @override
   Future<CloudDriveListPage> listDirectory({
     required String accessToken,
     String dir = '/',

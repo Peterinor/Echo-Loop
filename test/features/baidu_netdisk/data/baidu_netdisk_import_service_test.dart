@@ -64,6 +64,9 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
 
   int fetchDownloadLinkCalls = 0;
   int downloadCalls = 0;
+  int downloadBatchCalls = 0;
+  final submittedBatchIds = <List<String>>[];
+  final fetchLinkCountsAtSubmission = <int>[];
   String? lastAccessToken;
   String? lastSavePath;
   final downloadedDlinks = <String>[];
@@ -92,6 +95,50 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
     final content = fsId == null ? bytes : bytesByFsId[fsId] ?? bytes;
     onProgress?.call(content.length, null);
     await File(savePath).writeAsBytes(content);
+  }
+
+  @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) async {
+    downloadBatchCalls++;
+    submittedBatchIds.add(requests.map((request) => request.id).toList());
+    fetchLinkCountsAtSubmission.add(fetchDownloadLinkCalls);
+    final results = <BaiduNetdiskDownloadItemResult>[];
+    for (final request in requests) {
+      await File(request.savePath).parent.create(recursive: true);
+      try {
+        await downloadToFile(
+          accessToken: accessToken,
+          dlink: request.dlink,
+          savePath: request.savePath,
+          cancelToken: cancelToken,
+          onProgress: (received, total) =>
+              onProgress?.call(request.id, received, total),
+        );
+        results.add(BaiduNetdiskDownloadItemResult(request: request));
+      } on BaiduNetdiskFileException catch (error) {
+        results.add(
+          BaiduNetdiskDownloadItemResult(request: request, failure: error),
+        );
+      } on Object catch (error) {
+        results.add(
+          BaiduNetdiskDownloadItemResult(
+            request: request,
+            failure: BaiduNetdiskFileException(
+              kind: BaiduNetdiskFileErrorKind.unknown,
+              message: error.toString(),
+              cause: error,
+            ),
+          ),
+        );
+      }
+    }
+    return results;
   }
 
   @override
@@ -394,6 +441,9 @@ void main() {
         CloudDriveImportItemStatus.failed,
         CloudDriveImportItemStatus.added,
       ]);
+      expect(api.downloadBatchCalls, 1);
+      expect(api.fetchLinkCountsAtSubmission, [2]);
+      expect(api.submittedBatchIds.single, ['audio-42', 'audio-45']);
     });
 
     test('批量导入时下载并挂载同名字幕', () async {
@@ -436,6 +486,8 @@ void main() {
       expect(itemResults.single.status, CloudDriveImportItemStatus.added);
       expect(itemResults.single.item?.transcriptSource, TranscriptSource.local);
       expect(api.downloadCalls, 2);
+      expect(api.downloadBatchCalls, 1);
+      expect(api.submittedBatchIds.single, ['audio-42', 'subtitle-43']);
       expect(attached['Lesson 1'], contains('srt:1'));
     });
   });

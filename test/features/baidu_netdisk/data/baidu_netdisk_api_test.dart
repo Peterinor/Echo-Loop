@@ -11,6 +11,7 @@ class _MockDio extends Mock implements Dio {}
 
 class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   Uri? uri;
+  final uris = <Uri>[];
   String? savePath;
   Map<String, String>? headers;
   BackgroundDownloadResult result = const BackgroundDownloadResult(
@@ -26,6 +27,7 @@ class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
     required CancelToken? cancelToken,
   }) async {
     this.uri = uri;
+    uris.add(uri);
     this.savePath = savePath;
     this.headers = headers;
     if (result.status == BackgroundDownloadStatus.complete) {
@@ -106,6 +108,41 @@ void main() {
               as Map<String, Object?>;
       expect(query['method'], 'uinfo');
       expect(query['access_token'], 'access-token');
+    });
+
+    test('downloadFiles 一次提交批量文件并为每个 dlink 添加 access token', () async {
+      final results = await api.downloadFiles(
+        accessToken: 'access-token',
+        requests: [
+          BaiduNetdiskDownloadRequest(
+            id: 'audio-1',
+            fsId: 1,
+            dlink: 'https://d.pcs.baidu.com/file/1?source=test',
+            savePath: '${tempDirectory.path}/1.mp3',
+          ),
+          BaiduNetdiskDownloadRequest(
+            id: 'audio-2',
+            fsId: 2,
+            dlink: 'https://d.pcs.baidu.com/file/2',
+            savePath: '${tempDirectory.path}/2.mp3',
+          ),
+        ],
+      );
+
+      expect(results.map((result) => result.request.id), [
+        'audio-1',
+        'audio-2',
+      ]);
+      expect(results.every((result) => result.succeeded), isTrue);
+      expect(downloader.uris, hasLength(2));
+      expect(downloader.uris[0].queryParameters, {
+        'source': 'test',
+        'access_token': 'access-token',
+      });
+      expect(
+        downloader.uris[1].queryParameters['access_token'],
+        'access-token',
+      );
     });
 
     test('listDirectory 调用百度列表接口并解析目录/文件', () async {

@@ -142,6 +142,15 @@ class _PendingBaiduNetdiskApi implements BaiduNetdiskApi {
   }
 
   @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) => throw UnimplementedError();
+
+  @override
   Future<BaiduDownloadLink> fetchDownloadLink({
     required String accessToken,
     required int fsId,
@@ -219,6 +228,15 @@ class _StaticBaiduNetdiskApi implements BaiduNetdiskApi {
   }) {
     throw UnimplementedError();
   }
+
+  @override
+  Future<List<BaiduNetdiskDownloadItemResult>> downloadFiles({
+    required String accessToken,
+    required List<BaiduNetdiskDownloadRequest> requests,
+    CancelToken? cancelToken,
+    void Function(String taskId, int receivedBytes, int? totalBytes)?
+    onProgress,
+  }) => throw UnimplementedError();
 
   @override
   Future<BaiduDownloadLink> fetchDownloadLink({

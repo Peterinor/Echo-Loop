@@ -15,6 +15,19 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
   String? configuredNotificationGroup;
   TaskNotification? runningNotification;
   bool notificationProgressBar = false;
+  dynamic configuredGlobalConfig;
+  final enqueuedFileNames = <String>[];
+
+  @override
+  Future<List<(String, String)>> configure({
+    dynamic globalConfig,
+    dynamic androidConfig,
+    dynamic iOSConfig,
+    dynamic desktopConfig,
+  }) async {
+    configuredGlobalConfig = globalConfig;
+    return const <(String, String)>[];
+  }
 
   @override
   FileDownloader configureNotificationForGroup(
@@ -61,6 +74,9 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
 
   @override
   Future<bool> enqueue(Task task) async {
+    if (task case final DownloadTask downloadTask) {
+      enqueuedFileNames.add(downloadTask.filename);
+    }
     final callback = _statusCallback;
     if (callback == null) {
       throw StateError('status callback was not registered');
@@ -269,6 +285,47 @@ void main() {
   );
 
   test(
+    'native batch queue submits every file and limits each group to one',
+    () async {
+      final downloader = _FakeFileDownloader(
+        TaskFileSystemException('simulated failure'),
+      );
+      final service = BackgroundFileDownloadService(
+        runner: PluginBackgroundDownloadRunner(
+          resolveDataDir: () async => dataDir,
+          downloader: downloader,
+        ),
+      );
+
+      final outcomes = await service.downloadBatch(
+        requests: [
+          BackgroundFileDownloadRequest(
+            id: 'first',
+            uri: Uri.parse('https://example.com/first.mp3'),
+            savePath: '${dataDir.path}/first.mp3',
+          ),
+          BackgroundFileDownloadRequest(
+            id: 'second',
+            uri: Uri.parse('https://example.com/second.mp3'),
+            savePath: '${dataDir.path}/second.mp3',
+          ),
+        ],
+      );
+
+      expect(downloader.enqueuedFileNames, ['first.mp3', 'second.mp3']);
+      expect(downloader.configuredGlobalConfig, (
+        Config.holdingQueue,
+        (null, null, 1),
+      ));
+      expect(outcomes.map((outcome) => outcome.request.id), [
+        'first',
+        'second',
+      ]);
+      expect(outcomes.every((outcome) => outcome.error != null), isTrue);
+    },
+  );
+
+  test(
     'does not classify a wrapped SocketException as a storage failure',
     () async {
       AppLogger.instance.clear();
@@ -314,7 +371,7 @@ void main() {
           (entry) =>
               entry.tag == 'BackgroundFileDownload' &&
               entry.message.contains(
-                'download started host=example.com url=https://example.com/file.mp3?source=podcast&token=REDACTED',
+                'download queued host=example.com url=https://example.com/file.mp3?source=podcast&token=REDACTED',
               ),
         ),
         isTrue,
