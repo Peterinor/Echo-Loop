@@ -28,7 +28,7 @@ class FakeChatApiClient implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) async* {
     final chunks = _replyChunks(history);

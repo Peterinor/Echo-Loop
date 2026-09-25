@@ -7,6 +7,10 @@
 /// 录音回放复用 [SpeechRatingBadge] 的播放状态。
 library;
 
+import '../features/custom_ai/custom_ai_access.dart';
+import '../providers/offline_asr_settings_provider.dart';
+import '../widgets/asr_download_prompt_dialog.dart';
+import '../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -505,6 +509,15 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
   );
 
   Future<void> _startReviewEvaluation(SpeechPracticeAttempt? attempt) async {
+    if (isLocalEdition) {
+      if (!await ensureCustomAiConfigured(context, ref) || !mounted) return;
+      final ready = await ensureAsrModelReadyForTranscription(
+        context,
+        ref,
+        model: ref.read(offlineAsrSettingsProvider).selectedModel,
+      );
+      if (!ready || !mounted) return;
+    }
     final path = attempt?.filePath;
     if (attempt == null || path == null || path.isEmpty) return;
     await ref

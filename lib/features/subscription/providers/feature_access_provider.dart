@@ -13,6 +13,7 @@
 /// - unknown 中间态按「未持有权益」处理，由免费额度策略兜底，避免冷启动误锁。
 library;
 
+import '../../../config/app_capabilities.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Ref;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -26,6 +27,8 @@ part 'feature_access_provider.g.dart';
 /// 某 [feature] 当前是否对用户可用。
 @riverpod
 bool featureAccess(Ref ref, PremiumFeature feature) {
+  // 自带模型没有官方会员配额；实际请求由模型配置与密钥校验保护。
+  if (isLocalEdition) return feature != PremiumFeature.aiTranscription;
   // 第一层：未登录禁用一切高级功能（连免费额度也不发放，须先登录）。
   if (!ref.watch(isAuthenticatedProvider)) return false;
   // 第二层：已确认 Premium → 无限解锁。

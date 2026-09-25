@@ -2,6 +2,7 @@
 //
 // 提供本地上传、AI 转录和删除字幕三种操作。
 // AI 转录在后台运行，弹窗关闭后任务继续。
+import '../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -94,7 +95,9 @@ class ManageSubtitlesSheet extends ConsumerStatefulWidget {
 
 class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
   /// 默认选中首位「AI 转录」（与选项排序一致，避免高亮落在末尾）。
-  _SubtitleAction _selectedAction = _SubtitleAction.aiTranscription;
+  _SubtitleAction _selectedAction = isLocalEdition
+      ? _SubtitleAction.offlineTranscription
+      : _SubtitleAction.aiTranscription;
   String _selectedLanguage = 'en';
 
   /// AI 转录「自动合并短句」开关，初值取自设置（记住上次选择），默认开启。
@@ -118,7 +121,7 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
   /// 是否展示本地离线转录入口。
   ///
   /// 当前本地转录效果不稳定，先隐藏入口；保留实现和状态处理，便于后续恢复。
-  bool get _showOfflineTranscriptionEntry => false;
+  bool get _showOfflineTranscriptionEntry => isLocalEdition;
 
   @override
   void initState() {
@@ -920,16 +923,17 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 排序：AI 转录（推荐默认）→ 本地转录（离线替代）→ 本地上传（进阶手动）。
-          _buildOptionTile(
-            theme: theme,
-            icon: Icons.auto_awesome_outlined,
-            title: l10n.aiTranscription,
-            subtitle: l10n.aiTranscriptionSubtitle,
-            selected: _selectedAction == _SubtitleAction.aiTranscription,
-            onTap: () => setState(
-              () => _selectedAction = _SubtitleAction.aiTranscription,
+          if (!isLocalEdition)
+            _buildOptionTile(
+              theme: theme,
+              icon: Icons.auto_awesome_outlined,
+              title: l10n.aiTranscription,
+              subtitle: l10n.aiTranscriptionSubtitle,
+              selected: _selectedAction == _SubtitleAction.aiTranscription,
+              onTap: () => setState(
+                () => _selectedAction = _SubtitleAction.aiTranscription,
+              ),
             ),
-          ),
           // AI 转录语言选择（动画展开/收起）
           AnimatedSize(
             duration: const Duration(milliseconds: 200),

@@ -7,6 +7,7 @@
 /// Phase 0：因免费额度策略一律放行，[child] 总会渲染，不阻断任何现有流程。
 library;
 
+import '../../../config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,11 +26,15 @@ import '../providers/subscription_availability.dart';
 /// 当前平台未启用订阅时不导航，仅提示——兜底覆盖所有撞墙入口（转录/意群/词典），
 /// 避免未启用平台的用户被引到无法购买的 Paywall。
 Future<void> openPaywall(BuildContext context, WidgetRef ref) async {
+  if (isLocalEdition) {
+    await context.push(AppRoutes.customAi);
+    return;
+  }
   if (!ref.read(subscriptionAvailabilityProvider)) {
     final l10n = AppLocalizations.of(context)!;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(l10n.premiumUnavailableOnPlatform)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(l10n.premiumUnavailableOnPlatform)));
     return;
   }
   await context.push(AppRoutes.paywall);

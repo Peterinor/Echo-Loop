@@ -345,7 +345,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin && python3 \"$PROJECT_DIR/../scripts/configure_native_analytics.py\" \"$TARGET_BUILD_DIR/$INFOPLIST_PATH\" \"$PROJECT_DIR/Runner/Info.plist\"";
 		};
 		813ACC9040D477ECAB6B6347 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;

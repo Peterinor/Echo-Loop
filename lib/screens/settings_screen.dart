@@ -1,3 +1,5 @@
+import '../features/custom_ai/custom_ai_settings_screen.dart';
+import '../config/app_capabilities.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -96,7 +98,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.m),
         children: [
-          _buildAccountSection(context, l10n),
+          if (!isLocalEdition) _buildAccountSection(context, l10n),
+          if (isLocalEdition)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.auto_awesome),
+                title: const Text('AI 模型设置'),
+                subtitle: const Text('使用自己的 API，无需登录或会员'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const CustomAiSettingsScreen(),
+                  ),
+                ),
+              ),
+            ),
           const SizedBox(height: AppSpacing.m),
           _buildSection(
             context,
@@ -115,7 +131,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SizedBox(height: AppSpacing.m),
           _buildStudySection(context, ref, l10n),
           const SizedBox(height: AppSpacing.m),
-          _buildAboutSection(context, ref, l10n),
+          if (!isLocalEdition) _buildAboutSection(context, ref, l10n),
           const SizedBox(height: AppSpacing.m),
           _buildStorageSection(context, ref, l10n),
           const SizedBox(height: AppSpacing.m),

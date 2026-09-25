@@ -44,7 +44,7 @@ class _ScriptApi implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) {
     callCount++;

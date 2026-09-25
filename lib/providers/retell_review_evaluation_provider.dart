@@ -1,6 +1,7 @@
 /// 复述 AI 评估的页面生命周期状态。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -108,7 +109,7 @@ class RetellReviewEvaluationController
         .read(supabaseSessionProvider)
         .valueOrNull
         ?.accessToken;
-    if (accessToken == null || accessToken.isEmpty) {
+    if (!isLocalEdition && (accessToken == null || accessToken.isEmpty)) {
       AppLogger.log('RetellReview', '评估需要登录态，未取到 access token');
       _failFast(attemptKey, 'auth_required');
       return;
@@ -131,11 +132,13 @@ class RetellReviewEvaluationController
     File? preparedFile;
     try {
       final source = File(recordingPath);
-      preparedFile = await ref
-          .read(retellReviewAudioPreparerProvider)
-          .prepare(source);
+      final evaluationAudio = isLocalEdition
+          ? source
+          : await ref.read(retellReviewAudioPreparerProvider).prepare(source);
       if (!_isCurrent(generation, attemptKey)) return;
-      if (await preparedFile.length() > _maxReviewAudioBytes) {
+      preparedFile = isLocalEdition ? null : evaluationAudio;
+      if (!isLocalEdition &&
+          await evaluationAudio.length() > _maxReviewAudioBytes) {
         throw const RetellReviewAudioTooLargeException();
       }
 
@@ -144,7 +147,7 @@ class RetellReviewEvaluationController
           in ref
               .read(sentenceAiApiClientProvider)
               .evaluateReviewStream(
-                audioFile: preparedFile,
+                audioFile: evaluationAudio,
                 originalText: originalText,
                 targetLanguage: targetLanguage,
                 accessToken: accessToken,
@@ -243,6 +246,7 @@ class RetellReviewEvaluationController
 
   /// 成功后消耗一次免费试用（会员不计；本地预测计数，权威在后端）。
   void _consumeTrial() {
+    if (isLocalEdition) return;
     if (ref.read(subscriptionControllerProvider).isActive) return;
     ref
         .read(aiTrialUsageProvider.notifier)

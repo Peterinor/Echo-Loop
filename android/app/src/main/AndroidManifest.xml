@@ -20,6 +20,12 @@
         android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            android:enabled="${officialServicesEnabled}"
+            tools:replace="android:enabled" />
+        <meta-data android:name="firebase_analytics_collection_deactivated"
+            android:value="${analyticsDeactivated}" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

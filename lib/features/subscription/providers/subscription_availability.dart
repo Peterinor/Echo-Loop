@@ -8,6 +8,7 @@
 /// 再看该渠道对应实现是否配置就绪（原生 RC key / Paddle 后端 API）。
 library;
 
+import '../../../config/app_capabilities.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Provider, Ref;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -21,17 +22,19 @@ part 'subscription_availability.g.dart';
 
 /// 当前平台是否支持订阅（订阅 UI 展示总闸）。
 @riverpod
-bool subscriptionAvailability(Ref ref) => subscriptionAvailableFor(
-  channel: clientPaymentChannel,
-  // 本地 StoreKit 测试模式仅对 Apple 渠道生效（与 purchaseServiceTypeFor 一致），
-  // 避免 Android 下 USE_LOCAL_STOREKIT=true 但无 Google key 时门控误判可用、
-  // 购买却落回 Stub。
-  nativeStoreConfigured:
-      isRevenueCatConfigured ||
-      (useLocalStoreKit &&
-          clientPaymentChannel == ClientPaymentChannel.appleStore),
-  webConfigured: isPaddleCheckoutConfigured,
-);
+bool subscriptionAvailability(Ref ref) =>
+    !isLocalEdition &&
+    subscriptionAvailableFor(
+      channel: clientPaymentChannel,
+      // 本地 StoreKit 测试模式仅对 Apple 渠道生效（与 purchaseServiceTypeFor 一致），
+      // 避免 Android 下 USE_LOCAL_STOREKIT=true 但无 Google key 时门控误判可用、
+      // 购买却落回 Stub。
+      nativeStoreConfigured:
+          isRevenueCatConfigured ||
+          (useLocalStoreKit &&
+              clientPaymentChannel == ClientPaymentChannel.appleStore),
+      webConfigured: isPaddleCheckoutConfigured,
+    );
 
 /// 根据本地渠道与对应实现的配置状态决定是否展示订阅能力。
 bool subscriptionAvailableFor({

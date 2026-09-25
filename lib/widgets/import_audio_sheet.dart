@@ -1,3 +1,4 @@
+import '../config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -215,6 +216,13 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       child: switch (_step) {
+        _ImportStep.chooseSource when isLocalEdition => AddAudioDialog(
+          key: const ValueKey('local-file'),
+          collectionId: widget.collectionId,
+          embedded: true,
+          autoPickOnStart: true,
+          onPickerDismissedEmpty: () => Navigator.pop(context),
+        ),
         _ImportStep.chooseSource => _ChooseSourcePanel(
           key: const ValueKey('choose-source'),
           showCloudDrive: cloudDriveImportEnabled,

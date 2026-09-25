@@ -41,7 +41,7 @@ class _SlowApi implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) async* {
     yield const ChatTextFrame(text: '正在回答', isFinal: false);

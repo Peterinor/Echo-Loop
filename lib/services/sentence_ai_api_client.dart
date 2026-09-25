@@ -4,6 +4,10 @@
 /// 基于 Dio，receiveTimeout 设为 60 秒以适应 LLM 响应延迟。
 library;
 
+import '../config/app_capabilities.dart';
+import '../features/custom_ai/custom_ai_client.dart';
+import '../features/custom_ai/custom_sentence_ai_client.dart';
+import '../features/custom_ai/local_review_transcriber.dart';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -164,7 +168,7 @@ class SentenceAiApiClient {
   /// [targetLanguage] 为 BCP 47 代码（如 'zh-CN'），不传则由后端决定默认值。
   Stream<SentenceTranslationStreamFrame> translateStream(
     String text, {
-    required String accessToken,
+    required String? accessToken,
     String? previousText,
     String? nextText,
     String? targetLanguage,
@@ -242,7 +246,7 @@ class SentenceAiApiClient {
   /// [targetLanguage] 为 BCP 47 代码（如 'zh-CN'），不传则由后端决定默认值。
   Stream<SentenceAnalysisStreamFrame> analyzeStream(
     String text, {
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) async* {
@@ -315,7 +319,7 @@ class SentenceAiApiClient {
   /// 词组用 [lookupPhraseStream]。
   Stream<AiDictionaryEntry> lookupWordStream(
     String word, {
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) => lookupWordStreamFrames(
@@ -328,7 +332,7 @@ class SentenceAiApiClient {
   /// AI 词典释义（单词，带协议帧信息）。
   Stream<AiDictionaryStreamFrame> lookupWordStreamFrames(
     String word, {
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) => _streamDictionaryFrames(
@@ -347,7 +351,7 @@ class SentenceAiApiClient {
   /// 单词用 [lookupWordStream]。
   Stream<AiDictionaryEntry> lookupPhraseStream(
     String phrase, {
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) => lookupPhraseStreamFrames(
@@ -360,7 +364,7 @@ class SentenceAiApiClient {
   /// AI 词典释义（多词/短语，带协议帧信息）。
   Stream<AiDictionaryStreamFrame> lookupPhraseStreamFrames(
     String phrase, {
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) => _streamDictionaryFrames(
@@ -383,7 +387,7 @@ class SentenceAiApiClient {
     String path,
     String query, {
     required AiDictionaryEntry Function(Map<String, dynamic>) fromJson,
-    required String accessToken,
+    required String? accessToken,
     String? targetLanguage,
     CancelToken? cancelToken,
   }) async* {
@@ -484,7 +488,7 @@ class SentenceAiApiClient {
   /// **无 targetLanguage**——意群是原句子串的切分，与目标语言无关。
   Stream<SenseGroupsStreamFrame> senseGroupsStream(
     String text, {
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) async* {
     final response = await _dio.post<ResponseBody>(
@@ -551,7 +555,7 @@ class SentenceAiApiClient {
     required File audioFile,
     required String originalText,
     required String targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) async* {
     final response = await _dio.post<ResponseBody>(
@@ -664,6 +668,14 @@ class SentenceAiApiClient {
 /// AI API 客户端单例 Provider
 @Riverpod(keepAlive: true)
 SentenceAiApiClient sentenceAiApiClient(Ref ref) {
+  if (isLocalEdition) {
+    final client = CustomSentenceAiClient(
+      ref.watch(customAiClientProvider),
+      transcribe: ref.watch(localReviewTranscriberProvider),
+    );
+    ref.onDispose(client.dispose);
+    return client;
+  }
   final client = SentenceAiApiClient(
     baseUrl: apiBaseUrl,
     appVersion: readAppVersion(ref),

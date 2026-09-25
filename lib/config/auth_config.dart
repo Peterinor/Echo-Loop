@@ -8,6 +8,8 @@
 // 登录相关功能不可用但 app 仍可匿名运行。
 library;
 
+import 'app_capabilities.dart';
+
 /// Supabase 项目 URL（如 https://xxx.supabase.co）。
 const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
 
@@ -24,4 +26,6 @@ const googleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
 ///
 /// 当 URL 或 publishable key 缺失时返回 false，main.dart 据此跳过 Supabase 初始化。
 bool get isAuthConfigured =>
-    supabaseUrl.isNotEmpty && supabasePublishableKey.isNotEmpty;
+    !isLocalEdition &&
+    supabaseUrl.isNotEmpty &&
+    supabasePublishableKey.isNotEmpty;

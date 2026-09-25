@@ -9,6 +9,7 @@
 /// UI 永远只读本 controller 的 state，不直接读缓存 / RC / 后端。
 library;
 
+import '../../../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:clock/clock.dart';
@@ -90,6 +91,7 @@ class SubscriptionController extends _$SubscriptionController {
 
   @override
   EntitlementState build() {
+    if (isLocalEdition) return const EntitlementState.free();
     // 监听身份变化：登出清权益、切换用户重对账。
     // fireImmediately：build 时立即以当前身份触发一次，确保已登录用户即使在
     // 「身份早已落定后」才首次创建本 controller，也会执行一次 Purchases.logIn 绑定
@@ -146,6 +148,7 @@ class SubscriptionController extends _$SubscriptionController {
   /// 与后端权威源对账并刷新权益。集中状态变更入口之一。
   /// [force] 让后端绕过节流回源 RC（成交收敛 / 用户主动刷新用）。
   Future<void> refresh({bool force = false}) async {
+    if (isLocalEdition) return;
     await _waitForIdentitySync();
     if (!force) {
       final stronger = _forceRefreshInFlight;

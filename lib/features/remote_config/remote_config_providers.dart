@@ -5,6 +5,7 @@
 /// 远端刷新由 [RemoteConfigController] 在首帧后后台执行。
 library;
 
+import '../../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -42,6 +43,7 @@ final remoteFeatureEnabledProvider = Provider.family<bool, RemoteFeature>((
   ref,
   feature,
 ) {
+  if (isLocalEdition) return feature == RemoteFeature.aiChatAssistant;
   return ref.watch(remoteConfigProvider).isEnabled(feature);
 });
 
@@ -78,6 +80,7 @@ class RemoteConfigController extends StateNotifier<RemoteConfig> {
   /// [forceFirst] 仅用于冷启动后首轮后台刷新，确保网络环境切换（例如 VPN
   /// 地区变化）不会被旧缓存 TTL 长时间挡住；普通回前台仍走 TTL 节流。
   void startPeriodicRefresh({bool forceFirst = false}) {
+    if (isLocalEdition) return;
     _active = true;
     unawaited(refreshIfStale(force: forceFirst));
   }
@@ -90,6 +93,7 @@ class RemoteConfigController extends StateNotifier<RemoteConfig> {
 
   /// 按远程配置 TTL 刷新；并发调用复用同一个请求。
   Future<void> refreshIfStale({bool force = false}) async {
+    if (isLocalEdition) return;
     try {
       final service = _readService();
       final run = await _refresh.run(

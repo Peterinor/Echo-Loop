@@ -1,3 +1,4 @@
+import 'config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -162,7 +163,7 @@ void main() async {
   // 任务由 ProviderScope 内的标准 Riverpod 启动 provider 编排。
   startupTrace.mark('run_app_invoked');
   runApp(
-    PostHogWidget(
+    _analyticsRoot(
       child: ProviderScope(
         overrides: [
           analyticsServiceProvider.overrideWithValue(analyticsService),
@@ -201,6 +202,9 @@ void main() async {
 
 /// 匿名 ID 是附加事件属性，不是 PostHog distinct ID；其迟到不得丢弃已入 SDK 队列
 /// 的早期事件，也不得阻塞首帧。
+Widget _analyticsRoot({required Widget child}) =>
+    isLocalEdition ? child : PostHogWidget(child: child);
+
 Future<void> _registerAnonymousIdWhenReady(
   Future<String> anonymousIdReady,
   AnalyticsService analyticsService,
@@ -295,7 +299,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
     activeStartupTrace?.mark('main_navigation_released');
 
     // 下载注册表和词典预热都可能访问文件系统，统一放到首帧后。
-    unawaited(startRegisteredDownloads(ref));
+    if (!isLocalEdition) unawaited(startRegisteredDownloads(ref));
     _scheduleMediaKitPrewarm();
     ref.read(dictionaryProvider);
     ref.read(pronunciationLibraryProvider);
@@ -342,6 +346,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
   }
 
   Future<void> _startThirdPartyDependentTasks() async {
+    if (isLocalEdition) return;
     try {
       await ref.read(thirdPartyStartupProvider.future);
     } catch (error, stackTrace) {
@@ -419,7 +424,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
         // （不再有 RC SDK 客户端缓存兜着），且退款/退订分歧主要靠 E6/E7 在后端
         // 交互时被动收敛，故仅在状态陈旧 / 越过到期点 / 超过 24h 新鲜窗（兜住
         // 长期无后端流量的用户）时才回源，频繁切前台不盲查。
-        if (ref.read(thirdPartyStartupProvider).hasValue) {
+        if (!isLocalEdition && ref.read(thirdPartyStartupProvider).hasValue) {
           unawaited(
             ref.read(subscriptionControllerProvider.notifier).refreshIfStale(),
           );
@@ -435,7 +440,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
         // 卡在内存队列里，App 被 OS 挂起 / 杀进程时丢失。
         // PostHog 默认 flushAt=20 / flushInterval=30s，单纯依赖默认策略
         // 在快速切后台场景容易丢。
-        unawaited(Posthog().flush());
+        if (!isLocalEdition) unawaited(Posthog().flush());
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
       // no-op
@@ -444,6 +449,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
 
   /// 全局唯一社区合集同步入口；后台调用由 service 统一执行 2h 节流。
   void _triggerCommunitySync({bool force = false}) {
+    if (isLocalEdition) return;
     if (!mounted) return;
     unawaited(
       triggerCommunitySync(ref, force: force).then((outcome) {
@@ -454,6 +460,7 @@ class _EchoLoopAppState extends ConsumerState<EchoLoopApp>
 
   /// 前台/启动后台刷新两个互不依赖的公共内容源；任一失败都不能阻塞另一方。
   void _triggerBackgroundSync({bool force = false}) {
+    if (isLocalEdition) return;
     _triggerCommunitySync(force: force);
     unawaited(
       triggerPodcastCatalogRefresh(ref, force: force).then((outcome) {

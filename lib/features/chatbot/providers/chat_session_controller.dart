@@ -5,6 +5,7 @@
 /// CancelToken 关流；[_disposed] 守卫销毁后回调。
 library;
 
+import '../../../config/app_capabilities.dart';
 import 'package:clock/clock.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
@@ -144,7 +145,7 @@ class ChatSessionController extends _$ChatSessionController {
     // 1) 闸门（gate 是 banner 的唯一数据源）。
     //    注意：当前 freeAllowancePolicy 为 AlwaysAllowPolicy（恒放行），本地额度预测在
     //    现网是前向兼容的死分支；额度唯一权威是后端 402。
-    if (!ref.read(isAuthenticatedProvider)) {
+    if (!isLocalEdition && !ref.read(isAuthenticatedProvider)) {
       state = state.copyWith(gate: ChatGate.authRequired);
       return;
     }
@@ -152,7 +153,7 @@ class ChatSessionController extends _$ChatSessionController {
         .read(supabaseSessionProvider)
         .valueOrNull
         ?.accessToken;
-    if (accessToken == null || accessToken.isEmpty) {
+    if (!isLocalEdition && (accessToken == null || accessToken.isEmpty)) {
       state = state.copyWith(gate: ChatGate.authRequired);
       return;
     }
@@ -181,7 +182,7 @@ class ChatSessionController extends _$ChatSessionController {
   }
 
   /// 内部：发起并消费流式，防竞态守卫。只留 happy-path，异常映射在 [_mapRunError]。
-  Future<void> _run(String botId, String accessToken) async {
+  Future<void> _run(String botId, String? accessToken) async {
     final seq = ++_seq;
     _stopRequested = false;
     _inflight?.cancel('restart');
@@ -269,6 +270,7 @@ class ChatSessionController extends _$ChatSessionController {
 
   /// 成功后消耗一次免费试用（会员不计）。
   void _consumeTrial() {
+    if (isLocalEdition) return;
     if (ref.read(subscriptionControllerProvider).isActive) return;
     ref.read(aiTrialUsageProvider.notifier).consume(PremiumFeature.aiChat);
   }

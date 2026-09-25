@@ -6,6 +6,7 @@
 /// 状态：加载中 shimmer、失败重试、需登录、空结果。
 library;
 
+import '../../features/custom_ai/custom_ai_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,7 +79,7 @@ class AiDictResultView extends StatelessWidget {
     if (s is LookupQuotaExceeded) {
       return _quotaExceeded(context, s.reason);
     }
-    if (s is LookupError) return _error(context);
+    if (s is LookupError) return _error(context, s.error);
     if (s is LookupNotFound) return _empty(context);
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: AppSpacing.m),
@@ -99,7 +100,7 @@ class AiDictResultView extends StatelessWidget {
     );
   }
 
-  Widget _error(BuildContext context) {
+  Widget _error(BuildContext context, Object error) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
     return Padding(
@@ -110,7 +111,7 @@ class AiDictResultView extends StatelessWidget {
           const SizedBox(width: AppSpacing.xs),
           Expanded(
             child: Text(
-              l10n.aiLoadFailed,
+              error is CustomAiException ? error.message : l10n.aiLoadFailed,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.error,
               ),

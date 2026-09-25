@@ -6,6 +6,8 @@
 /// 用于精听、难句补练、难句跟读和收藏复习页面。
 library;
 
+import '../../config/app_capabilities.dart';
+import '../../features/custom_ai/custom_ai_settings.dart';
 import 'dart:async';
 import 'dart:ui';
 
@@ -964,8 +966,9 @@ class _SentenceExplanationViewState
         ?.accessToken;
     // 讲解视图自包含：是否自动请求只由认证状态和用户 AI 设置决定，
     // 宿主无需额外传入“启用自动加载”的开关。
-    final shouldAutoLoadSentenceAi =
-        accessToken != null && accessToken.isNotEmpty;
+    final shouldAutoLoadSentenceAi = isLocalEdition
+        ? ref.watch(customAiSettingsProvider).isConfigured
+        : accessToken != null && accessToken.isNotEmpty;
     final willStartAutoLoad =
         shouldAutoLoadSentenceAi &&
         (autoShowAiAnalysis ||

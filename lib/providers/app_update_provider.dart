@@ -10,6 +10,7 @@
 /// 故本 core provider 依赖 subscription feature 的 [purchaseServiceProvider] 取 storefront。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -66,6 +67,7 @@ class AppUpdate extends _$AppUpdate {
   /// 避免设置页 spinner 闪烁；所有异常静默回退为 [AppUpdateResult.none]。
   /// 手动检查进行中时让位，结果不覆盖手动检查的 state。
   Future<void> checkInBackground() async {
+    if (isLocalEdition) return;
     if (_backgroundChecking) {
       AppLogger.log(_logTag, 'checkInBackground skipped: already running');
       return;
@@ -124,6 +126,7 @@ class AppUpdate extends _$AppUpdate {
   /// 返回检查结果，不更新 provider state，
   /// 避免 MainShell listener 重复弹窗。
   Future<AppUpdateResult> manualCheck() async {
+    if (isLocalEdition) return const AppUpdateResult(type: AppUpdateType.none);
     AppLogger.log(_logTag, 'manualCheck start');
     state = const AppUpdateChecking();
 

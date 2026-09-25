@@ -5,6 +5,8 @@
 /// 新增 source：实现 [DictionarySource] + 在 [dictionarySources] 列表加一行即接入。
 library;
 
+import '../../config/app_capabilities.dart';
+import '../../features/custom_ai/custom_ai_settings.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
@@ -27,10 +29,16 @@ LocalDictionarySource localDictionarySource(Ref ref) =>
 ///
 /// 依赖延迟解析（lookup 时才读），避免枚举注册表即初始化数据库/网络栈。
 @Riverpod(keepAlive: true)
-AiDictionarySource aiDictionarySource(Ref ref) => AiDictionarySource(
-  cacheDao: () => ref.read(sentenceAiCacheDaoProvider),
-  apiClient: () => ref.read(sentenceAiApiClientProvider),
-);
+AiDictionarySource aiDictionarySource(Ref ref) {
+  final namespace = isLocalEdition
+      ? ref.watch(customAiSettingsProvider).cacheNamespace
+      : '';
+  return AiDictionarySource(
+    cacheNamespace: () => namespace,
+    cacheDao: () => ref.read(sentenceAiCacheDaoProvider),
+    apiClient: () => ref.read(sentenceAiApiClientProvider),
+  );
+}
 
 /// 网页词典源列表（由 [kWebDictConfigs] 配置生成：Cambridge / Oxford / ...）
 @Riverpod(keepAlive: true)
@@ -42,7 +50,7 @@ List<WebDictionarySource> webDictionarySources(Ref ref) =>
 List<DictionarySource> dictionarySources(Ref ref) => [
   ref.watch(localDictionarySourceProvider),
   ref.watch(aiDictionarySourceProvider),
-  ...ref.watch(webDictionarySourcesProvider),
+  if (!isLocalEdition) ...ref.watch(webDictionarySourcesProvider),
 ];
 
 /// id → source 查找表

@@ -39,7 +39,7 @@ class _ScriptApi implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) => script();
   @override
@@ -57,7 +57,7 @@ class _CancelAwareApi implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) => script(cancelToken);
   @override

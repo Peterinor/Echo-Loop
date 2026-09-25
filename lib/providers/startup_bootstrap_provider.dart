@@ -4,6 +4,7 @@
 /// 执行关键本地任务，失败状态供首页降级提示、日志和重试使用，不阻断业务导航壳。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -211,6 +212,14 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
       initEchoLoopAudioHandler,
     );
 
+    if (isLocalEdition) {
+      _scheduleMaintenance();
+      return ThirdPartyStartupReport(
+        issues: List.unmodifiable(issues),
+        isSupabaseReady: false,
+        isRevenueCatReady: false,
+      );
+    }
     if (!kIsWeb && Platform.isIOS) {
       activeStartupTrace?.mark(
         'detached_scheduled',

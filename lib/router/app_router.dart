@@ -5,6 +5,8 @@
 /// 详情页使用 parentNavigatorKey 确保全屏展示。
 library;
 
+import '../features/custom_ai/custom_ai_settings_screen.dart';
+import '../config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -63,6 +65,7 @@ abstract class AppRoutes {
   static const study = '/study';
   static const favorites = '/favorites';
   static const settings = '/settings';
+  static const customAi = '/custom-ai';
   static const login = '/login';
   static const emailSignIn = '/login/email';
   static const checkEmail = '/login/check-email';
@@ -276,6 +279,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     initialLocation: AppRoutes.study,
     observers: [rootRouteObserver, AnalyticsObserver(analyticsService)],
     redirect: (context, state) {
+      if (isLocalEdition && isLocalEditionBlockedRoute(state.uri.path)) {
+        return state.uri.path == AppRoutes.paywall
+            ? AppRoutes.customAi
+            : AppRoutes.settings;
+      }
       final isAuthenticated = ref.read(isAuthenticatedProvider);
       final isAuthRoute =
           state.uri.path == AppRoutes.login ||
@@ -298,6 +306,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: AppRoutes.customAi,
+        builder: (context, state) => const CustomAiSettingsScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) =>
             MainShell(navigationShell: navigationShell),

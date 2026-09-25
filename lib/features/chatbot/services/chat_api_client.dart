@@ -43,7 +43,7 @@ abstract interface class ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   });
 
@@ -102,7 +102,7 @@ class ChatApiClient implements ChatApi {
     required Map<String, Object?> context,
     required String followUpInstruction,
     String? targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) async* {
     final response = await _dio.post<ResponseBody>(

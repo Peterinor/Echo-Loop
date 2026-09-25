@@ -4,6 +4,7 @@
 /// 实现 Tab 切换并保持各 Tab 状态。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -246,11 +247,13 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
           .read(notificationPermissionServiceProvider)
           .syncSystemAuthorizationStatus();
       _remoteConfigController.startPeriodicRefresh(forceFirst: true);
-      unawaited(
-        ref
-            .read(userRegionProvider.notifier)
-            .refresh(UserRegionRefreshTrigger.startup),
-      );
+      if (!isLocalEdition) {
+        unawaited(
+          ref
+              .read(userRegionProvider.notifier)
+              .refresh(UserRegionRefreshTrigger.startup),
+        );
+      }
 
       AppLogger.log('StartupLoad', 'study bootstrap start');
       activeStartupTrace?.mark('study_bootstrap_start');
@@ -569,7 +572,7 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
   void _onAppResume() {
     AppLogger.log('AppUpdate', 'onAppResume: trigger checkInBackground');
     unawaited(_refreshStudyData(source: 'app-resume'));
-    if (ref.read(thirdPartyStartupProvider).hasValue) {
+    if (!isLocalEdition && ref.read(thirdPartyStartupProvider).hasValue) {
       unawaited(ref.read(appUpdateProvider.notifier).checkInBackground());
     } else {
       AppLogger.log(
@@ -579,7 +582,7 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
     }
     unawaited(_refreshSubscribedPodcastsInBackground());
     ref.read(remoteConfigProvider.notifier).startPeriodicRefresh();
-    if (ref.read(thirdPartyStartupProvider).hasValue) {
+    if (!isLocalEdition && ref.read(thirdPartyStartupProvider).hasValue) {
       unawaited(
         ref
             .read(userRegionProvider.notifier)
@@ -606,6 +609,7 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
 
   /// 使用统一控制器静默刷新已订阅播客。
   Future<void> _refreshSubscribedPodcastsInBackground() async {
+    if (isLocalEdition) return;
     try {
       await ref.read(podcastRefreshControllerProvider).refreshIfStale();
     } catch (error, stackTrace) {
@@ -902,11 +906,12 @@ class _MainShellState extends ConsumerState<MainShell> with RouteAware {
                   icon: const Icon(Icons.refresh),
                   label: Text(l10n.retry),
                 ),
-                TextButton.icon(
-                  onPressed: _openContactUs,
-                  icon: const Icon(Icons.group_outlined),
-                  label: Text(l10n.startupLocalDataContactUs),
-                ),
+                if (!isLocalEdition)
+                  TextButton.icon(
+                    onPressed: _openContactUs,
+                    icon: const Icon(Icons.group_outlined),
+                    label: Text(l10n.startupLocalDataContactUs),
+                  ),
                 TextButton.icon(
                   onPressed: _openStartupLogs,
                   icon: const Icon(Icons.description_outlined),

@@ -32,7 +32,7 @@ class _ScriptApi implements SentenceAiApiClient {
     required File audioFile,
     required String originalText,
     required String targetLanguage,
-    required String accessToken,
+    required String? accessToken,
     CancelToken? cancelToken,
   }) {
     callCount++;

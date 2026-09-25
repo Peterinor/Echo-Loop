@@ -4,6 +4,7 @@
 /// 难句标记切换、三按钮工具栏（拆意群/翻译/解析）。
 library;
 
+import '../../features/custom_ai/custom_ai_client.dart';
 import 'dart:async';
 
 import 'package:dio/dio.dart';
@@ -643,7 +644,11 @@ class SentenceAnnotationCardState extends State<SentenceAnnotationCard> {
         if (!automatic) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(AppLocalizations.of(context)!.aiTranslationFailed),
+              content: Text(
+                error is CustomAiException
+                    ? error.message
+                    : AppLocalizations.of(context)!.aiTranslationFailed,
+              ),
             ),
           );
         }
@@ -797,7 +802,11 @@ class SentenceAnnotationCardState extends State<SentenceAnnotationCard> {
         if (!automatic) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(AppLocalizations.of(context)!.aiAnalysisFailed),
+              content: Text(
+                error is CustomAiException
+                    ? error.message
+                    : AppLocalizations.of(context)!.aiAnalysisFailed,
+              ),
             ),
           );
         }

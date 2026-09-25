@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/database/daos/stage_completion_dao.dart';
+import 'package:echo_loop/config/app_capabilities.dart';
 import 'package:echo_loop/database/enums.dart';
 import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/models/audio_item.dart';
@@ -116,6 +117,28 @@ void main() {
       ),
     );
   }
+
+  testWidgets('学习首页按版本隐藏官方社群入口', (tester) async {
+    await tester.pumpWidget(
+      createTestWidget(
+        audioItems: [
+          AudioItem(
+            id: 'local-audio',
+            name: 'Local lesson',
+            audioPath: 'audios/local.mp3',
+            addedDate: DateTime(2026, 9, 24),
+            totalDuration: 60,
+          ),
+        ],
+        progressState: const LearningProgressState(isLoading: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Join Community'),
+      isLocalEdition ? findsNothing : findsOneWidget,
+    );
+  });
 
   testWidgets('无任务时显示空状态', (tester) async {
     await tester.pumpWidget(

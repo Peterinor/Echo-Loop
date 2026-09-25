@@ -1,6 +1,7 @@
 /// 应用级 Deep Link 监听与路由分发。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:async';
 
 import 'package:app_links/app_links.dart';
@@ -69,6 +70,7 @@ class AppDeepLinkRouter {
   /// [app_links] 的 URI stream 同时包含冷启动 URI 和运行中 URI，因此这里
   /// 只保留一个输入来源，避免同一个冷启动 URI 被处理两次。
   Future<void> start() async {
+    if (isLocalEdition) return;
     if (_started || _disposed) return;
     _started = true;
 

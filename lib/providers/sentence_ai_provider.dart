@@ -4,6 +4,8 @@
 /// 支持并发请求去重，避免同一句子重复发起 API 调用。
 library;
 
+import '../config/app_capabilities.dart';
+import '../features/custom_ai/custom_ai_settings.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -260,7 +262,12 @@ class SentenceAiNotifier {
   final Map<String, _PendingAnalysisStream> _pendingAnalyses = {};
   final Map<String, _PendingSenseGroupStream> _pendingSenseGroups = {};
 
+  final String cacheNamespace;
+  String _scopedHash(String hash) =>
+      cacheNamespace.isEmpty ? hash : hashText('$cacheNamespace:$hash');
+
   SentenceAiNotifier({
+    this.cacheNamespace = '',
     required SentenceAiCacheDao cacheDao,
     required SentenceAiApiClient apiClient,
     void Function(PremiumFeature feature)? guardFeature,
@@ -302,7 +309,9 @@ class SentenceAiNotifier {
     CancelToken? cancelToken,
     bool respectLocalQuotaReset = false,
   }) async* {
-    final hash = translationContextHash(text, previous: previous, next: next);
+    final hash = _scopedHash(
+      translationContextHash(text, previous: previous, next: next),
+    );
     final cacheKey = '$hash:$targetLanguage';
     final l2Type = 'translation_v2:$targetLanguage';
 
@@ -331,7 +340,7 @@ class SentenceAiNotifier {
     }
 
     // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
+    if (!isLocalEdition && (accessToken == null || accessToken.isEmpty)) {
       AppLogger.log('SentenceAI', '翻译 L3 需要登录，未发现 Supabase access token');
       throw const AiFeatureAuthRequiredException();
     }
@@ -375,7 +384,7 @@ class SentenceAiNotifier {
     required String? previous,
     required String? next,
     required String targetLanguage,
-    required String accessToken,
+    required String? accessToken,
   }) async {
     SentenceTranslation? finalTranslation;
     try {
@@ -466,7 +475,7 @@ class SentenceAiNotifier {
     CancelToken? cancelToken,
     bool respectLocalQuotaReset = false,
   }) async* {
-    final hash = hashText(text);
+    final hash = _scopedHash(hashText(text));
     final cacheKey = '$hash:$targetLanguage';
     final l2Type = 'analysis_v2:$targetLanguage';
 
@@ -495,7 +504,7 @@ class SentenceAiNotifier {
     }
 
     // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
+    if (!isLocalEdition && (accessToken == null || accessToken.isEmpty)) {
       AppLogger.log('SentenceAI', '解析 L3 需要登录，未发现 Supabase access token');
       throw const AiFeatureAuthRequiredException();
     }
@@ -535,7 +544,7 @@ class SentenceAiNotifier {
     required String l2Type,
     required String text,
     required String targetLanguage,
-    required String accessToken,
+    required String? accessToken,
   }) async {
     SentenceAnalysis? finalAnalysis;
     try {
@@ -623,7 +632,7 @@ class SentenceAiNotifier {
     CancelToken? cancelToken,
     bool respectLocalQuotaReset = false,
   }) async* {
-    final hash = hashText(text);
+    final hash = _scopedHash(hashText(text));
 
     // L1: 内存缓存（空结果不视为有效缓存）
     final l1 = _senseGroupCache[hash];
@@ -656,7 +665,7 @@ class SentenceAiNotifier {
     }
 
     // L3: 流式 API 调用
-    if (accessToken == null || accessToken.isEmpty) {
+    if (!isLocalEdition && (accessToken == null || accessToken.isEmpty)) {
       AppLogger.log('SenseGroup', 'L3 需要登录，未发现 Supabase access token');
       throw const AiFeatureAuthRequiredException();
     }
@@ -690,7 +699,7 @@ class SentenceAiNotifier {
     _PendingSenseGroupStream pending, {
     required String hash,
     required String text,
-    required String accessToken,
+    required String? accessToken,
   }) async {
     SenseGroupResult? finalResult;
     try {
@@ -776,7 +785,9 @@ class SentenceAiNotifier {
     String? next,
     String? targetLanguage,
   }) {
-    final hash = translationContextHash(text, previous: previous, next: next);
+    final hash = _scopedHash(
+      translationContextHash(text, previous: previous, next: next),
+    );
     if (targetLanguage != null) {
       return _translationCache['$hash:$targetLanguage'];
     }
@@ -791,7 +802,7 @@ class SentenceAiNotifier {
   ///
   /// [targetLanguage] 不传时遍历所有语言版本（向后兼容），传入时精确匹配。
   SentenceAnalysis? getCachedAnalysis(String text, {String? targetLanguage}) {
-    final hash = hashText(text);
+    final hash = _scopedHash(hashText(text));
     if (targetLanguage != null) {
       return _analysisCache['$hash:$targetLanguage'];
     }
@@ -803,7 +814,7 @@ class SentenceAiNotifier {
 
   /// 同步查找 L1 意群缓存（仅内存）
   SenseGroupResult? getCachedSenseGroups(String text) {
-    return _senseGroupCache[hashText(text)];
+    return _senseGroupCache[_scopedHash(hashText(text))];
   }
 
   /// 从 L2 SQLite 预加载翻译到 L1 内存（不调用 L3 API）
@@ -815,7 +826,9 @@ class SentenceAiNotifier {
     String? previous,
     String? next,
   }) async {
-    final hash = translationContextHash(text, previous: previous, next: next);
+    final hash = _scopedHash(
+      translationContextHash(text, previous: previous, next: next),
+    );
     final cacheKey = '$hash:$targetLanguage';
     if (_translationCache.containsKey(cacheKey)) return true;
     final dbResult = await _cacheDao.getByHash(
@@ -844,7 +857,7 @@ class SentenceAiNotifier {
     String text, {
     required String targetLanguage,
   }) async {
-    final hash = hashText(text);
+    final hash = _scopedHash(hashText(text));
     final cacheKey = '$hash:$targetLanguage';
     if (_analysisCache.containsKey(cacheKey)) return true;
     final dbResult = await _cacheDao.getByHash(
@@ -871,7 +884,7 @@ class SentenceAiNotifier {
   ///
   /// 返回 true 表示 L1 或 L2 命中，false 表示无缓存。
   Future<bool> preloadSenseGroupsFromDb(String text) async {
-    final hash = hashText(text);
+    final hash = _scopedHash(hashText(text));
     if (_senseGroupCache.containsKey(hash)) return true;
     final dbResult = await _cacheDao.getByHash(hash, 'sense_groups');
     if (dbResult != null) {
@@ -930,6 +943,13 @@ class SentenceAiNotifier {
 
 /// SentenceAiNotifier Provider
 final sentenceAiNotifierProvider = Provider<SentenceAiNotifier>((ref) {
+  if (isLocalEdition) {
+    return SentenceAiNotifier(
+      cacheDao: ref.watch(sentenceAiCacheDaoProvider),
+      apiClient: ref.watch(sentenceAiApiClientProvider),
+      cacheNamespace: ref.watch(customAiSettingsProvider).cacheNamespace,
+    );
+  }
   ref.watch(aiQuotaLimitCleanupProvider);
   return SentenceAiNotifier(
     cacheDao: ref.watch(sentenceAiCacheDaoProvider),

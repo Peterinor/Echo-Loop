@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.Base64
 
 plugins {
     id("com.android.application")
@@ -14,6 +15,12 @@ val keystoreProperties = Properties().apply {
         load(keystorePropertiesFile.inputStream())
     }
 }
+
+// 与 Dart 本地版开关一致，阻止 Firebase 在 Dart 启动前自行初始化。
+val localEdition = (project.findProperty("dart-defines") as? String)
+    ?.split(",")?.any {
+        String(Base64.getDecoder().decode(it)) == "APP_EDITION=local"
+    } ?: false
 
 android {
     namespace = "app.echoloop"
@@ -31,6 +38,8 @@ android {
     }
 
     defaultConfig {
+        manifestPlaceholders["officialServicesEnabled"] = (!localEdition).toString()
+        manifestPlaceholders["analyticsDeactivated"] = localEdition.toString()
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "app.echoloop"
         // You can update the following values to match your application needs.

@@ -5,6 +5,7 @@
 /// 获取 [AnalyticsService] 实例。
 library;
 
+import '../config/app_capabilities.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -77,7 +78,7 @@ Future<AnalyticsService> initializeAnalyticsWithFallback(
 /// 当前策略：PostHog 全平台统一上报。
 /// 如需切回 Firebase/友盟，修改此函数即可。
 AnalyticsChannel _createChannel() {
-  if (kDebugMode) return LogOnlyChannel();
+  if (isLocalEdition || kDebugMode) return LogOnlyChannel();
   if (PostHogChannel.isConfigured) return PostHogChannel();
   // PostHog 未配置（缺少 POSTHOG_API_KEY dart-define）时降级到日志
   return LogOnlyChannel();
@@ -86,7 +87,7 @@ AnalyticsChannel _createChannel() {
 // 以下通道备用，当前未启用
 // ignore: unused_element
 AnalyticsChannel _createChannelLegacy(bool isChina) {
-  if (kDebugMode) return LogOnlyChannel();
+  if (isLocalEdition || kDebugMode) return LogOnlyChannel();
   if (Platform.isAndroid) {
     if (isChina && UmengChannel.isConfigured) return UmengChannel();
     return FirebaseChannel();

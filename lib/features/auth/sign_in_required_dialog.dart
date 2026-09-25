@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../config/app_capabilities.dart';
+import '../custom_ai/custom_ai_access.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -24,6 +26,7 @@ Future<bool> ensureSignedInForAction({
   required String title,
   required String message,
 }) async {
+  if (isLocalEdition) return ensureCustomAiConfigured(context, ref);
   if (ref.read(isAuthenticatedProvider)) return true;
 
   final l10n = AppLocalizations.of(context);

@@ -10,6 +10,7 @@
 /// 未完整完成不落缓存（部分结果丢弃）。只有收到后端显式 final 帧才写 L1+L2。
 library;
 
+import '../../config/app_capabilities.dart';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -39,7 +40,10 @@ class AiDictionarySource implements DictionarySource {
   /// 缺省目标语言
   static const _defaultLanguage = 'zh-CN';
 
+  final String Function()? cacheNamespace;
+
   AiDictionarySource({
+    this.cacheNamespace,
     required ValueGetter<SentenceAiCacheDao> cacheDao,
     required ValueGetter<SentenceAiApiClient> apiClient,
   }) : _cacheDao = cacheDao,
@@ -75,12 +79,16 @@ class AiDictionarySource implements DictionarySource {
     CancelToken? cancelToken,
   }) async* {
     final token = request.accessToken;
+    final apiClient = _apiClient();
     final language = request.targetLanguage ?? _defaultLanguage;
     // request.word 保留大小写进入后端 prompt；缓存键用小写词形，
     // 确保 NASA/nasa 复用同一 L1/L2/L3 缓存。
     final word = request.word;
     final cacheWord = normalizeWord(word);
-    final key = hashText('$cacheWord|$language');
+    final scope = cacheNamespace?.call() ?? '';
+    final key = hashText(
+      '${scope.isEmpty ? '' : '$scope|'}$cacheWord|$language',
+    );
     // 单词 / 词组是两条独立功能，类型仅由查询是否含空白决定（同后端 resolveQueryType）；
     // 缓存读取与端点路由都据此选择具体模型，不靠 originalExpression 结构嗅探。
     final isPhrase = cacheWord.contains(' ');
@@ -112,12 +120,11 @@ class AiDictionarySource implements DictionarySource {
     }
 
     // L3 网络请求需要登录；缓存读取不受登录状态限制。
-    if (token == null || token.isEmpty) {
+    if (!isLocalEdition && (token == null || token.isEmpty)) {
       throw const DictionaryAuthRequiredException();
     }
 
     // L3 流式 API：按 isPhrase 分流到单词/词组端点
-    final apiClient = _apiClient();
     final stream = isPhrase
         ? apiClient.lookupPhraseStreamFrames(
             word,

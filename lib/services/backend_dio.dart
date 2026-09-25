@@ -13,6 +13,7 @@
 /// [Options.headers] 只在打后端的那个请求上带 [clientInfoHeaders]。
 library;
 
+import '../config/app_capabilities.dart';
 import 'package:dio/dio.dart';
 
 import 'api_log_interceptor.dart';
@@ -55,6 +56,21 @@ Dio createBackendDio({
       headers: clientInfoHeaders(appVersion: appVersion),
     ),
   );
+  if (isLocalEdition) {
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          handler.reject(
+            DioException(
+              requestOptions: options,
+              type: DioExceptionType.cancel,
+              message: '本地版已禁用官方业务服务',
+            ),
+          );
+        },
+      ),
+    );
+  }
   dio.interceptors.add(
     ApiLogInterceptor(tag: apiLogTag, logPrint: apiLogPrint),
   );

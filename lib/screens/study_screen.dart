@@ -9,6 +9,7 @@ import '../analytics/models/event_names.dart';
 import '../features/usage/usage_event.dart';
 import '../features/usage/usage_providers.dart';
 import '../config/api_config.dart';
+import '../config/app_capabilities.dart';
 import '../database/daos/stage_completion_dao.dart';
 import '../database/enums.dart';
 import '../l10n/app_localizations.dart';
@@ -190,8 +191,10 @@ class _StudyScreenState extends ConsumerState<StudyScreen> {
                 ),
                 children: [
                   // 加入学习社群邀请（置顶，保持单行紧凑高度，颜色对齐发现入口）
-                  const _CommunityInviteCard(),
-                  const SizedBox(height: AppSpacing.s),
+                  if (!isLocalEdition) ...[
+                    const _CommunityInviteCard(),
+                    const SizedBox(height: AppSpacing.s),
+                  ],
 
                   // 统计 Chips + 柱状图
                   GuideTarget(
@@ -285,8 +288,10 @@ class _StudyScreenState extends ConsumerState<StudyScreen> {
         vertical: AppSpacing.s,
       ),
       children: [
-        const _CommunityInviteCard(),
-        const SizedBox(height: AppSpacing.s),
+        if (!isLocalEdition) ...[
+          const _CommunityInviteCard(),
+          const SizedBox(height: AppSpacing.s),
+        ],
         GuideTarget(step: stepStatsHeader, child: const StudyStatsHeader()),
         const SizedBox(height: AppSpacing.xl),
         const _EmptyState(type: _EmptyStateType.allDone),

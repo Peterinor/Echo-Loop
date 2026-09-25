@@ -2,6 +2,7 @@
 //
 // 展示合集中的音频列表，复用 AudioListView 和 AudioSortButton。
 // 支持上传音频到合集。
+import '../config/app_capabilities.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -147,7 +148,7 @@ class _CollectionDetailScreenState
                     const SizedBox(width: 8),
                   ],
                 ),
-          body: collection.isPodcast
+          body: !isLocalEdition && collection.isPodcast
               ? _PodcastCollectionBody(
                   collection: collection,
                   audioItems: audioItems,
@@ -303,6 +304,7 @@ class _CollectionDetailScreenState
   /// 进入页面时走普通刷新，交给 repository 的通用刷新策略节流；
   /// 下拉时传 force=true 强制拉取 RSS。
   Future<void> _refreshPodcastFeed({required bool force}) async {
+    if (isLocalEdition) return;
     if (force && mounted) {
       setState(() {
         _podcastRefreshState = _PodcastRefreshViewState.refreshing(
