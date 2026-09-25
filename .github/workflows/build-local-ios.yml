@@ -1,0 +1,104 @@
+name: Local iOS Build
+
+# 无证书编译验证：仅生成未签名 .app，不上传商店，不使用官方后台或模型密钥。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, codex/local-edition]
+    paths:
+      - '.github/workflows/build-local-ios.yml'
+      - 'lib/**'
+      - 'ios/**'
+      - 'assets/**'
+      - 'third_party/**'
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
+      - 'scripts/configure_native_analytics.py'
+      - 'scripts/verify_local_ios_build.py'
+      - 'test/scripts/**'
+      - 'test/features/custom_ai/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      COCOAPODS_DISABLE_STATS: 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.5'
+          cache: true
+
+      - name: Record toolchain
+        run: |
+          mkdir -p build/local-ios
+          { sw_vers; xcodebuild -version; flutter --version; pod --version; } | tee build/local-ios/toolchain.log
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Test local edition and native analytics isolation
+        run: |
+          python3 -m unittest discover -s test/scripts -p '*_test.py' -v
+          flutter test --dart-define=APP_EDITION=local test/features/custom_ai/local_edition_test.dart
+          flutter test test/features/custom_ai/custom_ai_client_test.dart
+
+      # 交由 Flutter 安装 Pods，避免复用与 pub-cache 中原生库不匹配的独立 Pods 缓存。
+      - name: Build unsigned iOS release
+        run: |
+          flutter build ios --release --no-codesign --flavor dev \
+            --target lib/main.dart --dart-define=APP_EDITION=local \
+            --build-number="$GITHUB_RUN_NUMBER" 2>&1 | tee build/local-ios/build.log
+
+      - name: Verify and package unsigned app
+        run: |
+          python3 scripts/verify_local_ios_build.py
+          /usr/bin/lipo -verify_arch arm64 build/ios/iphoneos/Runner.app/Runner
+          /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+            build/ios/iphoneos/Runner.app build/local-ios/echo-loop-local-ios-unsigned.zip
+          shasum -a 256 build/local-ios/echo-loop-local-ios-unsigned.zip > build/local-ios/SHA256SUMS.txt
+          printf 'Commit: %s\nAPP_EDITION=local\nUnsigned iOS device build; cannot install without signing.\n' "$GITHUB_SHA" > build/local-ios/README.txt
+          {
+            echo '### iOS 本地版编译通过'
+            echo "代码提交：\`$GITHUB_SHA\`"
+            echo '已验证 ARM64 产物和本地版原生埋点禁用状态。'
+            echo '下载 Artifacts 中的未签名 .app 压缩包；它不能直接安装到 iPhone，也不能在 iOS 模拟器运行。'
+            echo '后续需要苹果签名材料才能导出可安装的 IPA。'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload unsigned app
+        uses: actions/upload-artifact@v4
+        with:
+          name: echo-loop-local-ios-unsigned-${{ github.run_number }}
+          path: |
+            build/local-ios/echo-loop-local-ios-unsigned.zip
+            build/local-ios/SHA256SUMS.txt
+            build/local-ios/README.txt
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ios-logs-${{ github.run_number }}
+          path: build/local-ios/*.log
+          if-no-files-found: warn
+          retention-days: 14
