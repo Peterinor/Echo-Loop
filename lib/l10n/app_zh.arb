@@ -1957,6 +1957,8 @@
   "baiduNetdiskDisconnect": "断开百度网盘连接",
   "baiduNetdiskNoSupportedAudio": "此文件夹中没有支持的素材文件。",
   "importAudioShort": "导入",
+  "cancelImport": "取消导入",
+  "cancelingImport": "正在取消导入…",
   "importAudioSelectedCount": "导入 {count} 个",
   "@importAudioSelectedCount": {
     "placeholders": {

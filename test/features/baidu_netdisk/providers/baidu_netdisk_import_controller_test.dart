@@ -650,6 +650,45 @@ void main() {
       expect(controller.state.importSpeedBytesPerSecond, isNull);
     });
 
+    test('导入被取消后未完成文件恢复为待导入状态', () async {
+      controller.dispose();
+      final progressService = _ProgressImportService(advanceClock: () {});
+      controller = BaiduNetdiskImportController(
+        credentialRepository: credentialRepository,
+        api: api,
+        importService: progressService,
+        launcher: _NoopLauncher(),
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        readAudioLibraryState: () => container.read(audioLibraryProvider),
+        collectionList: container.read(collectionListProvider.notifier),
+        readCollectionState: () => container.read(collectionListProvider),
+      );
+      api.entries = const [audio];
+      await controller.loadInitial();
+      controller.toggleEntry(audio);
+
+      final importFuture = controller.importSelected();
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        controller.state.importItemStatuses[audio.fsId],
+        AudioImportSelectionStatus.importing,
+      );
+
+      progressService.completer.complete(
+        const CloudDriveImportOutcome(
+          added: <CloudDriveEntry>[],
+          wasCanceled: true,
+        ),
+      );
+      await importFuture;
+
+      expect(controller.state.phase, BaiduNetdiskImportPhase.completed);
+      expect(
+        controller.state.importItemStatuses[audio.fsId],
+        AudioImportSelectionStatus.pending,
+      );
+    });
+
     test('导入速度按最近 5 秒窗口计算并限制显示刷新频率', () async {
       controller.dispose();
       var now = DateTime(2026, 7, 22, 12);

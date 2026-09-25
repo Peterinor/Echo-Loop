@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:echo_loop/features/audio_import/audio_finalization_service.dart';
+import 'package:echo_loop/features/audio_import/audio_import_cancel.dart';
 import 'package:echo_loop/features/audio_import/audio_import_models.dart';
 import 'package:echo_loop/features/audio_import/audio_transcode_service.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -103,6 +106,39 @@ void main() {
           p.join(tmpDir.path, 'tmp', 'audio_import'),
         ).list().toList(),
         isEmpty,
+      );
+    });
+
+    test('指纹计算期间取消会终止处理并清理临时文件', () async {
+      final cancelToken = CancelToken();
+      final fingerprintStarted = Completer<void>();
+      final service = AudioFinalizationService(
+        computeSha256WithCancellation: (_, {CancelToken? cancelToken}) async {
+          fingerprintStarted.complete();
+          final activeToken = cancelToken;
+          if (activeToken == null) throw StateError('Expected cancel token');
+          await activeToken.whenCancel;
+          activeToken.throwIfCanceled();
+          return 'unreachable';
+        },
+      );
+      final temp = await writeTemp('cancel.mp3', [1, 2, 3]);
+      final finalization = service.finalize(
+        dataDir: tmpDir,
+        tempRelativePath: temp,
+        targetSubdir: p.join('audios', 'imported'),
+        cancelToken: cancelToken,
+      );
+
+      await fingerprintStarted.future;
+      cancelToken.cancel('user-cancelled');
+
+      await expectLater(finalization, throwsA(isA<DioException>()));
+      expect(await File(p.join(tmpDir.path, temp)).exists(), isFalse);
+      final importDir = Directory(p.join(tmpDir.path, 'audios', 'imported'));
+      expect(
+        !await importDir.exists() || (await importDir.list().toList()).isEmpty,
+        isTrue,
       );
     });
   });

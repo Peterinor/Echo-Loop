@@ -11,6 +11,7 @@ import '../../../providers/collection_provider.dart';
 import '../../../services/app_logger.dart';
 import '../../../utils/app_data_dir.dart';
 import '../../../utils/transcript_picker.dart';
+import '../../audio_import/audio_import_cancel.dart';
 import '../../audio_import/audio_finalization_service.dart';
 import '../../audio_import/audio_import_models.dart';
 import '../../audio_import/audio_registration_service.dart';
@@ -129,41 +130,56 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
     final targetSubdir = isVideoImportExtension(entry.extension)
         ? 'videos'
         : p.join('audios', 'imported');
-    final finalizedAudio = await _finalizationService.finalize(
-      dataDir: dataDir,
-      tempRelativePath: tempRelativePath,
-      targetSubdir: targetSubdir,
-    );
+    FinalizedAudio? finalizedAudio;
+    try {
+      finalizedAudio = await _finalizationService.finalize(
+        dataDir: dataDir,
+        tempRelativePath: tempRelativePath,
+        targetSubdir: targetSubdir,
+        cancelToken: cancelToken,
+      );
+      cancelToken?.throwIfCanceled();
 
-    final result = await _registrationService.registerSandboxedAudio(
-      input: SandboxedAudioRegistrationInput(
-        name: _displayNameForEntry(entry),
-        relativePath: finalizedAudio.relativePath,
-        importSourceType: AudioImportSourceType.cloudDrive,
-        importSourceUrl: _sourceUrlForEntry(entry),
-        audioSha256: finalizedAudio.sha256,
-        originalAudioSha256: finalizedAudio.originalSha256,
-      ),
-      audioLibrary: audioLibrary,
-      audioLibraryState: audioLibraryState,
-      collectionList: collectionList,
-      collectionState: collectionState,
-      collectionId: collectionId,
-    );
+      final result = await _registrationService.registerSandboxedAudio(
+        input: SandboxedAudioRegistrationInput(
+          name: _displayNameForEntry(entry),
+          relativePath: finalizedAudio.relativePath,
+          importSourceType: AudioImportSourceType.cloudDrive,
+          importSourceUrl: _sourceUrlForEntry(entry),
+          audioSha256: finalizedAudio.sha256,
+          originalAudioSha256: finalizedAudio.originalSha256,
+        ),
+        audioLibrary: audioLibrary,
+        audioLibraryState: audioLibraryState,
+        collectionList: collectionList,
+        collectionState: collectionState,
+        collectionId: collectionId,
+        cancelToken: cancelToken,
+      );
 
-    switch (result) {
-      case AudioRegistrationAdded(:final item):
-        return item;
-      case AudioRegistrationDuplicate(:final name):
-        if (finalizedAudio.created) {
-          await _deleteIfExists(
-            File(p.join(dataDir.path, finalizedAudio.relativePath)),
+      switch (result) {
+        case AudioRegistrationAdded(:final item):
+          return item;
+        case AudioRegistrationDuplicate(:final name):
+          throw AudioImportException(
+            AudioImportFailureCode.duplicate,
+            'Audio already exists: $name',
           );
-        }
-        throw AudioImportException(
-          AudioImportFailureCode.duplicate,
-          'Audio already exists: $name',
+      }
+    } catch (error) {
+      final savedAudio = finalizedAudio;
+      if (savedAudio != null && savedAudio.created) {
+        await _deleteIfExists(
+          File(p.join(dataDir.path, savedAudio.relativePath)),
         );
+      }
+      if (error is DioException && CancelToken.isCancel(error)) {
+        throw const AudioImportException(
+          AudioImportFailureCode.canceled,
+          'Audio import canceled',
+        );
+      }
+      rethrow;
     }
   }
 

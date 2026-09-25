@@ -59,6 +59,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
   _ImportStep _step = _ImportStep.chooseSource;
   AudioImportOutcome _outcome = (added: const [], duplicates: const []);
   bool _baiduConfirming = false;
+  bool _localImporting = false;
 
   @override
   void dispose() {
@@ -78,14 +79,15 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
     final cloudDriveImportEnabled = ref.watch(
       remoteFeatureEnabledProvider(RemoteFeature.cloudDriveImport),
     );
-    final busy = _isBusy(state) || baiduState.isBusy;
+    final busy = _isBusy(state) || baiduState.isBusy || _localImporting;
+    final importing =
+        _isBusy(state) ||
+        baiduState.phase == BaiduNetdiskImportPhase.importing ||
+        _localImporting;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
     return PopScope(
-      canPop: !busy,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && busy) _cancelActiveImport();
-      },
+      canPop: !importing,
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
@@ -100,6 +102,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
                 _ImportHeader(
                   title: _titleFor(l10n, baiduState),
                   showBack: _step != _ImportStep.chooseSource && !busy,
+                  showClose: !importing,
                   titleSmall:
                       _step == _ImportStep.baiduNetdisk && !_baiduConfirming,
                   onBack: _goBack,
@@ -109,9 +112,7 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
                     busy: busy,
                     onToggleSelectAll: baiduController.toggleSelectAll,
                   ),
-                  onClose: busy
-                      ? _cancelActiveImport
-                      : () => Navigator.pop(context),
+                  onClose: () => Navigator.pop(context),
                 ),
                 const SizedBox(height: AppSpacing.m),
                 Flexible(
@@ -227,6 +228,10 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
           collectionId: widget.collectionId,
           embedded: true,
           autoPickOnStart: true,
+          onImportingChanged: (isImporting) {
+            if (_localImporting == isImporting || !mounted) return;
+            setState(() => _localImporting = isImporting);
+          },
           onPickerDismissedEmpty: _goBackToSource,
         ),
         _ImportStep.directUrl => _DirectUrlPanel(
@@ -337,20 +342,13 @@ class _ImportAudioFlowSheetState extends ConsumerState<ImportAudioFlowSheet> {
     if (!mounted) return;
     setState(() => _step = _ImportStep.directUrl);
   }
-
-  Future<void> _cancelActiveImport() async {
-    if (_step == _ImportStep.baiduNetdisk) {
-      ref.read(baiduNetdiskImportControllerProvider.notifier).cancel();
-      return;
-    }
-    await _cancelUrlImport();
-  }
 }
 
 class _ImportHeader extends StatelessWidget {
   const _ImportHeader({
     required this.title,
     required this.showBack,
+    this.showClose = true,
     this.titleSmall = false,
     this.trailing,
     required this.onBack,
@@ -359,6 +357,7 @@ class _ImportHeader extends StatelessWidget {
 
   final String title;
   final bool showBack;
+  final bool showClose;
   final bool titleSmall;
   final Widget? trailing;
   final VoidCallback onBack;
@@ -391,7 +390,9 @@ class _ImportHeader extends StatelessWidget {
               constraints: const BoxConstraints(minWidth: 40, maxWidth: 40),
               child: SizedBox(
                 height: 40,
-                child: showBack
+                child: !showBack && !showClose
+                    ? const SizedBox(width: 40, height: 40)
+                    : showBack
                     ? IconButton(
                         onPressed: onBack,
                         tooltip: MaterialLocalizations.of(
@@ -802,6 +803,7 @@ class _BaiduNetdiskPanelState extends ConsumerState<_BaiduNetdiskPanel> {
                           onImport: () => controller.importSelected(
                             collectionId: widget.collectionId,
                           ),
+                          onCancel: controller.cancel,
                           onRemove: controller.toggleEntry,
                           onRetryFailed: null,
                           onDone: () => Navigator.pop(context),
@@ -817,6 +819,7 @@ class _BaiduNetdiskPanelState extends ConsumerState<_BaiduNetdiskPanel> {
                       ? _BaiduSelectedFilesConfirmPanel(
                           state: state,
                           onImport: () {},
+                          onCancel: controller.cancel,
                           onRemove: null,
                           onRetryFailed: null,
                           onDone: () => Navigator.pop(context),
@@ -830,6 +833,7 @@ class _BaiduNetdiskPanelState extends ConsumerState<_BaiduNetdiskPanel> {
                       ? _BaiduSelectedFilesConfirmPanel(
                           state: state,
                           onImport: () {},
+                          onCancel: null,
                           onRemove: null,
                           onRetryFailed: (entry) => controller.retryFailedEntry(
                             entry,
@@ -1099,6 +1103,7 @@ class _BaiduSelectedFilesConfirmPanel extends StatelessWidget {
   const _BaiduSelectedFilesConfirmPanel({
     required this.state,
     required this.onImport,
+    required this.onCancel,
     required this.onRemove,
     required this.onRetryFailed,
     required this.onDone,
@@ -1106,6 +1111,7 @@ class _BaiduSelectedFilesConfirmPanel extends StatelessWidget {
 
   final BaiduNetdiskImportState state;
   final VoidCallback onImport;
+  final VoidCallback? onCancel;
   final ValueChanged<CloudDriveEntry>? onRemove;
   final ValueChanged<CloudDriveEntry>? onRetryFailed;
   final VoidCallback onDone;
@@ -1116,6 +1122,7 @@ class _BaiduSelectedFilesConfirmPanel extends StatelessWidget {
     final matchedSubtitleFsIds = _matchedSubtitleFsIdsFor(state);
     final audios = state.selectedAudioEntries;
     final completed = state.phase == BaiduNetdiskImportPhase.completed;
+    final importing = state.phase == BaiduNetdiskImportPhase.importing;
     final subtitleCount = matchedSubtitleFsIds.length;
     final retryFailed = onRetryFailed;
     return Column(
@@ -1166,13 +1173,13 @@ class _BaiduSelectedFilesConfirmPanel extends StatelessWidget {
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: audios.isEmpty || state.isBusy ? null : onImport,
+              onPressed: importing
+                  ? onCancel
+                  : audios.isEmpty
+                  ? null
+                  : onImport,
               child: state.isBusy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? Text(l10n.cancelImport)
                   : Text(
                       audios.isEmpty
                           ? l10n.importAudioShort
@@ -1362,7 +1369,10 @@ class _BaiduImportingPanel extends StatelessWidget {
         const SizedBox(height: AppSpacing.l),
         SizedBox(
           width: double.infinity,
-          child: SecondaryActionButton(onPressed: onCancel, label: l10n.cancel),
+          child: FilledButton(
+            onPressed: onCancel,
+            child: Text(l10n.cancelImport),
+          ),
         ),
       ],
     );
@@ -1539,31 +1549,34 @@ class _DirectUrlPanelState extends State<_DirectUrlPanel> {
           ),
         ],
         const SizedBox(height: AppSpacing.l),
-        Row(
-          children: [
-            Expanded(
-              child: SecondaryActionButton(
-                onPressed: busy ? widget.onCancelBusy : widget.onBackIdle,
-                label: busy ? l10n.cancelDownload : l10n.back,
-              ),
+        if (busy)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: widget.onCancelBusy,
+              child: Text(l10n.cancelImport),
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: FilledButton(
-                onPressed: busy || widget.controller.text.trim().isEmpty
-                    ? null
-                    : widget.onSubmit,
-                child: busy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(l10n.downloadAndImportAudio),
+          )
+        else
+          Row(
+            children: [
+              Expanded(
+                child: SecondaryActionButton(
+                  onPressed: widget.onBackIdle,
+                  label: l10n.back,
+                ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: widget.controller.text.trim().isEmpty
+                      ? null
+                      : widget.onSubmit,
+                  child: Text(l10n.downloadAndImportAudio),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }

@@ -77,7 +77,9 @@ class AudioImportController extends _$AudioImportController {
       return item;
     } on AudioImportException catch (e) {
       if (sid != _sessionId) return null;
-      state = AudioImportFailed(e);
+      state = e.code == AudioImportFailureCode.canceled
+          ? const AudioImportIdle()
+          : AudioImportFailed(e);
       return null;
     } catch (e) {
       if (sid != _sessionId) return null;
@@ -95,10 +97,7 @@ class AudioImportController extends _$AudioImportController {
   }
 
   Future<void> cancel() async {
-    _sessionId++;
     _cancelToken?.cancel('user-cancelled');
-    _cancelToken = null;
-    state = const AudioImportIdle();
   }
 
   void reset() {

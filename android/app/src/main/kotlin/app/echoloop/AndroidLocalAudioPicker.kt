@@ -15,8 +15,11 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.util.concurrent.CancellationException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android 本地音频选择器。
@@ -63,6 +66,7 @@ class AndroidLocalAudioPicker(
     private val worker: ExecutorService = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "LocalAudioPicker").apply { isDaemon = true }
     }
+    private val activeCopies = ConcurrentHashMap<String, CopyOperation>()
     private var pendingResult: MethodChannel.Result? = null
 
     init {
@@ -75,6 +79,7 @@ class AndroidLocalAudioPicker(
             "pickAudioFiles" -> pickAudioFiles(result)
             "readBytes" -> readBytes(call, result)
             "copyToFile" -> copyToFile(call, result)
+            "cancelCopyToFile" -> cancelCopyToFile(call, result)
             else -> result.notImplemented()
         }
     }
@@ -185,34 +190,108 @@ class AndroidLocalAudioPicker(
     private fun copyToFile(call: MethodCall, result: MethodChannel.Result) {
         val uri = parseUri(call, result) ?: return
         val targetPath = call.argument<String>("targetPath")
-        if (targetPath.isNullOrEmpty()) {
-            result.error("invalid_argument", "targetPath is required.", null)
+        val operationId = call.argument<String>("operationId")
+        if (targetPath.isNullOrEmpty() || operationId.isNullOrEmpty()) {
+            result.error("invalid_argument", "targetPath and operationId are required.", null)
             return
         }
+        val operation = CopyOperation()
+        if (activeCopies.putIfAbsent(operationId, operation) != null) {
+            result.error("copy_in_progress", "A copy already uses this operationId.", null)
+            return
+        }
+        Log.i(LOG_TAG, "copy queued operation=$operationId")
         worker.execute {
             val target = File(targetPath)
+            Log.i(LOG_TAG, "copy worker started operation=$operationId")
             val copied = runCatching {
                 target.parentFile?.mkdirs()
-                activity.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(target).use { output -> input.copyTo(output) }
-                } ?: throw IOException("Unable to open selected file")
+                val input = activity.contentResolver.openInputStream(uri)
+                    ?: throw IOException("Unable to open selected file")
+                operation.input = input
+                Log.i(LOG_TAG, "copy source opened operation=$operationId")
+                input.use { source ->
+                    FileOutputStream(target).use { output ->
+                        operation.output = output
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            operation.throwIfCanceled()
+                            val count = source.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                        }
+                        operation.throwIfCanceled()
+                        output.flush()
+                    }
+                }
                 target.length()
             }
+            activeCopies.remove(operationId, operation)
             activity.runOnUiThread {
                 copied
                     .onSuccess { size ->
-                        Log.i(LOG_TAG, "copied name=${target.name} size=$size")
+                        Log.i(LOG_TAG, "copy complete operation=$operationId size=$size")
                         result.success(null)
                     }
                     .onFailure { error ->
-                        target.delete()
-                        result.error(
-                            "audio_picker_copy_failed",
-                            "Unable to read the selected file.",
-                            error.message,
+                        Log.w(
+                            LOG_TAG,
+                            "copy failed operation=$operationId canceled=${operation.isCanceled} " +
+                                "error=${error.javaClass.simpleName}",
                         )
+                        target.delete()
+                        if (operation.isCanceled || error is CancellationException) {
+                            result.error("cancelled", "File copy canceled.", null)
+                        } else {
+                            result.error(
+                                "audio_picker_copy_failed",
+                                "Unable to read the selected file.",
+                                error.message,
+                            )
+                        }
                     }
             }
+        }
+    }
+
+    private fun cancelCopyToFile(call: MethodCall, result: MethodChannel.Result) {
+        val operationId = call.argument<String>("operationId")
+        if (operationId.isNullOrEmpty()) {
+            result.error("invalid_argument", "operationId is required.", null)
+            return
+        }
+        val operation = activeCopies[operationId]
+        Log.i(
+            LOG_TAG,
+            "copy cancel requested operation=$operationId active=${operation != null}",
+        )
+        operation?.cancel()
+        if (operation != null) {
+            Log.i(LOG_TAG, "copy cancel signaled operation=$operationId")
+        }
+        result.success(null)
+    }
+
+    private class CopyOperation {
+        private val canceled = AtomicBoolean(false)
+
+        @Volatile
+        var input: InputStream? = null
+
+        @Volatile
+        var output: FileOutputStream? = null
+
+        val isCanceled: Boolean
+            get() = canceled.get()
+
+        fun cancel() {
+            canceled.set(true)
+            runCatching { input?.close() }
+            runCatching { output?.close() }
+        }
+
+        fun throwIfCanceled() {
+            if (canceled.get()) throw CancellationException("File copy canceled")
         }
     }
 

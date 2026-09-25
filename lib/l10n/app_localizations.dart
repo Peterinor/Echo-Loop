@@ -8498,6 +8498,18 @@ abstract class AppLocalizations {
   /// **'Import'**
   String get importAudioShort;
 
+  /// No description provided for @cancelImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel Import'**
+  String get cancelImport;
+
+  /// No description provided for @cancelingImport.
+  ///
+  /// In en, this message translates to:
+  /// **'Canceling Import…'**
+  String get cancelingImport;
+
   /// No description provided for @importAudioSelectedCount.
   ///
   /// In en, this message translates to:

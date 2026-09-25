@@ -627,9 +627,28 @@ class BaiduNetdiskImportController
               retryOutcome: outcome,
               retriedEntries: entries,
             );
+      final itemStatuses = Map<int, AudioImportSelectionStatus>.from(
+        state.importItemStatuses,
+      );
+      var resetImportingItems = 0;
+      if (outcome.wasCanceled) {
+        for (final entry in entries) {
+          if (itemStatuses[entry.fsId] ==
+              AudioImportSelectionStatus.importing) {
+            itemStatuses[entry.fsId] = AudioImportSelectionStatus.pending;
+            resetImportingItems++;
+          }
+        }
+        AppLogger.log(
+          'BaiduNetdiskImport',
+          'cancel settled session=$sid reset_importing=$resetImportingItems '
+              'added=${outcome.added.length}',
+        );
+      }
       state = state.copyWith(
         phase: BaiduNetdiskImportPhase.completed,
         importOutcome: nextOutcome,
+        importItemStatuses: itemStatuses,
         importingEntry: null,
         importProgress: -1,
         importReceivedBytes: null,
@@ -800,24 +819,14 @@ class BaiduNetdiskImportController
 
   /// 取消当前操作。
   void cancel() {
-    _sessionId++;
-    _resetImportProgressSample();
-    _cancelToken?.cancel('user-cancelled');
-    _cancelToken = null;
-    state = state.copyWith(
-      phase: BaiduNetdiskImportPhase.ready,
-      importingEntry: null,
-      importProgress: -1,
-      importReceivedBytes: null,
-      importTotalBytes: null,
-      importSpeedBytesPerSecond: null,
-      importItemStatuses: const <int, AudioImportSelectionStatus>{},
-      importDuplicateExistingNames: const <int, String>{},
-      importFailureMessages: const <int, String>{},
-      importedItemsByFsId: const <int, AudioItem>{},
-      importingIndex: 0,
-      importTotal: 0,
+    final cancelToken = _cancelToken;
+    if (cancelToken == null) return;
+    AppLogger.log(
+      'BaiduNetdiskImport',
+      'cancel requested session=$_sessionId '
+          'entry=${state.importingEntry?.fsId ?? 'none'}',
     );
+    cancelToken.cancel('user-cancelled');
   }
 
   /// 重置。

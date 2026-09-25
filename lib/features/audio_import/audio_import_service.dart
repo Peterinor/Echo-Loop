@@ -13,6 +13,7 @@ import '../../services/background_file_download_service.dart';
 import '../../utils/app_data_dir.dart';
 import '../../utils/audio_duration.dart';
 import 'audio_finalization_service.dart';
+import 'audio_import_cancel.dart';
 import 'audio_import_models.dart';
 import 'audio_registration_service.dart';
 import 'audio_transcode_service.dart';
@@ -81,46 +82,61 @@ class AudioImportService {
       cancelToken: cancelToken,
       onProgress: onProgress,
     );
-    final finalizedAudio = await _finalizeDownloadedAudio(
-      dataDir: dataDir,
-      tempRelativePath: downloadedPath,
-    );
+    FinalizedAudio? finalizedAudio;
+    try {
+      finalizedAudio = await _finalizeDownloadedAudio(
+        dataDir: dataDir,
+        tempRelativePath: downloadedPath,
+        cancelToken: cancelToken,
+      );
+      cancelToken?.throwIfCanceled();
 
-    final result = await _registrationService.registerSandboxedAudio(
-      input: SandboxedAudioRegistrationInput(
-        name: resolved.displayName,
-        relativePath: finalizedAudio.relativePath,
-        importSourceType: AudioImportSourceType.directUrl,
-        importSourceUrl: resolved.uri.toString(),
-        audioSha256: finalizedAudio.sha256,
-        originalAudioSha256: finalizedAudio.originalSha256,
-      ),
-      audioLibrary: audioLibrary,
-      audioLibraryState: audioLibraryState,
-      collectionList: collectionList,
-      collectionState: collectionState,
-      collectionId: collectionId,
-    );
+      final result = await _registrationService.registerSandboxedAudio(
+        input: SandboxedAudioRegistrationInput(
+          name: resolved.displayName,
+          relativePath: finalizedAudio.relativePath,
+          importSourceType: AudioImportSourceType.directUrl,
+          importSourceUrl: resolved.uri.toString(),
+          audioSha256: finalizedAudio.sha256,
+          originalAudioSha256: finalizedAudio.originalSha256,
+        ),
+        audioLibrary: audioLibrary,
+        audioLibraryState: audioLibraryState,
+        collectionList: collectionList,
+        collectionState: collectionState,
+        collectionId: collectionId,
+        cancelToken: cancelToken,
+      );
 
-    switch (result) {
-      case AudioRegistrationAdded(:final item):
-        if (finalizedAudio.created &&
-            item.audioPath != finalizedAudio.relativePath) {
-          await _deleteIfExists(
-            File(p.join(dataDir.path, finalizedAudio.relativePath)),
+      switch (result) {
+        case AudioRegistrationAdded(:final item):
+          if (finalizedAudio.created &&
+              item.audioPath != finalizedAudio.relativePath) {
+            await _deleteIfExists(
+              File(p.join(dataDir.path, finalizedAudio.relativePath)),
+            );
+          }
+          return item;
+        case AudioRegistrationDuplicate(:final name):
+          throw AudioImportException(
+            AudioImportFailureCode.duplicate,
+            'Audio already exists: $name',
           );
-        }
-        return item;
-      case AudioRegistrationDuplicate(:final name):
-        if (finalizedAudio.created) {
-          await _deleteIfExists(
-            File(p.join(dataDir.path, finalizedAudio.relativePath)),
-          );
-        }
-        throw AudioImportException(
-          AudioImportFailureCode.duplicate,
-          'Audio already exists: $name',
+      }
+    } catch (error) {
+      final savedAudio = finalizedAudio;
+      if (savedAudio != null && savedAudio.created) {
+        await _deleteIfExists(
+          File(p.join(dataDir.path, savedAudio.relativePath)),
         );
+      }
+      if (error is DioException && CancelToken.isCancel(error)) {
+        throw const AudioImportException(
+          AudioImportFailureCode.canceled,
+          'Audio import canceled',
+        );
+      }
+      rethrow;
     }
   }
 
@@ -177,6 +193,7 @@ class AudioImportService {
     final finalizedAudio = await _finalizeDownloadedAudio(
       dataDir: dataDir,
       tempRelativePath: downloadedPath,
+      cancelToken: cancelToken,
     );
 
     final duration = await _tryReadDuration(finalizedAudio.relativePath);
@@ -330,11 +347,13 @@ class AudioImportService {
   Future<FinalizedAudio> _finalizeDownloadedAudio({
     required Directory dataDir,
     required String tempRelativePath,
+    CancelToken? cancelToken,
   }) {
     return _finalizationService.finalize(
       dataDir: dataDir,
       tempRelativePath: tempRelativePath,
       targetSubdir: p.join('audios', 'imported'),
+      cancelToken: cancelToken,
     );
   }
 

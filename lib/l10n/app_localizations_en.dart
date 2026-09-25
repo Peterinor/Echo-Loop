@@ -4833,6 +4833,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get importAudioShort => 'Import';
 
   @override
+  String get cancelImport => 'Cancel Import';
+
+  @override
+  String get cancelingImport => 'Canceling Import…';
+
+  @override
   String importAudioSelectedCount(int count) {
     return 'Import $count';
   }

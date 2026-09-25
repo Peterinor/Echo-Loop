@@ -2433,6 +2433,8 @@
   "baiduNetdiskDisconnect": "Disconnect Baidu Netdisk",
   "baiduNetdiskNoSupportedAudio": "No supported media files found in this folder.",
   "importAudioShort": "Import",
+  "cancelImport": "Cancel Import",
+  "cancelingImport": "Canceling Import…",
   "importAudioSelectedCount": "Import {count}",
   "@importAudioSelectedCount": {
     "placeholders": {

@@ -4,7 +4,12 @@
 // 使用 Isolate 异步计算，避免阻塞 UI 线程。
 import 'dart:isolate';
 import 'package:crypto/crypto.dart';
+import 'package:dio/dio.dart';
 import 'package:universal_io/io.dart';
+
+import '../features/audio_import/audio_import_cancel.dart';
+
+typedef _FingerprintRequest = (String path, SendPort responsePort);
 
 /// 计算音频文件的 SHA256 哈希值
 ///
@@ -12,8 +17,45 @@ import 'package:universal_io/io.dart';
 /// [absolutePath] 音频文件的绝对路径。
 /// 返回十六进制小写 SHA256 字符串。
 /// 文件不存在时抛出 [FileSystemException]。
-Future<String> computeAudioSha256(String absolutePath) {
-  return Isolate.run(() => _computeSha256(absolutePath));
+Future<String> computeAudioSha256(
+  String absolutePath, {
+  CancelToken? cancelToken,
+}) async {
+  if (cancelToken == null) {
+    return Isolate.run(() => _computeSha256(absolutePath));
+  }
+  cancelToken.throwIfCanceled();
+
+  final responsePort = ReceivePort();
+  final isolate = await Isolate.spawn<_FingerprintRequest>(
+    _computeSha256WithResponse,
+    (absolutePath, responsePort.sendPort),
+  );
+  try {
+    final result = responsePort.first.then((message) {
+      if (message case (true, final String hash)) return hash;
+      if (message case (false, final String error)) {
+        throw FileSystemException(error, absolutePath);
+      }
+      throw StateError('Invalid audio fingerprint response');
+    });
+    final canceled = cancelToken.whenCancel.then<String>(
+      (error) => throw error,
+    );
+    return await Future.any([result, canceled]);
+  } finally {
+    isolate.kill(priority: Isolate.immediate);
+    responsePort.close();
+  }
+}
+
+void _computeSha256WithResponse(_FingerprintRequest request) {
+  final (path, responsePort) = request;
+  try {
+    responsePort.send((true, _computeSha256(path)));
+  } catch (error) {
+    responsePort.send((false, error.toString()));
+  }
 }
 
 /// Isolate 内部执行的同步 SHA256 计算

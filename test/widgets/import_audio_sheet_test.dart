@@ -60,6 +60,27 @@ class _ImmediateAudioImportController extends AudioImportController {
   }
 }
 
+class _PendingAudioImportController extends AudioImportController {
+  final Completer<AudioItem?> _completion = Completer<AudioItem?>();
+  bool cancellationRequested = false;
+
+  @override
+  AudioImportState build() => const AudioImportIdle();
+
+  @override
+  Future<AudioItem?> importFromUrl(String url, {String? collectionId}) {
+    state = AudioImportDownloading(displayName: url, progress: 0.4);
+    return _completion.future;
+  }
+
+  @override
+  Future<void> cancel() async {
+    cancellationRequested = true;
+    state = const AudioImportIdle();
+    if (!_completion.isCompleted) _completion.complete(null);
+  }
+}
+
 class _TokenCredentialRepository implements BaiduCredentialRepository {
   bool cleared = false;
 
@@ -1480,7 +1501,7 @@ void main() {
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(
       tester.widget<FilledButton>(find.byType(FilledButton).last).onPressed,
-      isNull,
+      isNotNull,
     );
 
     importService.completer.complete(
@@ -1891,6 +1912,45 @@ void main() {
 
     expect(find.text('Enter a valid audio link'), findsOneWidget);
     expect(find.text('Audio link'), findsOneWidget);
+  });
+
+  testWidgets('导入中锁定返回和遮罩关闭，主按钮取消后恢复导航', (tester) async {
+    final controller = _PendingAudioImportController();
+    await tester.pumpWidget(
+      _buildApp(
+        overrides: [
+          audioImportControllerProvider.overrideWith(() => controller),
+        ],
+      ),
+    );
+    await tester.tap(find.text('Open Import'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import from Link'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'https://example.com/a.mp3');
+    await tester.pump();
+    await tester.tap(find.text('Download and Import'));
+    await tester.pump();
+
+    expect(find.text('Cancel Import'), findsOneWidget);
+    expect(find.byTooltip('Close'), findsNothing);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsNothing);
+
+    await tester.binding.handlePopRoute();
+    await tester.pump();
+    await tester.tapAt(const Offset(2, 2));
+    await tester.pump();
+
+    expect(find.text('Audio link'), findsOneWidget);
+    expect(controller.cancellationRequested, isFalse);
+
+    await tester.tap(find.text('Cancel Import'));
+    await tester.pumpAndSettle();
+
+    expect(controller.cancellationRequested, isTrue);
+    expect(find.text('Audio link'), findsOneWidget);
+    expect(find.text('Cancel Import'), findsNothing);
+    expect(find.byIcon(Icons.arrow_back_ios_new_rounded), findsOneWidget);
   });
 
   testWidgets('链接导入成功后仅显示完成确认，不再提示添加字幕', (tester) async {

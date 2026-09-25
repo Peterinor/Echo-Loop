@@ -4613,6 +4613,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get importAudioShort => '导入';
 
   @override
+  String get cancelImport => '取消导入';
+
+  @override
+  String get cancelingImport => '正在取消导入…';
+
+  @override
   String importAudioSelectedCount(int count) {
     return '导入 $count 个';
   }

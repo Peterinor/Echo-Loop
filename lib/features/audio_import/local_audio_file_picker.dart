@@ -1,5 +1,10 @@
+import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../services/app_logger.dart';
+import 'audio_import_cancel.dart';
 
 /// Android 本地音频选择器（SAF 通道）。
 ///
@@ -50,11 +55,63 @@ class AndroidLocalAudioFilePicker {
   }
 
   /// 把 [uri] 的内容流式写入 [targetPath]；写失败时原生侧会清掉半成品。
-  Future<void> copyToFile(String uri, String targetPath) {
-    return _channel.invokeMethod<void>('copyToFile', {
-      'uri': uri,
-      'targetPath': targetPath,
+  Future<void> copyToFile(
+    String uri,
+    String targetPath, {
+    required CancelToken cancelToken,
+  }) async {
+    cancelToken.throwIfCanceled();
+    final operationId = const Uuid().v4();
+    AppLogger.log('LocalAudioPicker', 'copy_begin operation=$operationId');
+    final cancelCopy = cancelToken.whenCancel.then((_) async {
+      AppLogger.log(
+        'LocalAudioPicker',
+        'cancel_dispatch operation=$operationId',
+      );
+      try {
+        await _channel.invokeMethod<void>('cancelCopyToFile', {
+          'operationId': operationId,
+        });
+        AppLogger.log('LocalAudioPicker', 'cancel_ack operation=$operationId');
+      } catch (error) {
+        AppLogger.log(
+          'LocalAudioPicker',
+          'cancel_dispatch_failed operation=$operationId '
+              'error=${error.runtimeType}',
+        );
+        rethrow;
+      }
     });
+    try {
+      await _channel.invokeMethod<void>('copyToFile', {
+        'uri': uri,
+        'targetPath': targetPath,
+        'operationId': operationId,
+      });
+      cancelToken.throwIfCanceled();
+      AppLogger.log('LocalAudioPicker', 'copy_complete operation=$operationId');
+    } on PlatformException catch (error) {
+      AppLogger.log(
+        'LocalAudioPicker',
+        'copy_platform_error operation=$operationId code=${error.code} '
+            'canceled=${cancelToken.isCancelled}',
+      );
+      if (cancelToken.isCancelled) cancelToken.throwIfCanceled();
+      rethrow;
+    } catch (error) {
+      AppLogger.log(
+        'LocalAudioPicker',
+        'copy_failed operation=$operationId canceled=${cancelToken.isCancelled} '
+            'error=${error.runtimeType}',
+      );
+      rethrow;
+    } finally {
+      cancelCopy.catchError((_) {});
+      AppLogger.log(
+        'LocalAudioPicker',
+        'copy_settled operation=$operationId canceled=${cancelToken.isCancelled}',
+      );
+    }
   }
 
   /// 校验原生协议后构造 [PlatformFile]，避免平台侧回归重新引入空类型异常。

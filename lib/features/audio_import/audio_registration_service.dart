@@ -1,9 +1,12 @@
+import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/audio_item.dart';
 import '../../providers/audio_library_provider.dart';
 import '../../providers/collection_provider.dart';
+import '../../services/app_logger.dart';
 import '../../utils/audio_duration.dart';
+import 'audio_import_cancel.dart';
 
 /// 已在应用沙盒内的音频注册服务。
 ///
@@ -26,7 +29,11 @@ class AudioRegistrationService {
     CollectionList? collectionList,
     CollectionState? collectionState,
     String? collectionId,
+    CancelToken? cancelToken,
   }) async {
+    final traceId = cancelToken?.hashCode.toRadixString(16) ?? 'none';
+    AppLogger.log('AudioImportRegister', 'begin trace=$traceId');
+    cancelToken?.throwIfCanceled();
     final originalSha = input.originalAudioSha256;
     if (originalSha != null) {
       final existingResult = await registerExistingAudioByOriginalSha256(
@@ -37,7 +44,13 @@ class AudioRegistrationService {
         collectionState: collectionState,
         collectionId: collectionId,
       );
-      if (existingResult != null) return existingResult;
+      if (existingResult != null) {
+        AppLogger.log(
+          'AudioImportRegister',
+          'duplicate trace=$traceId kind=sha',
+        );
+        return existingResult;
+      }
     } else {
       // 无原始内容指纹（老数据/社区音频）退回按名去重。
       final existingResult = await registerExistingAudioByName(
@@ -47,10 +60,20 @@ class AudioRegistrationService {
         collectionState: collectionState,
         collectionId: collectionId,
       );
-      if (existingResult != null) return existingResult;
+      if (existingResult != null) {
+        AppLogger.log(
+          'AudioImportRegister',
+          'duplicate trace=$traceId kind=name',
+        );
+        return existingResult;
+      }
     }
 
+    cancelToken?.throwIfCanceled();
+    AppLogger.log('AudioImportRegister', 'duration_begin trace=$traceId');
     final duration = await _readDurationSeconds(input.relativePath);
+    AppLogger.log('AudioImportRegister', 'duration_complete trace=$traceId');
+    cancelToken?.throwIfCanceled();
     final audioItem = AudioItem(
       id: _uuid.v4(),
       name: input.name,
@@ -63,10 +86,20 @@ class AudioRegistrationService {
       importSourceUrl: input.importSourceUrl,
     );
 
+    // 入库提交开始后让事务完成；取消方会保留已提交条目，避免文件与数据库失配。
+    AppLogger.log(
+      'AudioImportRegister',
+      'database_commit_begin trace=$traceId',
+    );
     await audioLibrary.addAudioItem(audioItem);
+    AppLogger.log(
+      'AudioImportRegister',
+      'database_commit_complete trace=$traceId',
+    );
     if (collectionId != null) {
       await collectionList?.addAudioToCollection(collectionId, audioItem.id);
     }
+    AppLogger.log('AudioImportRegister', 'complete trace=$traceId');
     return AudioRegistrationAdded(audioItem);
   }
 
