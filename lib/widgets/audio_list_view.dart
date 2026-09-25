@@ -4,7 +4,6 @@
 // - items 为 null 时从 audioLibraryProvider 读取（全局场景）
 // - items 非 null 时使用传入的列表（合集场景）
 // 排序逻辑统一使用 audioListSettingsProvider。
-import '../config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/audio_item.dart';
@@ -157,12 +156,7 @@ class _AudioListViewState extends ConsumerState<AudioListView> {
         ref.watch(audioListSettingsProvider).sortType;
 
     // 排序
-    final sortedItems = _sortItems(
-      isLocalEdition
-          ? audioItems.where((item) => item.isAudioReady).toList()
-          : audioItems,
-      sortType,
-    );
+    final sortedItems = _sortItems(audioItems, sortType);
 
     if (sortedItems.isEmpty) {
       return widget.emptyState ?? _DefaultEmptyState(l10n: l10n);

@@ -61,6 +61,7 @@ class PodcastCatalogService {
   PodcastCatalogService({required String baseUrl, String? appVersion})
     : _dio = createBackendDio(
         baseUrl: baseUrl,
+        allowAnonymousResources: true,
         appVersion: appVersion,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
@@ -273,7 +274,7 @@ class _LegacyPodcastCache {
 @Riverpod(keepAlive: true)
 PodcastCatalogService podcastCatalogService(Ref ref) {
   return PodcastCatalogService(
-    baseUrl: apiBaseUrl,
+    baseUrl: resourceApiBaseUrl,
     appVersion: readAppVersion(ref),
   );
 }

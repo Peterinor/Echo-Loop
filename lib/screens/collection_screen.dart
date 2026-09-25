@@ -3,7 +3,6 @@
 // 原 CollectionScreen 保留用于 import，
 // 内部组件（排序按钮、列表/网格视图、空状态、对话框）
 // 导出供 LibraryScreen 复用。
-import '../config/app_capabilities.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -232,14 +231,6 @@ class _CreateCollectionFlowSheetState
 
   Widget _buildStep(AppLocalizations l10n) {
     return switch (_step) {
-      _CreateCollectionStep.chooseType when isLocalEdition =>
-        _LocalCollectionPanel(
-          key: const ValueKey('local-collection-form'),
-          controller: _nameController,
-          errorText: _errorText,
-          onBack: () => Navigator.pop(context),
-          onSubmit: _submitLocalCollection,
-        ),
       _CreateCollectionStep.chooseType => _CollectionTypePanel(
         key: const ValueKey('choose-collection-type'),
         onLocal: () => _setStep(_CreateCollectionStep.local),
@@ -694,7 +685,7 @@ class _CollectionListTile extends ConsumerWidget {
   /// 社区合集会在右上角叠加社区角标（已下架则换成灰色 block 角标）。
   Widget _buildLeadingIcon(ThemeData theme) {
     const size = 56.0;
-    final coverUrl = isLocalEdition ? null : collection.coverUrl;
+    final coverUrl = collection.coverUrl;
 
     // podcast 合集：有封面显示封面图，否则用 podcast 图标
     if (collection.isPodcast) {

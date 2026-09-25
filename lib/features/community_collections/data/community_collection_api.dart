@@ -28,6 +28,7 @@ class CommunityCollectionApi {
   CommunityCollectionApi({required String baseUrl, String? appVersion})
     : _dio = createBackendDio(
         baseUrl: baseUrl,
+        allowAnonymousResources: true,
         appVersion: appVersion,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 30),
@@ -142,7 +143,7 @@ String? _nullableString(Map<String, Object?> json, String key) {
 @Riverpod(keepAlive: true)
 CommunityCollectionApi communityCollectionApi(Ref ref) {
   return CommunityCollectionApi(
-    baseUrl: apiBaseUrl,
+    baseUrl: resourceApiBaseUrl,
     appVersion: readAppVersion(ref),
   );
 }

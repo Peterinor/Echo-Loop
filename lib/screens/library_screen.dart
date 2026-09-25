@@ -2,7 +2,6 @@
 //
 // 包含 SegmentedButton 切换合集/音频双视图，
 // 使用 IndexedStack 保持两个视图状态。
-import '../config/app_capabilities.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../features/community_collections/widgets/discover_entry_banner.dart';
@@ -182,7 +181,7 @@ class _CollectionListBody extends ConsumerWidget {
     // Banner 在 loading / empty / data 三态下都显示，让新用户一进来就看到入口。
     return Column(
       children: [
-        if (!isLocalEdition) const DiscoverEntryBanner(),
+        const DiscoverEntryBanner(),
         Expanded(child: _buildInner(collectionState)),
       ],
     );

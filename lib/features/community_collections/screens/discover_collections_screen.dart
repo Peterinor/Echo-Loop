@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../config/app_capabilities.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../providers/collection_provider.dart';
@@ -161,14 +162,17 @@ class _DiscoverCommunityCollectionsScreenState
     ]);
   }
 
+  /// 本地版公开资源无需账号或 AI 配置，官方版保留原有登录流程。
   Future<void> _enroll(PublicCollectionSummary item) async {
     final l10n = AppLocalizations.of(context)!;
-    final canEnroll = await ensureSignedInForAction(
-      context: context,
-      ref: ref,
-      title: l10n.communityCollectionSignInRequiredTitle,
-      message: l10n.communityCollectionSignInRequiredMessage,
-    );
+    final canEnroll =
+        isLocalEdition ||
+        await ensureSignedInForAction(
+          context: context,
+          ref: ref,
+          title: l10n.communityCollectionSignInRequiredTitle,
+          message: l10n.communityCollectionSignInRequiredMessage,
+        );
     if (!mounted || !canEnroll) return;
     setState(() => _enrolling.add(item.id));
     try {

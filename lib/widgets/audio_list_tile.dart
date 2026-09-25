@@ -2,7 +2,6 @@
 //
 // 统一的音频列表项，同时用于资源库全局列表和合集详情页。
 // 通过 collectionId 参数区分两种上下文，自动调整菜单、路由和显示逻辑。
-import '../config/app_capabilities.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -270,7 +269,7 @@ class AudioListTile extends ConsumerWidget {
   /// 图标是闲置的，此时改用下载态图标承载「未下载 / 下载中」，与已下载音频的学习
   /// 进度环区分（业界 App 的标准做法）；下载完成后自动切回 [LearningProgressIcon]。
   Widget _buildLeading(LearningProgress? progress, double? downloadProgress) {
-    if (!isLocalEdition && audioItem.isCommunityUnavailable) {
+    if (audioItem.isCommunityUnavailable) {
       return Icon(
         Icons.cloud_off_outlined,
         color: Colors.grey.shade500,
@@ -394,7 +393,7 @@ class AudioListTile extends ConsumerWidget {
         (progress?.isStarted ?? false) ||
         collectionNames.isNotEmpty ||
         tagData.isNotEmpty ||
-        (!isLocalEdition && audioItem.isCommunityUnavailable) ||
+        audioItem.isCommunityUnavailable ||
         downloadProgress != null;
 
     return Column(
@@ -428,7 +427,7 @@ class AudioListTile extends ConsumerWidget {
               // 内容异常警告（损坏 / 静音）
               if (contentWarningLabel != null)
                 _buildContentWarningBadge(theme, contentWarningLabel),
-              if (!isLocalEdition && audioItem.isCommunityUnavailable)
+              if (audioItem.isCommunityUnavailable)
                 Text(
                   l10n.communityFileUnavailable,
                   style: theme.textTheme.labelSmall?.copyWith(
@@ -776,7 +775,7 @@ class AudioListTile extends ConsumerWidget {
               icon: const Icon(Icons.edit_note, size: 20),
               label: l10n.editSubtitles,
             ),
-          if (isCommunity && !isLocalEdition)
+          if (isCommunity)
             appPopupMenuItem(
               context,
               value: 'updateCommunitySubtitle',
@@ -870,7 +869,7 @@ class AudioListTile extends ConsumerWidget {
               label: l10n.deleteAudio,
               destructive: true,
             ),
-          if (!isLocalEdition && audioItem.podcastEpisodeGuid != null)
+          if (audioItem.podcastEpisodeGuid != null)
             appPopupMenuItem(
               context,
               value: 'podcastEpisodeInfo',
@@ -977,7 +976,7 @@ class AudioListTile extends ConsumerWidget {
     AppLocalizations l10n,
   ) async {
     final currentItem = _latestAudioItem(ref);
-    if (!isLocalEdition && currentItem.isCommunityUnavailable) {
+    if (currentItem.isCommunityUnavailable) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(l10n.communityFileUnavailable)));
@@ -985,7 +984,6 @@ class AudioListTile extends ConsumerWidget {
     }
     // 音频未就绪（audioPath=null）= 未下载 → 走按需下载流程
     if (!currentItem.isAudioReady) {
-      if (isLocalEdition) return;
       // podcast 合集：用 enclosure URL 懒下载
       if (currentItem.podcastEpisodeGuid != null &&
           currentItem.podcastEnclosureUrl != null) {

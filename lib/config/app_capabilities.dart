@@ -1,4 +1,4 @@
-/// 本地版只禁用官方业务服务；词典、发音与语音模型资源下载继续可用。
+/// 本地版禁用账号、付费和官方 AI；匿名学习资源、词典与语音模型下载可用。
 const isLocalEdition =
     String.fromEnvironment('APP_EDITION', defaultValue: 'official') == 'local';
 
@@ -7,6 +7,4 @@ bool isLocalEditionBlockedRoute(String path) => const [
   '/login',
   '/account',
   '/paywall',
-  '/discover',
-  '/podcast-subscribe',
 ].any((prefix) => path == prefix || path.startsWith('$prefix/'));

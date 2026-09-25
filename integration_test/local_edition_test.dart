@@ -122,7 +122,7 @@ void main() {
       }
       await tester.pageBack();
       await tester.pump();
-      router.go('/discover');
+      router.go('/account');
       await _until(
         tester,
         () =>

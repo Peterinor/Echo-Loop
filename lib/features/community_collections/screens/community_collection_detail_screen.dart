@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../config/app_capabilities.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../models/audio_item.dart';
@@ -126,14 +127,17 @@ class _CommunityCollectionDetailScreenState
     }
   }
 
+  /// 本地版公开资源无需账号或 AI 配置，官方版保留原有登录流程。
   Future<void> _enroll(BuildContext context, WidgetRef ref) async {
     final l10n = AppLocalizations.of(context)!;
-    final allowed = await ensureSignedInForAction(
-      context: context,
-      ref: ref,
-      title: l10n.communityCollectionSignInRequiredTitle,
-      message: l10n.communityCollectionSignInRequiredMessage,
-    );
+    final allowed =
+        isLocalEdition ||
+        await ensureSignedInForAction(
+          context: context,
+          ref: ref,
+          title: l10n.communityCollectionSignInRequiredTitle,
+          message: l10n.communityCollectionSignInRequiredMessage,
+        );
     if (!allowed || !context.mounted) return;
     try {
       await ref

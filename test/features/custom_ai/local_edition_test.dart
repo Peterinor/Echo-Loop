@@ -28,6 +28,7 @@ class _Adapter implements HttpClientAdapter {
   _Adapter(this.value);
   Map<String, Object?> value;
   int requests = 0;
+  final requestOptions = <RequestOptions>[];
   @override
   Future<ResponseBody> fetch(
     RequestOptions options,
@@ -35,6 +36,7 @@ class _Adapter implements HttpClientAdapter {
     Future<void>? cancel,
   ) async {
     requests++;
+    requestOptions.add(options);
     return ResponseBody.fromString(
       jsonEncode({
         'choices': [
@@ -87,8 +89,54 @@ void main() {
       );
       expect(container.read(subscriptionAvailabilityProvider), isFalse);
       expect(isLocalEditionBlockedRoute('/login/email'), isTrue);
-      expect(isLocalEditionBlockedRoute('/discover/material'), isTrue);
+      expect(isLocalEditionBlockedRoute('/discover/material'), isFalse);
+      expect(isLocalEditionBlockedRoute('/podcast-subscribe'), isFalse);
       expect(isLocalEditionBlockedRoute('/collections/local'), isFalse);
+    },
+    skip: !isLocalEdition,
+  );
+
+  test(
+    'local resource transport only allows anonymous read endpoints',
+    () async {
+      final adapter = _Adapter({});
+      final dio = createBackendDio(
+        baseUrl: 'https://official.invalid',
+        allowAnonymousResources: true,
+      )..httpClientAdapter = adapter;
+      addTearDown(dio.close);
+      for (final path in [
+        '/api/v1/catalog',
+        '/api/v2/collections',
+        '/api/v2/collections/example/files',
+        '/api/v2/collections/example/files/audio/subtitle',
+      ]) {
+        await dio.get<Object?>(path);
+      }
+      expect(adapter.requests, 4);
+      expect(
+        adapter.requestOptions.every((options) => !options.followRedirects),
+        isTrue,
+      );
+      expect(
+        adapter.requestOptions.every(
+          (options) => !options.headers.containsKey('Authorization'),
+        ),
+        isTrue,
+      );
+      for (final path in [
+        '/api/entitlements',
+        '/api/v1/ai/translate',
+        '/api/v2/collections/example/delete',
+        'https://other.invalid/api/v1/catalog',
+      ]) {
+        await expectLater(dio.get<Object?>(path), throwsA(isA<DioException>()));
+      }
+      await expectLater(
+        dio.post<Object?>('/api/v2/collections'),
+        throwsA(isA<DioException>()),
+      );
+      expect(adapter.requests, 4);
     },
     skip: !isLocalEdition,
   );

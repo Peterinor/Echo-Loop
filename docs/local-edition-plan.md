@@ -1,16 +1,16 @@
 # 无官方业务后端版本实施方案
 
-日期：2026-09-24。状态：方案已整理，功能尚未实现。
+日期：2026-09-25。状态：本地版已实现；按用户要求恢复匿名资源发现。
 
 ## 已确认范围
 
 - 保留原版页面、播放器、学习流程、本地数据库、收藏、统计及文件备份恢复。
-- 禁用登录、会员、支付、恢复购买及官方业务后端调用。
+- 禁用登录、会员、支付、恢复购买及官方 AI 等业务后端调用；公开资源读取作为明确例外。
 - AI 翻译、句子解析、单词/词组词典、意群和聊天直连用户填写的云端模型 API；AI 仍需要联网。
 - 保留原有词典、单词发音包、ASR/TTS 模型的官方 CDN 下载、校验和安装流程，不新增本地资源包导入。
-- 隐藏社区合集、在线播客、网盘、网页词典、云端字幕转录等其他远程入口，停止其后台请求。
+- 保留“发现资源”、官方精选合集、Apple 播客搜索与公开 RSS 订阅；本地版加入资源不要求登录，也不要求配置 AI。隐藏网盘、网页词典、云端字幕转录等入口。
 - 禁用网络埋点、远程配置刷新、官方更新检查；保留本地诊断日志。
-- 已下载资源、已保存内容和已缓存 AI 结果可离线使用。首次下载资源仍依赖官方 CDN。
+- 已下载资源、已保存内容和已缓存 AI 结果可离线使用。资源发现和下载需要联网，其中官方精选目录、合集元数据和字幕依赖官方匿名服务。
 
 ## 维护原则
 
@@ -35,13 +35,13 @@
 | `lib/features/remote_config/remote_config_providers.dart` | 本地版使用固定功能配置，不加载旧的远程开关来覆盖本地策略，不启动轮询 |
 | `lib/screens/settings_screen.dart`、`lib/router/app_router.dart` | 隐藏账号/会员/更新入口并限制对应路由与深链；后续增加模型设置入口 |
 | `lib/features/subscription/providers/subscription_availability.dart` | 本地版订阅入口不可用；不能仅靠留空支付 key 判断 |
-| 在线内容的入口及服务 Provider | 按能力配置隐藏社区、播客、网盘、云转录；禁用后台任务，保留本地导入和已下载材料 |
+| 在线内容的入口及服务 Provider | 开放匿名社区与播客发现、订阅和按需下载；隐藏网盘和云转录，保留本地导入 |
 | `lib/providers/dictionary/dictionary_registry.dart` | 本地版仅注册本地词典和 AI 词典；处理旧偏好指向网页词典的回退 |
-| `lib/services/backend_dio.dart` | 本地版在发出官方业务请求前直接拒绝，作为漏接调用的防线 |
+| `lib/services/backend_dio.dart` | 本地版仅向显式启用的资源客户端放行同源、白名单 GET；其余官方业务请求在发送前拒绝 |
 
-网络控制分三类：官方业务 API 禁止；原有资源目录声明的 CDN 资源下载允许；用户 AI 使用独立客户端。普通 Dio、图片、WebView、原生 SDK 不能由 `backend_dio.dart` 一处拦截覆盖，需在入口禁用并检查正式包的实际流量。不得清空 `API_BASE_URL` 后假设所有联网都已停止。
+网络控制：账号、支付和官方 AI 等业务 API 禁止；匿名资源 API、公开 RSS、Apple 搜索和 CDN 下载允许；用户 AI 使用独立客户端。普通 Dio、图片、WebView、原生 SDK 不能由 `backend_dio.dart` 一处拦截覆盖，需在入口禁用并检查正式包的实际流量。不得清空 `API_BASE_URL` 后假设所有联网都已停止。
 
-阶段验收：未配置官方凭据可启动和使用本地学习流程；登录、支付及远程入口不可达；启动、停留和回前台无官方业务请求；缺少词典/发音包时仍按原逻辑下载，断网失败不阻塞本地学习；已有资源离线可用。
+阶段验收：未配置官方凭据可启动和使用本地学习流程；登录、支付及云转录入口不可达；匿名资源可以访问和加入；启动、停留和回前台无官方业务请求；缺少词典/发音包时仍按原逻辑下载，断网失败不阻塞本地学习；已有资源离线可用。
 
 ## 阶段二：模型设置与一句翻译闭环
 
@@ -79,7 +79,7 @@
 ## 阶段四：Android 与回归验收
 
 - 单元测试：能力配置矩阵、AI 请求策略、密钥脱敏、缓存隔离、协议解析与结构化结果验证。
-- Widget 测试：远程入口隐藏、模型设置引导、本地资源未就绪和下载失败状态。
+- Widget 测试：资源匿名加入、其他远程入口隐藏、模型设置引导、未下载音频展示及下载失败状态。
 - 集成验收：全新数据启动、已有数据升级、已有资源断网、缺少资源联网下载、用户模型调用、备份恢复。
 - Android 正式包检查：仅出现允许的资源下载和用户主动 AI 请求；禁止官方业务请求和埋点。原生插件的流量也要覆盖。
 - 先使用现有安卓模拟器验证页面与调用，再用真机验证麦克风、跟读、转录和语音合成。PLAN.md 已记录部分 Android 设备离线 ASR 闪退，不能把模式切换当作该问题已修复。
@@ -200,3 +200,32 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - `test/providers/retell_review_evaluation_provider_test.dart`
 - `test/screens/study_screen_test.dart`
 - `test/scripts/native_analytics_config_test.py`
+
+## 2026-09-25：匿名发现资源例外
+
+资源客户端只放行 `/api/v1/catalog`、`/api/v2/collections`、`/api/v2/collections/{id}/files` 和 `/api/v2/collections/{id}/files/{fileId}/subtitle` 的同源 GET。本地版资源地址由 `RESOURCE_API_BASE_URL` 指定，默认 `https://www.echo-loop.top`；官方版仍使用 `API_BASE_URL`。保持启动/回前台的官方资源后台同步禁用，资源由用户打开页面或刷新时获取。
+
+线上抽查：匿名目录接口返回 200；两个合集的 v2 文件接口返回 404，尚未验证官方合集音频与字幕的完整下载链路，保留原有失败提示，不将 404 当作成功或登录问题。
+
+本次修改文件：
+
+- 配置与网络：`lib/config/app_capabilities.dart`、`lib/config/api_config.dart`、`lib/services/backend_dio.dart`。
+- 资源客户端：`lib/features/community_collections/data/community_collection_api.dart`、`lib/features/podcast/data/podcast_catalog_service.dart`。
+- 匿名加入：`lib/features/community_collections/screens/discover_collections_screen.dart`、`lib/features/community_collections/screens/community_collection_detail_screen.dart`、`lib/features/podcast/screens/podcast_discovery_screen.dart`、`lib/features/podcast/screens/podcast_preview_screen.dart`。
+- 入口与下载：`lib/screens/library_screen.dart`、`lib/screens/collection_screen.dart`、`lib/screens/collection_detail_screen.dart`、`lib/widgets/audio_list_view.dart`、`lib/widgets/audio_list_tile.dart`。
+- 测试：`test/features/custom_ai/local_edition_test.dart`、`test/features/community_collections/discover_collections_screen_test.dart`、`test/features/podcast/podcast_discovery_screen_test.dart`、`integration_test/local_edition_test.dart`、`integration_test/local_resources_test.dart`。
+- 记录：`PLAN.md`、`TASKS.md`、本文件。
+
+验证记录：
+
+- 修改相关静态分析通过；补充的播客首启加载和设备验收脚本静态分析通过。
+- 官方配置相关回归 185 项通过；最后修改后补跑资源与播客页面 10 项通过（本地专用用例只在本地配置运行）。
+- 本地配置相关回归 130 项、下载交互 17 项通过；最后补充的播客空缓存回归在 9 项播客页面测试中通过，网络白名单与匿名加入补跑 8 项通过。
+- 曾将官方云转录用例放在本地配置下运行，该用例因本地版按设计隐藏云转录而失败；未修改或跳过该用例，在官方配置下完整通过。
+- Android API 35 模拟器真实验收通过：入口可见、匿名合集目录、精选播客、Apple 搜索、RSS 预览/订阅和更新、342 期 BBC 节目入库及列表可见。模拟器直连因本机代理网络超时，验收通过 `RESOURCE_TEST_PROXY=10.0.2.2:8087` 使用电脑已有代理；该参数只由测试入口读取，普通安装包不包含代理覆盖。
+- 已有登录校验改为本地资源专用放行，没有修改通用 AI 登录/配置门控。支付、账号和官方 AI 请求仍被拦截。
+- `scripts/check.sh` 未运行：此次为资源入口及访问范围的局部改动，执行相关检查即可。Maestro CLI 未安装，使用 Flutter integration_test 完成模拟器验证。
+- iPhone 上现有安装包仍为此前版本；此次未推送或触发 iOS 云端构建。更新 iPhone 需要重新构建并用同一 Apple 账号覆盖签名安装。
+- 原入口 Android dev Debug（x86_64）普通包构建、覆盖安装和启动成功；模拟器已恢复普通运行入口，最新包位于 `D:\env\echo-loop\echo-loop-local-emulator.apk`，未清除原有学习数据。
+
+下一步手动验证：以 `APP_EDITION=local` 运行原入口，进入“资源库 → 发现资源 → Apple Podcasts”，搜索或粘贴公开 RSS 后加入，确认无需登录或配置模型；进入合集点击未下载单集验证音频下载。官方合集文件 404 应展示失败状态，不能计为下载成功。

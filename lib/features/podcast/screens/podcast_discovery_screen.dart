@@ -22,6 +22,7 @@ import '../../../providers/collection_provider.dart';
 import '../../../router/app_router.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/common/form_input_style.dart';
+import '../../../config/app_capabilities.dart';
 import '../../auth/sign_in_required_dialog.dart';
 import '../data/trigger_podcast_catalog_refresh.dart';
 import '../providers/discover_podcasts_provider.dart';
@@ -53,6 +54,18 @@ class _PodcastDiscoveryScreenState
   /// 正在订阅中的列表项标识集合（PodcastSearchResult.id /
   /// 链接模式的 feedUrl），驱动对应 tile 的 loading 态，防竞态。
   final Set<String> _subscribingIds = <String>{};
+
+  /// 本地版不做启动后台同步，进入资源页时主动刷新已初始化的空目录或旧缓存。
+  @override
+  void initState() {
+    super.initState();
+    if (isLocalEdition) {
+      _catalogSyncTriggered = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(triggerPodcastCatalogRefresh(ref));
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -306,7 +319,7 @@ class _PodcastDiscoveryScreenState
     );
   }
 
-  /// 订阅列表项：登录校验 → createAndFetch，成功后**停留在本页**。
+  /// 订阅列表项：仅官方版校验登录，再创建本地合集；成功后停留在本页。
   ///
   /// collectionListProvider 更新会使 tile 自动翻成「去学习」，故不导航。
   /// 用 [id] 驱动对应 tile 的 loading，防竞态。
@@ -318,12 +331,14 @@ class _PodcastDiscoveryScreenState
     final l10n = AppLocalizations.of(context)!;
     if (_subscribingIds.contains(id)) return;
 
-    final canEnroll = await ensureSignedInForAction(
-      context: context,
-      ref: ref,
-      title: l10n.communityCollectionSignInRequiredTitle,
-      message: l10n.podcastCatalogSignInRequiredMessage,
-    );
+    final canEnroll =
+        isLocalEdition ||
+        await ensureSignedInForAction(
+          context: context,
+          ref: ref,
+          title: l10n.communityCollectionSignInRequiredTitle,
+          message: l10n.podcastCatalogSignInRequiredMessage,
+        );
     if (!mounted || !canEnroll) return;
 
     setState(() => _subscribingIds.add(id));

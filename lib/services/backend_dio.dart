@@ -40,6 +40,7 @@ Options authRetryOnceOptions({Map<String, Object?>? headers}) => Options(
 ///
 /// [baseUrl] 为空时表示各请求用完整 URL（header 仍随每个请求上送，故仅用于纯后端 Dio）。
 /// [appVersion] 为空/null 时省略版本 header（降级不阻断，见 [clientInfoHeaders]）。
+/// [allowAnonymousResources] 仅供公开资源客户端使用；本地版只允许同源白名单 GET。
 Dio createBackendDio({
   String baseUrl = '',
   String? appVersion,
@@ -47,6 +48,7 @@ Dio createBackendDio({
   Duration receiveTimeout = const Duration(seconds: 30),
   String apiLogTag = 'BACKEND',
   void Function(String message)? apiLogPrint,
+  bool allowAnonymousResources = false,
 }) {
   final dio = Dio(
     BaseOptions(
@@ -60,6 +62,15 @@ Dio createBackendDio({
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          // 仅资源客户端可读取同源白名单；不放行写操作或其它业务接口。
+          if (allowAnonymousResources &&
+              options.method == 'GET' &&
+              options.uri.origin == Uri.parse(baseUrl).origin &&
+              _isAnonymousResourcePath(options.uri.path)) {
+            options.followRedirects = false;
+            handler.next(options);
+            return;
+          }
           handler.reject(
             DioException(
               requestOptions: options,
@@ -78,6 +89,14 @@ Dio createBackendDio({
   dio.interceptors.add(EntitlementSignalInterceptor());
   return dio;
 }
+
+/// 匿名精选目录、合集元数据和字幕；按完整路径匹配防止扩大后端权限。
+bool _isAnonymousResourcePath(String path) =>
+    path == '/api/v1/catalog' ||
+    path == '/api/v2/collections' ||
+    RegExp(
+      r'^/api/v2/collections/[^/]+/files(?:/[^/]+/subtitle)?$',
+    ).hasMatch(path);
 
 /// 构造需要 Supabase 登录的自建后端 Dio。
 ///

@@ -1,4 +1,6 @@
+import 'package:echo_loop/config/app_capabilities.dart';
 import 'package:echo_loop/features/auth/providers/auth_providers.dart';
+import 'package:echo_loop/features/podcast/data/podcast_catalog_service.dart';
 import 'package:echo_loop/features/podcast/models/podcast_catalog.dart';
 import 'package:echo_loop/features/podcast/podcast_preview_provider.dart';
 import 'package:echo_loop/features/podcast/podcast_models.dart';
@@ -28,6 +30,25 @@ class _FakeSearchService extends PodcastSearchService {
   }) async {
     lastTerm = term;
     return results;
+  }
+}
+
+class _InitializedCatalog extends Fake implements PodcastCatalogService {
+  @override
+  PodcastCatalogSnapshot? cached;
+  @override
+  bool get hasInitialized => true;
+  int refreshes = 0;
+  @override
+  Future<PodcastCatalogRefreshOutcome> refresh({bool force = false}) async {
+    refreshes++;
+    final snapshot = PodcastCatalogSnapshot(
+      podcasts: [_featuredPodcast()],
+      contentHash: 'fixture',
+      fetchedAt: DateTime(2026),
+    );
+    cached = snapshot;
+    return PodcastCatalogUpdated(snapshot);
   }
 }
 
@@ -68,11 +89,28 @@ PodcastCatalogItem _featuredPodcast({
 );
 
 void main() {
+  testWidgets('本地版进入已初始化但无缓存的播客页会主动加载精选', (tester) async {
+    final catalog = _InitializedCatalog();
+    await tester.pumpWidget(
+      createTestApp(
+        const PodcastDiscoveryScreen(),
+        overrides: [podcastCatalogServiceProvider.overrideWithValue(catalog)],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(catalog.refreshes, 1);
+    expect(find.text('Featured English'), findsOneWidget);
+  }, skip: !isLocalEdition);
   testWidgets('空搜索词展示精选目录空态，不加载 Apple 搜索', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
-        overrides: [discoverPodcastsProvider.overrideWithValue(const [])],
+        overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
+          discoverPodcastsProvider.overrideWithValue(const []),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -86,6 +124,9 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue([
             const PodcastCatalogItem(
               id: 'featured-1',
@@ -112,6 +153,9 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue([
             _featuredPodcast(
               applePodcastUrl: 'https://podcasts.apple.com/example',
@@ -138,6 +182,9 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue([_featuredPodcast()]),
           collectionListProvider.overrideWith(
             () => TestCollectionList(
@@ -163,12 +210,15 @@ void main() {
     expect(find.byIcon(Icons.add_circle_outline), findsNothing);
   });
 
-  testWidgets('未登录订阅精选 Podcast 显示登录提示且不调用仓库', (tester) async {
+  testWidgets('匿名订阅：本地版直接加入，官方版仍要求登录', (tester) async {
     final fakeRepo = _FakePodcastRepository();
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue([_featuredPodcast()]),
           isAuthenticatedProvider.overrideWithValue(false),
           podcastRepositoryProvider.overrideWithValue(fakeRepo),
@@ -180,15 +230,26 @@ void main() {
     await tester.tap(find.byIcon(Icons.add_circle_outline).first);
     await tester.pumpAndSettle();
 
-    expect(find.byType(AlertDialog), findsOneWidget);
-    expect(fakeRepo.subscribed, isEmpty);
+    expect(
+      find.byType(AlertDialog),
+      isLocalEdition ? findsNothing : findsOneWidget,
+    );
+    expect(
+      fakeRepo.subscribed,
+      isLocalEdition ? ['https://example.com/feed.xml'] : isEmpty,
+    );
   });
 
   testWidgets('进入页面时搜索框不会自动聚焦', (tester) async {
     await tester.pumpWidget(
       createTestApp(
         const PodcastDiscoveryScreen(),
-        overrides: [discoverPodcastsProvider.overrideWithValue(const [])],
+        overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
+          discoverPodcastsProvider.overrideWithValue(const []),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -210,6 +271,9 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue(const []),
           podcastSearchServiceProvider.overrideWithValue(fakeSearch),
         ],
@@ -231,6 +295,9 @@ void main() {
       createTestApp(
         const PodcastDiscoveryScreen(),
         overrides: [
+          podcastCatalogServiceProvider.overrideWithValue(
+            _InitializedCatalog(),
+          ),
           discoverPodcastsProvider.overrideWithValue(const []),
           podcastPreviewProvider(url).overrideWith(
             (ref) async => const PodcastPreviewData(
