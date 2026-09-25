@@ -12,6 +12,8 @@ import 'package:echo_loop/features/community_collections/download/community_down
 import 'package:echo_loop/utils/app_data_dir.dart';
 import 'package:echo_loop/features/community_collections/providers/discover_community_collections_provider.dart';
 import 'package:echo_loop/features/community_collections/widgets/discover_entry_banner.dart';
+import 'package:echo_loop/features/community_collections/screens/discover_collections_screen.dart';
+import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/features/podcast/podcast_search_service.dart';
 import 'package:echo_loop/features/podcast/podcast_preview_provider.dart';
 import 'package:echo_loop/features/podcast/podcast_repository.dart';
@@ -102,6 +104,12 @@ void main() {
     final example = collections.items.firstWhere(
       (item) => item.name == 'Example',
     );
+    // 已加入时页面直接读取本地数据；验收仍保留远端 Provider，支持重复运行。
+    final detailSubscription = container.listen(
+      communityCollectionFilesProvider(example.id),
+      (_, _) {},
+    );
+    addTearDown(detailSubscription.close);
     router.push('/discover/${example.id}');
     await _until(
       tester,
@@ -161,10 +169,17 @@ void main() {
     await tester.tap(find.byType(DiscoverEntryBanner));
     await _until(
       tester,
-      () => find.text('Apple Podcasts').evaluate().isNotEmpty,
+      () =>
+          find.byType(DiscoverCommunityCollectionsScreen).evaluate().isNotEmpty,
       'visible Apple Podcasts entry',
     );
-    await tester.tap(find.text('Apple Podcasts'));
+    final l10n = AppLocalizations.of(
+      tester.element(find.byType(DiscoverCommunityCollectionsScreen)),
+    );
+    if (l10n == null) fail('Discovery localizations are unavailable');
+    final podcastEntry = find.text(l10n.discoverPodcastEntryTitle);
+    expect(podcastEntry, findsOneWidget);
+    await tester.tap(podcastEntry);
     await _until(
       tester,
       () =>
