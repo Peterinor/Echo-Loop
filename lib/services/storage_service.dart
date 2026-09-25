@@ -33,11 +33,15 @@ class StorageService {
       final bookmarkRaw = jsonMap['bookmarkSettings'];
       if (fullRaw is Map<String, dynamic> &&
           bookmarkRaw is Map<String, dynamic>) {
+        final bookmarkSettings = PlaybackSettings.fromJson(bookmarkRaw);
+        final hasPersistedLoopSwitches =
+            bookmarkRaw.containsKey('loopWhole') ||
+            bookmarkRaw.containsKey('loopSentence');
         return ListeningPracticeSettingsStore(
           full: PlaybackSettings.fromJson(fullRaw),
-          bookmark: withBookmarkLoopDefaults(
-            PlaybackSettings.fromJson(bookmarkRaw),
-          ),
+          bookmark: hasPersistedLoopSwitches
+              ? bookmarkSettings
+              : withBookmarkLoopDefaults(bookmarkSettings),
         );
       }
 

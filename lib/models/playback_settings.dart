@@ -64,12 +64,12 @@ class PlaybackSettings {
 
   /// 序列化为 JSON。
   ///
-  /// **循环开关 [loopWhole]/[loopSentence] 不落盘**——它们是「现在想刷这条」的临时
-  /// 意图，加载任何音频都默认归为关，不应被全局记忆。循环参数（次数/间隔）作为全局
-  /// 偏好保留，使用户重新打开循环时沿用上次设置。
+  /// 循环开关、循环参数和其他播放偏好一起落盘；全文与收藏的设置分别保存。
   Map<String, dynamic> toJson() => {
+    'loopWhole': loopWhole,
     'wholeLoopCount': wholeLoopCount,
     'wholeInterval': wholeInterval.inMilliseconds,
+    'loopSentence': loopSentence,
     'sentenceLoopCount': sentenceLoopCount,
     'sentenceInterval': sentenceInterval.inMilliseconds,
     'playbackSpeed': playbackSpeed,
@@ -79,14 +79,8 @@ class PlaybackSettings {
 
   /// 从 JSON 还原设置，并兼容旧版持久化数据。
   ///
-  /// **循环开关 [loopWhole]/[loopSentence] 一律还原为 `false`**（不从落盘数据恢复，
-  /// 见 [toJson]）；仅恢复循环参数（次数/间隔）、速度、视图、字幕等偏好。
-  ///
-  /// 新旧 schema 以是否含循环参数键（`wholeLoopCount`/`sentenceLoopCount`/
-  /// `wholeInterval`/`sentenceInterval`）区分——新 [toJson] 一定写这些参数：
-  /// - 新 schema：读取循环参数（带范围校验）。
-  /// - 旧 schema：把旧 `loopCount`/`pauseInterval` 迁移为单句循环参数偏好；旧的
-  ///   `repeatMode`/`loopEnabled`/`loopAudioEnabled` 开关一律忽略（开关不再持久化）。
+  /// 缺少循环开关键的旧设置默认关闭循环；旧 `repeatMode`/`loopEnabled`/
+  /// `loopAudioEnabled` 字段仍忽略。旧 `loopCount`/`pauseInterval` 继续迁移为单句循环参数。
   factory PlaybackSettings.fromJson(Map<String, dynamic> json) {
     final speed = normalizeFreePlayerPlaybackSpeed(
       (json['playbackSpeed'] as num?)?.toDouble() ?? 1.0,
@@ -103,8 +97,10 @@ class PlaybackSettings {
         json.containsKey('loopSentence');
     if (hasNewParams) {
       return PlaybackSettings(
+        loopWhole: json['loopWhole'] == true,
         wholeLoopCount: _parseCount(json['wholeLoopCount'], 3),
         wholeInterval: _parseInterval(json['wholeInterval'], 3),
+        loopSentence: json['loopSentence'] == true,
         sentenceLoopCount: _parseCount(json['sentenceLoopCount'], 3),
         sentenceInterval: _parseInterval(json['sentenceInterval'], 2),
         playbackSpeed: speed,
