@@ -17,6 +17,7 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
   bool notificationProgressBar = false;
   dynamic configuredGlobalConfig;
   final enqueuedFileNames = <String>[];
+  final enqueuedDisplayNames = <String?>[];
 
   @override
   Future<List<(String, String)>> configure({
@@ -76,6 +77,7 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
   Future<bool> enqueue(Task task) async {
     if (task case final DownloadTask downloadTask) {
       enqueuedFileNames.add(downloadTask.filename);
+      enqueuedDisplayNames.add(downloadTask.displayName);
     }
     final callback = _statusCallback;
     if (callback == null) {
@@ -93,18 +95,21 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
 class _FakeMacOSSystemDownloadClient implements MacOSSystemDownloadClient {
   Uri? uri;
   String? savePath;
+  String? displayName;
   Map<String, String>? headers;
 
   @override
   Future<BackgroundDownloadResult> download({
     required Uri uri,
     required String savePath,
+    required String displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
   }) async {
     this.uri = uri;
     this.savePath = savePath;
+    this.displayName = displayName;
     this.headers = headers;
     onProgress?.call(6, 12);
     return const BackgroundDownloadResult(
@@ -135,6 +140,7 @@ class _FakeRunner implements BackgroundDownloadRunner {
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -303,6 +309,7 @@ void main() {
             id: 'first',
             uri: Uri.parse('https://example.com/first.mp3'),
             savePath: '${dataDir.path}/first.mp3',
+            displayName: 'First episode.mp3',
           ),
           BackgroundFileDownloadRequest(
             id: 'second',
@@ -313,6 +320,10 @@ void main() {
       );
 
       expect(downloader.enqueuedFileNames, ['first.mp3', 'second.mp3']);
+      expect(downloader.enqueuedDisplayNames, [
+        'First episode.mp3',
+        'second.mp3',
+      ]);
       expect(downloader.configuredGlobalConfig, (
         Config.holdingQueue,
         (null, null, 1),
@@ -444,6 +455,7 @@ void main() {
       final result = await runner.enqueue(
         uri: Uri.parse('https://cdn.example.com/audio.mp3'),
         savePath: '${dataDir.path}/audio.mp3',
+        displayName: 'Audio lesson.mp3',
         headers: const <String, String>{'Authorization': 'Bearer test'},
         onProgress: (received, total) => progress.add((received, total)),
         cancelToken: null,
@@ -452,6 +464,7 @@ void main() {
       expect(result.status, BackgroundDownloadStatus.complete);
       expect(client.uri, Uri.parse('https://cdn.example.com/audio.mp3'));
       expect(client.savePath, '${dataDir.path}/audio.mp3');
+      expect(client.displayName, 'Audio lesson.mp3');
       expect(client.headers, const <String, String>{
         'Authorization': 'Bearer test',
       });

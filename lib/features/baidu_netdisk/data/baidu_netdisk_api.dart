@@ -56,12 +56,14 @@ class BaiduNetdiskDownloadRequest {
   const BaiduNetdiskDownloadRequest({
     required this.id,
     required this.fsId,
+    required this.displayName,
     required this.dlink,
     required this.savePath,
   });
 
   final String id;
   final int fsId;
+  final String displayName;
   final String dlink;
   final String savePath;
 }
@@ -246,6 +248,7 @@ class DefaultBaiduNetdiskApi implements BaiduNetdiskApi {
             id: request.id,
             uri: _downloadUri(request.dlink, accessToken),
             savePath: request.savePath,
+            displayName: request.displayName,
             headers: const {'User-Agent': _baiduUserAgent},
           ),
         )

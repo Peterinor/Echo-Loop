@@ -21,6 +21,7 @@ class BackgroundFileDownloadRequest {
     required this.id,
     required this.uri,
     required this.savePath,
+    this.displayName,
     this.headers = const <String, String>{},
   });
 
@@ -28,6 +29,9 @@ class BackgroundFileDownloadRequest {
   final String id;
   final Uri uri;
   final String savePath;
+
+  /// 通知中向用户展示的名称；为空时使用临时文件名。
+  final String? displayName;
   final Map<String, String> headers;
 }
 
@@ -77,6 +81,7 @@ abstract interface class BackgroundDownloadRunner {
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -118,6 +123,7 @@ class BackgroundFileDownloadService {
   Future<void> download({
     required Uri uri,
     required String savePath,
+    String? displayName,
     Map<String, String> headers = const <String, String>{},
     CancelToken? cancelToken,
     BackgroundFileDownloadProgress? onProgress,
@@ -128,6 +134,7 @@ class BackgroundFileDownloadService {
           id: savePath,
           uri: uri,
           savePath: savePath,
+          displayName: displayName,
           headers: headers,
         ),
       ],
@@ -230,6 +237,7 @@ class BackgroundFileDownloadService {
           await _runner.enqueue(
             uri: request.uri,
             savePath: request.savePath,
+            displayName: request.displayName,
             headers: request.headers,
             cancelToken: cancelToken,
             onProgress: (received, total) =>
@@ -420,6 +428,7 @@ class PluginBackgroundDownloadRunner
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -465,7 +474,7 @@ class PluginBackgroundDownloadRunner
       headers: headers,
       updates: Updates.statusAndProgress,
       allowPause: false,
-      displayName: p.basename(relativePath),
+      displayName: displayName ?? p.basename(relativePath),
     );
 
     if (cancelToken != null) {
@@ -516,6 +525,7 @@ class PluginBackgroundDownloadRunner
           return await enqueue(
             uri: request.uri,
             savePath: request.savePath,
+            displayName: request.displayName,
             headers: request.headers,
             cancelToken: cancelToken,
             onProgress: (received, total) =>
@@ -712,6 +722,7 @@ abstract interface class MacOSSystemDownloadClient {
   Future<BackgroundDownloadResult> download({
     required Uri uri,
     required String savePath,
+    required String displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -736,6 +747,7 @@ class MacOSSystemDownloadRunner implements BackgroundDownloadRunner {
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -752,6 +764,7 @@ class MacOSSystemDownloadRunner implements BackgroundDownloadRunner {
     return _client.download(
       uri: uri,
       savePath: targetPath,
+      displayName: displayName ?? p.basename(targetPath),
       headers: headers,
       onProgress: onProgress,
       cancelToken: cancelToken,
@@ -776,6 +789,7 @@ class _MethodChannelMacOSSystemDownloadClient
   Future<BackgroundDownloadResult> download({
     required Uri uri,
     required String savePath,
+    required String displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -824,6 +838,7 @@ class _MethodChannelMacOSSystemDownloadClient
           'taskId': taskId,
           'url': uri.toString(),
           'savePath': savePath,
+          'displayName': displayName,
           'headers': headers,
         },
       );

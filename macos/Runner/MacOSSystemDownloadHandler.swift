@@ -1,6 +1,7 @@
 import Cocoa
 import Darwin
 import FlutterMacOS
+import UserNotifications
 
 /// 使用 URLSession 下载 macOS 文件，让系统网络栈处理代理和网络路由。
 final class MacOSSystemDownloadHandler: NSObject, FlutterStreamHandler, URLSessionDownloadDelegate {
@@ -78,7 +79,13 @@ final class MacOSSystemDownloadHandler: NSObject, FlutterStreamHandler, URLSessi
     let task = session.downloadTask(with: request)
     task.taskDescription = taskID
     tasks[taskID] = task
-    outcomes[taskID] = DownloadOutcome(targetPath: rawPath)
+    let requestedName = arguments["displayName"] as? String
+    let displayName = requestedName.flatMap { $0.isEmpty ? nil : $0 }
+      ?? URL(fileURLWithPath: rawPath).lastPathComponent
+    outcomes[taskID] = DownloadOutcome(
+      targetPath: rawPath,
+      displayName: displayName
+    )
     task.resume()
     result(true)
   }
@@ -165,7 +172,8 @@ final class MacOSSystemDownloadHandler: NSObject, FlutterStreamHandler, URLSessi
     didCompleteWithError error: Error?
   ) {
     guard let taskID = task.taskDescription else { return }
-    var outcome = outcomes.removeValue(forKey: taskID) ?? DownloadOutcome(targetPath: "")
+    var outcome = outcomes.removeValue(forKey: taskID)
+      ?? DownloadOutcome(targetPath: "", displayName: "")
     tasks.removeValue(forKey: taskID)
 
     if let error {
@@ -179,6 +187,10 @@ final class MacOSSystemDownloadHandler: NSObject, FlutterStreamHandler, URLSessi
     } else if outcome.status == nil {
       outcome.status = "failed"
       outcome.message = "The system download ended without a result."
+    }
+
+    if outcome.status == "complete" || outcome.status == "failed" {
+      postDownloadNotification(for: outcome)
     }
 
     var event: [String: Any] = [
@@ -209,10 +221,45 @@ final class MacOSSystemDownloadHandler: NSObject, FlutterStreamHandler, URLSessi
     }
     eventSink?(event)
   }
+
+  private func postDownloadNotification(for outcome: DownloadOutcome) {
+    guard !NSApp.isActive else { return }
+
+    let content = UNMutableNotificationContent()
+    content.title = outcome.status == "complete"
+      ? "Download complete"
+      : "Download failed"
+    content.body = outcome.displayName
+    content.sound = .default
+    // flutter_local_notifications 接管系统 delegate；标记其通知字段以处理点击回调。
+    content.userInfo = [
+      "payload": outcome.displayName,
+      "presentSound": true,
+      "presentBadge": false,
+      "presentAlert": true,
+      "presentBanner": true,
+      "presentList": true,
+    ]
+
+    let request = UNNotificationRequest(
+      identifier: String(Int.random(in: 1...Int.max)),
+      content: content,
+      trigger: nil
+    )
+    UNUserNotificationCenter.current().add(request) { error in
+      if let error {
+        NSLog(
+          "[SystemDownload] Failed to post notification: %@",
+          error.localizedDescription
+        )
+      }
+    }
+  }
 }
 
 private struct DownloadOutcome {
   let targetPath: String
+  let displayName: String
   var status: String?
   var statusCode: Int?
   var message: String?

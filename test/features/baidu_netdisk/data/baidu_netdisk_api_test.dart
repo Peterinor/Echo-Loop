@@ -12,6 +12,7 @@ class _MockDio extends Mock implements Dio {}
 class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   Uri? uri;
   final uris = <Uri>[];
+  final displayNames = <String?>[];
   String? savePath;
   Map<String, String>? headers;
   BackgroundDownloadResult result = const BackgroundDownloadResult(
@@ -22,12 +23,14 @@ class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
   }) async {
     this.uri = uri;
     uris.add(uri);
+    displayNames.add(displayName);
     this.savePath = savePath;
     this.headers = headers;
     if (result.status == BackgroundDownloadStatus.complete) {
@@ -117,12 +120,14 @@ void main() {
           BaiduNetdiskDownloadRequest(
             id: 'audio-1',
             fsId: 1,
+            displayName: 'first.mp3',
             dlink: 'https://d.pcs.baidu.com/file/1?source=test',
             savePath: '${tempDirectory.path}/1.mp3',
           ),
           BaiduNetdiskDownloadRequest(
             id: 'audio-2',
             fsId: 2,
+            displayName: 'second.mp3',
             dlink: 'https://d.pcs.baidu.com/file/2',
             savePath: '${tempDirectory.path}/2.mp3',
           ),
@@ -135,6 +140,7 @@ void main() {
       ]);
       expect(results.every((result) => result.succeeded), isTrue);
       expect(downloader.uris, hasLength(2));
+      expect(downloader.displayNames, ['first.mp3', 'second.mp3']);
       expect(downloader.uris[0].queryParameters, {
         'source': 'test',
         'access_token': 'access-token',

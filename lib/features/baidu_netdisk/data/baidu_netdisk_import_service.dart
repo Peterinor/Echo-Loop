@@ -259,6 +259,7 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
         requestsById[requestId] = BaiduNetdiskDownloadRequest(
           id: requestId,
           fsId: entry.fsId,
+          displayName: entry.name,
           dlink: link.dlink,
           savePath: _temporaryPath(dataDir, entry),
         );
@@ -286,6 +287,7 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
           requestsById[requestId] = BaiduNetdiskDownloadRequest(
             id: requestId,
             fsId: subtitle.fsId,
+            displayName: subtitle.name,
             dlink: link.dlink,
             savePath: _temporaryPath(dataDir, subtitle),
           );
@@ -325,6 +327,7 @@ class DefaultBaiduNetdiskImportService implements BaiduNetdiskImportService {
             BaiduNetdiskDownloadRequest(
               id: result.request.id,
               fsId: result.request.fsId,
+              displayName: result.request.displayName,
               dlink: refreshed.dlink,
               savePath: result.request.savePath,
             ),

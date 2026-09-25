@@ -74,6 +74,7 @@ class _FakeBackgroundDownloadRunner implements BackgroundDownloadRunner {
   Future<BackgroundDownloadResult> enqueue({
     required Uri uri,
     required String savePath,
+    String? displayName,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,

@@ -66,6 +66,7 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   int downloadCalls = 0;
   int downloadBatchCalls = 0;
   final submittedBatchIds = <List<String>>[];
+  final submittedBatchDisplayNames = <List<String>>[];
   final fetchLinkCountsAtSubmission = <int>[];
   String? lastAccessToken;
   String? lastSavePath;
@@ -108,6 +109,9 @@ class _FakeBaiduNetdiskApi implements BaiduNetdiskApi {
   }) async {
     downloadBatchCalls++;
     submittedBatchIds.add(requests.map((request) => request.id).toList());
+    submittedBatchDisplayNames.add(
+      requests.map((request) => request.displayName).toList(),
+    );
     fetchLinkCountsAtSubmission.add(fetchDownloadLinkCalls);
     final results = <BaiduNetdiskDownloadItemResult>[];
     for (final request in requests) {
@@ -541,6 +545,10 @@ void main() {
       expect(api.downloadCalls, 2);
       expect(api.downloadBatchCalls, 1);
       expect(api.submittedBatchIds.single, ['audio-42', 'subtitle-43']);
+      expect(api.submittedBatchDisplayNames.single, [
+        entry.name,
+        subtitleEntry.name,
+      ]);
       expect(attached['Lesson 1'], contains('srt:1'));
     });
 
