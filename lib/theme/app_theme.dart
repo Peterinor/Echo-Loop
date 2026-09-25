@@ -120,8 +120,8 @@ class AppTheme {
   /// 语义色：本地合集角标（深蓝，配白字）。
   static const Color localCollectionBadgeColor = Color(0xFF1565C0);
 
-  /// 语义色：社区合集角标（深橙，配白字）。
-  static const Color communityBadgeColor = Color(0xFFBF360C);
+  /// 语义色：共享合集角标（绿色，配白字）。
+  static const Color communityBadgeColor = successColor;
 
   /// 语义色：Podcast 合集角标（深紫，配白字）。
   static const Color podcastCollectionBadgeColor = Color(0xFF6A1B9A);

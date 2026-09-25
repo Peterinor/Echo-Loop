@@ -32,6 +32,7 @@ void main() {
       AppTheme.communityBadgeColor,
       AppTheme.podcastCollectionBadgeColor,
     });
+    expect(AppTheme.communityBadgeColor, AppTheme.successColor);
   });
 
   testWidgets('社区合集下架时使用 Removed 状态文案', (tester) async {
