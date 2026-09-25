@@ -22,7 +22,20 @@
 工作流会先执行本地版行为测试和 Apple 配置测试，再验证编译产物。
 现有上游 `CI`、`Release` 工作流保持原样；不要通过 `Release` 打包本地版。
 
-## 最新构建：修复合集 404 与首装播客入口（2026-09-25）
+## 最新构建：同步上游与本地版精简（2026-09-26）
+
+- [成功运行 #5](https://github.com/Peterinor/Echo-Loop/actions/runs/36160762454)，源码 `018e07d1fad20f9143e9a4d736ba5e90ac78104c`，耗时 18 分 19 秒；已包含上游 `315a326a` 和合并提交 `6789c3d2`。
+- 云端 6 项 Python、18 项本地版/访问策略、61 项资源与播客、19 项 AI 客户端/官方访问策略测试全部通过，共 104 项。
+- macOS 15.7.9 / Xcode 16.4 / Flutter 3.41.5；iPhone ARM64 Release，版本 `1.0.36 (5)`，最低 iOS 15.0，原始 Bundle ID `top.echo-loop.dev`。
+- GitHub 外层 Artifact 摘要、应用 ZIP 校验值、本地模式、原生埋点关闭、ARM64 及本机模型密钥未打包检查通过；IPA 内 684 个条目的字节内容与权限均与云端产物一致。
+- IPA：`D:\env\echo-loop\ios-build\run-5\Echo-Loop-local-1.0.36-5.ipa`，61,720,872 字节；仍为未签名包，使用 Sideloadly 和原 Apple 账号、Bundle ID 配置覆盖签名安装，无需删除旧版。
+- IPA SHA256：`286bccbae96d7938c71728d7e9da76170b8281b10d8e96d24298b72f1a467819`。
+- 应用 ZIP SHA256：`8c2f49090bab97333bdc894b2515f0595cde831c21f372992ed17aafb194b3ef`。
+- GitHub Artifact SHA256：`09364de7f31680fa5f80692e8274bd6634e3a7511186d364bfed06207aee9dfe`。
+
+本轮仅推送、云端构建及产物校验，未修改运行时代码。未重跑 `scripts/check.sh` 或 UI / Maestro：上一轮已完成相关测试和 Android 设备验证，全量脚本的既有 Kokoro 集成测试编译阻塞见本地版验收记录。新 IPA 尚未在 iPhone 上签名安装或验证。
+
+## 历史构建：修复合集 404 与首装播客入口（2026-09-25）
 
 - [成功运行 #4](https://github.com/Peterinor/Echo-Loop/actions/runs/36092777859)，源码 `70f3df5dbe3f7a959ff4c80ec88c5e569766bb01`，耗时 17 分 35 秒。
 - 修正社区合集与字幕 API 路径，Apple Podcasts 入口不再依赖精选缓存，详情请求失败显示本地化重试按钮。该问题不由 GitHub 打包引起，原 Android 包日志也存在相同 404。
