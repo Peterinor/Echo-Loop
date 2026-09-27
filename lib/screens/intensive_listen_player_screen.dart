@@ -1098,16 +1098,11 @@ extension on _IntensiveListenPlayerScreenState {
       return;
     }
     final player = ref.read(intensiveListenPlayerProvider.notifier);
-    // 盲听句间停顿的“上一句”语义是重播当前句，不产生分页切换。
-    if (playerState.isPauseBetweenSentences &&
-        playerState.annotationState == null) {
-      unawaited(player.goToPrevious());
-      return;
-    }
+    final targetIndex = playerState.currentSentenceIndex - 1;
     unawaited(
       _sentencePager.animateAndCommit(
-        playerState.currentSentenceIndex - 1,
-        commit: player.goToPrevious,
+        targetIndex,
+        commit: () => player.goToSentence(targetIndex),
       ),
     );
   }
@@ -1125,10 +1120,11 @@ extension on _IntensiveListenPlayerScreenState {
       unawaited(_handleCompleted());
       return;
     }
+    final targetIndex = playerState.currentSentenceIndex + 1;
     unawaited(
       _sentencePager.animateAndCommit(
-        playerState.currentSentenceIndex + 1,
-        commit: player.goToNext,
+        targetIndex,
+        commit: () => player.goToSentence(targetIndex),
       ),
     );
   }

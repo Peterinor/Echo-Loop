@@ -945,6 +945,34 @@ void main() {
       expect(find.text('Sentence 2/5'), findsOneWidget);
     });
 
+    testWidgets('句间倒计时点击上一句与右滑使用同一目标索引', (tester) async {
+      late _RecordingIntensiveListenPlayer player;
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentSentenceIndex: 2,
+            totalSentences: 5,
+            isPauseBetweenPlays: true,
+            isPauseBetweenSentences: true,
+            isPlaying: false,
+          ),
+          playerFactory: (state, sentences) {
+            player = _RecordingIntensiveListenPlayer(state, sentences);
+            return player;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.skip_previous_rounded));
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.goToPreviousCalls, 0);
+      expect(player.currentIndex, 1);
+      expect(find.text('Sentence 2/5'), findsOneWidget);
+    });
+
     testWidgets('外部自动切句驱动分页但不会重复切句', (tester) async {
       late _RecordingIntensiveListenPlayer player;
       await tester.pumpWidget(
@@ -1192,7 +1220,8 @@ void main() {
       await tester.tap(find.byIcon(Icons.skip_next_rounded));
       await tester.pumpAndSettle();
 
-      expect(player.goToNextCalls, 1);
+      expect(player.goToSentenceCalls, 1);
+      expect(player.goToNextCalls, 0);
       expect(player.currentIndex, 2);
 
       playbackGate.complete();

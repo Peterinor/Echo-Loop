@@ -1283,30 +1283,35 @@ class FakeIntensiveListenPlayer extends IntensiveListenPlayer {
 
   @override
   Future<void> goToNext() async {
-    if (state.currentSentenceIndex < state.totalSentences - 1) {
-      state = state.copyWith(
-        currentSentenceIndex: state.currentSentenceIndex + 1,
-        currentPlayCount: 1,
-        isAnnotationMode: false,
-        isAnnotationReplay: false,
-        isTextRevealed: false,
-        isCurrentSentenceAutoMarked: false,
-      );
-    }
+    await goToSentence(state.currentSentenceIndex + 1);
   }
 
   @override
   Future<void> goToPrevious() async {
-    if (state.currentSentenceIndex > 0) {
-      state = state.copyWith(
-        currentSentenceIndex: state.currentSentenceIndex - 1,
-        currentPlayCount: 1,
-        isAnnotationMode: false,
-        isAnnotationReplay: false,
-        isTextRevealed: false,
-        isCurrentSentenceAutoMarked: false,
-      );
-    }
+    await goToSentence(state.currentSentenceIndex - 1);
+  }
+
+  @override
+  Future<void> goToSentence(int index) async {
+    if (state.totalSentences <= 0) return;
+    final target = index.clamp(0, state.totalSentences - 1);
+    if (target == state.currentSentenceIndex) return;
+    state = state.copyWith(
+      currentSentenceIndex: target,
+      currentPlayCount: 1,
+      isPlaying: true,
+      isPauseBetweenPlays: false,
+      isPauseBetweenSentences: false,
+      pauseDuration: Duration.zero,
+      pauseRemaining: Duration.zero,
+      isAnnotationMode: false,
+      isAnnotationReplay: false,
+      annotationReplayRemaining: Duration.zero,
+      annotationReplayDuration: Duration.zero,
+      annotationState: null,
+      isTextRevealed: false,
+      isCurrentSentenceAutoMarked: false,
+    );
   }
 
   @override

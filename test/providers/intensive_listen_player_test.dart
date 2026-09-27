@@ -660,8 +660,8 @@ void main() {
     });
   });
 
-  group('句间停顿期上一句重播当前句', () {
-    test('第一句停顿期 goToPrevious 从第一句开头重播，不因 clamp 成为 no-op', () async {
+  group('句间停顿期上一句切到上一句', () {
+    test('第一句停顿期 goToPrevious 保持在第一句', () async {
       final audioEngine = _DeferredBlindAudioEngine();
       final container = ProviderContainer(
         overrides: [
@@ -694,11 +694,14 @@ void main() {
         container.read(intensiveListenPlayerProvider).currentSentenceIndex,
         0,
       );
-      expect(audioEngine.playedSentenceIndices, [0, 0]);
-      expect(container.read(intensiveListenPlayerProvider).isPlaying, true);
+      expect(audioEngine.playedSentenceIndices, [0]);
+      expect(
+        container.read(intensiveListenPlayerProvider).isPauseBetweenSentences,
+        true,
+      );
     });
 
-    test('第二句停顿期 goToPrevious 重播第二句，不跳回第一句开头', () async {
+    test('第二句停顿期 goToPrevious 切到第一句并播放', () async {
       final audioEngine = _DeferredBlindAudioEngine();
       final container = ProviderContainer(
         overrides: [
@@ -729,9 +732,9 @@ void main() {
 
       expect(
         container.read(intensiveListenPlayerProvider).currentSentenceIndex,
-        1,
+        0,
       );
-      expect(audioEngine.playedSentenceIndices, [1, 1]);
+      expect(audioEngine.playedSentenceIndices, [1, 0]);
       expect(container.read(intensiveListenPlayerProvider).isPlaying, true);
     });
   });

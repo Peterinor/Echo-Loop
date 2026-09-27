@@ -343,15 +343,8 @@ class IntensiveListenPlayer extends _$IntensiveListenPlayer {
 
   Future<void> goToNext() async => goToSentence(state.currentSentenceIndex + 1);
 
-  /// 上一句控制。
-  ///
-  /// 句间停顿仍属于刚播完的当前句；此时左按钮应回到当前句开头重播，
-  /// 避免第一句停顿期 no-op、第二句停顿期跳回 0 点的反直觉行为。
+  /// 切换到上一句；停顿期间也按当前句索引导航，不重播当前句。
   Future<void> goToPrevious() async {
-    if (state.blindFlowState?.phase is BlindWaitingInterval) {
-      await _blindEngine.replayCurrentSentence();
-      return;
-    }
     await goToSentence(state.currentSentenceIndex - 1);
   }
 
