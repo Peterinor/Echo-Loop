@@ -126,8 +126,8 @@ class PodcastDownloadController extends _$PodcastDownloadController {
   /// 不新建 [AudioItem]（避免资源库出现重复孤儿条目）。
   ///
   /// 成功返回 true 并已写回 audioPath / 时长 / 指纹；失败返回 false 并置
-  /// [AudioImportFailed]。state 的 displayName 取 enclosure URL，与列表项的
-  /// 行内进度条匹配逻辑一致。
+  /// [AudioImportFailed]。后台下载通知沿用列表项的 [AudioItem.name]；state 的
+  /// displayName 仍取 enclosure URL，与列表项的行内进度条匹配逻辑一致。
   Future<bool> downloadPodcastEpisode(AudioItem item) async {
     if (state is AudioImportDownloading || state is AudioImportSaving) {
       return false;
@@ -147,6 +147,7 @@ class PodcastDownloadController extends _$PodcastDownloadController {
           .read(audioImportServiceProvider)
           .downloadEpisodeToSandbox(
             url: enclosureUrl,
+            displayName: item.name,
             enclosureType: item.podcastEnclosureType,
             cancelToken: cancelToken,
             onProgress: (received, total) {
