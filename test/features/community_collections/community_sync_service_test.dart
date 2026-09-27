@@ -69,7 +69,15 @@ void main() {
       },
       failId: 'remote-1',
     );
-    final service = CommunitySyncService(database: database, api: api);
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    var now = DateTime(2026, 1, 1, 12);
+    final service = CommunitySyncService(
+      database: database,
+      api: api,
+      preferences: preferences,
+      now: () => now,
+    );
 
     final outcome = await service.syncAll(force: true);
     final updated = await database.audioItemDao.getByRemoteAudioId('file-2');
@@ -80,6 +88,20 @@ void main() {
     expect(updated?.name, 'Updated two');
     expect(api.collectionsCalls, 0);
     expect(api.detailCalls, unorderedEquals(['remote-1', 'remote-2']));
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-1'),
+      isNull,
+    );
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-2'),
+      now.millisecondsSinceEpoch,
+    );
+
+    now = now.add(const Duration(minutes: 1));
+    await service.syncAll();
+
+    expect(api.detailCalls.where((id) => id == 'remote-1'), hasLength(2));
+    expect(api.detailCalls.where((id) => id == 'remote-2'), hasLength(1));
   });
 
   test('同步会把其它合集已有的远端音频关联到当前合集', () async {
@@ -216,12 +238,14 @@ void main() {
     await _insertFile(database, 'local-1', 'file-1', 'Old one');
     await _insertFile(database, 'local-2', 'file-2', 'Old two');
 
-    const lastSyncAtKey = 'community_collection_last_sync_at_v2';
+    const legacyLastSyncAtKey = 'community_collection_last_sync_at_v2';
     final now = DateTime(2026, 1, 1, 12);
     final previousSyncAt = now
         .subtract(const Duration(hours: 3))
         .millisecondsSinceEpoch;
-    SharedPreferences.setMockInitialValues({lastSyncAtKey: previousSyncAt});
+    SharedPreferences.setMockInitialValues({
+      legacyLastSyncAtKey: previousSyncAt,
+    });
     final preferences = await SharedPreferences.getInstance();
     final api = _FakeCommunityApi(
       [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
@@ -247,18 +271,28 @@ void main() {
     expect(api.detailCalls, unorderedEquals(['remote-1', 'remote-2']));
     expect(firstAudio?.name, 'Updated one');
     expect(secondAudio?.name, 'Updated two');
-    expect(preferences.getInt(lastSyncAtKey), now.millisecondsSinceEpoch);
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-1'),
+      now.millisecondsSinceEpoch,
+    );
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-2'),
+      now.millisecondsSinceEpoch,
+    );
+    expect(preferences.getInt(legacyLastSyncAtKey), previousSyncAt);
   });
 
-  test('单合集强制同步只更新目标合集且不重置全量同步节流时间', () async {
+  test('单合集强制同步只更新目标合集及其独立基线', () async {
     await _insertCollection(database, 'local-1', 'remote-1', 'One');
     await _insertCollection(database, 'local-2', 'remote-2', 'Two');
     await _insertFile(database, 'local-1', 'file-1', 'Old one');
     await _insertFile(database, 'local-2', 'file-2', 'Old two');
 
-    const lastSyncAtKey = 'community_collection_last_sync_at_v2';
+    const legacyLastSyncAtKey = 'community_collection_last_sync_at_v2';
     final previousSyncAt = DateTime(2026, 1, 1, 11, 30).millisecondsSinceEpoch;
-    SharedPreferences.setMockInitialValues({lastSyncAtKey: previousSyncAt});
+    SharedPreferences.setMockInitialValues({
+      legacyLastSyncAtKey: previousSyncAt,
+    });
     final preferences = await SharedPreferences.getInstance();
     final api = _FakeCommunityApi(
       [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
@@ -290,8 +324,88 @@ void main() {
     expect(api.detailCalls, ['remote-2']);
     expect(targetAudio?.name, 'Updated two');
     expect(otherAudio?.name, 'Old one');
-    expect(preferences.getInt(lastSyncAtKey), previousSyncAt);
+    expect(preferences.getInt(legacyLastSyncAtKey), previousSyncAt);
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-2'),
+      DateTime(2026, 1, 1, 12).millisecondsSinceEpoch,
+    );
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-1'),
+      isNull,
+    );
     expect(nextFullSync, isA<CommunitySyncThrottled>());
+  });
+
+  test('全量同步只刷新各自基线已过期的合集', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    await _insertCollection(database, 'local-2', 'remote-2', 'Two');
+    final api = _FakeCommunityApi(
+      [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
+      {'remote-1': const [], 'remote-2': const []},
+    );
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    var now = DateTime(2026, 1, 1, 12);
+    final service = CommunitySyncService(
+      database: database,
+      api: api,
+      preferences: preferences,
+      now: () => now,
+    );
+
+    await service.syncAll(force: true);
+    now = now.add(const Duration(minutes: 90));
+    await service.syncCollection('local-1');
+    now = DateTime(2026, 1, 1, 14, 1);
+    final outcome = await service.syncAll();
+
+    expect(outcome, isA<CommunitySyncCompleted>());
+    expect(switch (outcome) {
+      CommunitySyncCompleted(:final collectionsScanned) => collectionsScanned,
+      _ => 0,
+    }, 1);
+    expect(api.detailCalls.where((id) => id == 'remote-1'), hasLength(2));
+    expect(api.detailCalls.where((id) => id == 'remote-2'), hasLength(2));
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-1'),
+      DateTime(2026, 1, 1, 13, 30).millisecondsSinceEpoch,
+    );
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-2'),
+      now.millisecondsSinceEpoch,
+    );
+  });
+
+  test('新加入的合集以加入时间为初始后台刷新基线', () async {
+    final now = DateTime(2026, 1, 1, 12);
+    await _insertCollection(
+      database,
+      'local-1',
+      'remote-1',
+      'One',
+      createdDate: now.subtract(const Duration(minutes: 30)),
+    );
+    final api = _FakeCommunityApi(
+      [_catalogEntry('remote-1', 'One')],
+      {'remote-1': const []},
+    );
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final service = CommunitySyncService(
+      database: database,
+      api: api,
+      preferences: preferences,
+      now: () => now,
+    );
+
+    final outcome = await service.syncAll();
+
+    expect(outcome, isA<CommunitySyncThrottled>());
+    expect(api.detailCalls, isEmpty);
+    expect(
+      preferences.getInt('community_collection_last_sync_at_v2:local-1'),
+      isNull,
+    );
   });
 }
 
@@ -346,14 +460,16 @@ Future<void> _insertCollection(
   db.AppDatabase database,
   String localId,
   String remoteId,
-  String name,
-) {
+  String name, {
+  DateTime? createdDate,
+}) {
+  final createdAt = createdDate ?? DateTime(2026, 1, 1);
   return database.collectionDao.upsert(
     db.CollectionsCompanion(
       id: Value(localId),
       name: Value(name),
-      createdDate: Value(DateTime(2026, 1, 1)),
-      updatedAt: Value(DateTime(2026, 1, 1)),
+      createdDate: Value(createdAt),
+      updatedAt: Value(createdAt),
       source: const Value('community'),
       remoteId: Value(remoteId),
     ),
