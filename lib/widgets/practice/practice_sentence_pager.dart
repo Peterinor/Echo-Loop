@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../services/app_logger.dart';
 import '../dictionary/dictionary_panel_host.dart';
+
+const _sentencePagerLogTag = 'SentencePager';
 
 /// 学习任务句子分页器的外部控制器。
 ///
@@ -75,10 +78,14 @@ class PracticeSentencePager extends StatefulWidget {
 class _PracticeSentencePagerState extends State<PracticeSentencePager> {
   final PageController _pageController = PageController();
   bool _synced = false;
+  bool _initialSyncRequested = false;
+  bool _pageSyncScheduled = false;
   bool _programmatic = false;
   bool _transitionInFlight = false;
+  bool _userScrollInProgress = false;
   int? _pendingTarget;
   int? _pendingSource;
+  int? _deferredProviderIndex;
 
   @override
   void initState() {
@@ -96,6 +103,25 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
     if (oldWidget.currentIndex != widget.currentIndex) {
       _clearPendingGesture();
       DictionaryPanelHost.maybeOf(context)?.closeIfOpen();
+      if (_userScrollInProgress ||
+          _transitionInFlight ||
+          _programmatic ||
+          widget.isTransitionLocked) {
+        _deferredProviderIndex = widget.currentIndex;
+        if (_userScrollInProgress) {
+          AppLogger.log(
+            _sentencePagerLogTag,
+            'provider-index-sync-deferred reason=user-scroll '
+            'target=${widget.currentIndex} '
+            'page=${_pageController.hasClients ? _pageController.page?.toStringAsFixed(3) : null}',
+          );
+        }
+      } else {
+        _schedulePageSync();
+      }
+    }
+    if (oldWidget.isTransitionLocked && !widget.isTransitionLocked) {
+      _scheduleDeferredPageSync();
     }
   }
 
@@ -108,7 +134,10 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
 
   @override
   Widget build(BuildContext context) {
-    _syncPage(widget.currentIndex);
+    if (!_initialSyncRequested) {
+      _initialSyncRequested = true;
+      _schedulePageSync();
+    }
     return NotificationListener<ScrollNotification>(
       onNotification: _handleScrollNotification,
       child: PageView.builder(
@@ -126,35 +155,76 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
     );
   }
 
-  void _syncPage(int targetIndex) {
+  /// 仅在分页权威输入变化时排队同步，避免普通状态重建打断用户拖动。
+  void _schedulePageSync() {
+    if (_pageSyncScheduled) return;
+    _pageSyncScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_pageController.hasClients) return;
-      if (_transitionInFlight || widget.isTransitionLocked) {
-        return;
-      }
-      final current = _pageController.page?.round();
-      if (current == targetIndex) {
-        _synced = true;
-        return;
-      }
-      _clearPendingGesture();
-      _programmatic = true;
-      final animate =
-          _synced && current != null && (targetIndex - current).abs() == 1;
-      if (animate) {
-        _pageController
-            .animateToPage(
-              targetIndex,
-              duration: const Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
-            )
-            .whenComplete(() => _programmatic = false);
-      } else {
-        _pageController.jumpToPage(targetIndex);
-        _programmatic = false;
-      }
-      _synced = true;
+      _pageSyncScheduled = false;
+      _syncPageIfReady();
     });
+  }
+
+  /// 使用最新索引同步页面；交互或业务锁期间只记录待同步目标。
+  void _syncPageIfReady() {
+    if (!mounted || !_pageController.hasClients) return;
+    if (_userScrollInProgress ||
+        _transitionInFlight ||
+        _programmatic ||
+        widget.isTransitionLocked) {
+      _deferredProviderIndex = widget.currentIndex;
+      return;
+    }
+
+    final targetIndex = widget.currentIndex;
+    final wasDeferred = _deferredProviderIndex != null;
+    _deferredProviderIndex = null;
+    final page = _pageController.page;
+    final current = page?.round();
+    if (current == targetIndex) {
+      _synced = true;
+      return;
+    }
+    if (wasDeferred) {
+      AppLogger.log(
+        _sentencePagerLogTag,
+        'deferred-provider-index-sync target=$targetIndex '
+        'fromPage=${page?.toStringAsFixed(3)}',
+      );
+    }
+    _clearPendingGesture();
+    _programmatic = true;
+    final animate =
+        _synced && current != null && (targetIndex - current).abs() == 1;
+    if (animate) {
+      _pageController
+          .animateToPage(
+            targetIndex,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+          )
+          .whenComplete(() {
+            _programmatic = false;
+            _scheduleDeferredPageSync();
+          });
+    } else {
+      _pageController.jumpToPage(targetIndex);
+      _programmatic = false;
+      _scheduleDeferredPageSync();
+    }
+    _synced = true;
+  }
+
+  /// 外部索引更新若遇到手势、动画或分页锁，待交互结束后再对齐最新索引。
+  void _scheduleDeferredPageSync() {
+    if (_deferredProviderIndex == null ||
+        _userScrollInProgress ||
+        _transitionInFlight ||
+        _programmatic ||
+        widget.isTransitionLocked) {
+      return;
+    }
+    _schedulePageSync();
   }
 
   void _handlePageChanged(int index) {
@@ -169,10 +239,24 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification.depth != 0 ||
-        notification.metrics.axis != Axis.horizontal ||
-        notification is! ScrollEndNotification) {
+        notification.metrics.axis != Axis.horizontal) {
       return false;
     }
+    if (notification is ScrollStartNotification) {
+      if (notification.dragDetails != null) {
+        _userScrollInProgress = true;
+      }
+      return false;
+    }
+    if (notification is! ScrollEndNotification) return false;
+
+    _userScrollInProgress = false;
+    if (_deferredProviderIndex != null) {
+      _clearPendingGesture();
+      _scheduleDeferredPageSync();
+      return false;
+    }
+
     final target = _pendingTarget;
     final source = _pendingSource;
     _clearPendingGesture();
@@ -199,6 +283,7 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
       commit = widget.onSentenceSettled(target);
     } finally {
       _transitionInFlight = false;
+      _scheduleDeferredPageSync();
     }
     await commit;
   }
@@ -220,6 +305,7 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
       shouldCommit = await _animateToTarget(targetIndex);
     } finally {
       _transitionInFlight = false;
+      _scheduleDeferredPageSync();
     }
     if (!shouldCommit || !mounted || widget.currentIndex == targetIndex) return;
     await commit();
