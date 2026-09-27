@@ -40,7 +40,11 @@ void main() {
     ),
   ];
 
-  Future<void> pumpDetail(WidgetTester tester) async {
+  Future<void> pumpDetail(
+    WidgetTester tester, {
+    bool subscribed = false,
+    _TestCommunityCollectionFiles? detailNotifier,
+  }) async {
     await tester.pumpWidget(
       createTestApp(
         const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
@@ -59,9 +63,28 @@ void main() {
               ),
             ),
           ),
-          communityCollectionFilesProvider(
-            'collection-1',
-          ).overrideWith(() => _TestCommunityCollectionFiles(files)),
+          if (subscribed)
+            collectionListProvider.overrideWith(
+              () => TestCollectionList(
+                CollectionState(
+                  rawCollections: [
+                    Collection(
+                      id: 'local-1',
+                      name: 'Stale local name',
+                      createdDate: DateTime(2026, 9, 22),
+                      source: CollectionSource.community,
+                      remoteId: 'collection-1',
+                    ),
+                  ],
+                  audioIdsMap: const {
+                    'local-1': ['local-only-file'],
+                  },
+                ),
+              ),
+            ),
+          communityCollectionFilesProvider('collection-1').overrideWith(
+            () => detailNotifier ?? _TestCommunityCollectionFiles(files),
+          ),
         ],
       ),
     );
@@ -94,6 +117,7 @@ void main() {
     expect(find.text('Duration'), findsOneWidget);
     expect(find.text('1:05'), findsOneWidget);
     expect(find.text('Track 2'), findsOneWidget);
+    expect(find.text('Add to My Collections'), findsOneWidget);
     expect(find.text('0s'), findsNothing);
     expect(
       find.ancestor(of: find.text('Name'), matching: find.byType(ListView)),
@@ -161,24 +185,14 @@ void main() {
     expect(find.text('Stale description'), findsNothing);
   });
 
-  testWidgets('未加入合集时点击素材提示先添加合集', (tester) async {
+  testWidgets('未加入合集时点击预览素材不会触发加入操作', (tester) async {
     await pumpDetail(tester);
 
     await tester.tap(find.text('Track 1'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Add Collection First'), findsOneWidget);
-    expect(
-      find.text(
-        'Add this collection to My Collection, then you can start practicing.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Cancel'), findsOneWidget);
-
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
     expect(find.text('Add Collection First'), findsNothing);
+    expect(find.text('Track 1'), findsOneWidget);
   });
 
   testWidgets('未加入合集详情下拉时强制刷新且缓存内容仍可见', (tester) async {
@@ -217,47 +231,33 @@ void main() {
     expect(find.text('Track 1'), findsOneWidget);
   });
 
-  testWidgets('已加入合集详情直接使用本地列表，不等待远端文件请求', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
-        overrides: [
-          discoverCommunityCollectionsProvider.overrideWith(
-            () => _TestDiscoverCommunityCollections(
-              PublicCollectionCatalogEntry(
-                id: 'collection-1',
-                name: 'Community English',
-                description: 'A short collection',
-                coverUrl: null,
-                authorNickname: 'Echo Studio',
-                fileCount: 2,
-                publishedAt: DateTime(2026, 9, 22),
-              ),
-            ),
-          ),
-          collectionListProvider.overrideWith(
-            () => TestCollectionList(
-              CollectionState(
-                rawCollections: [
-                  Collection(
-                    id: 'local-1',
-                    name: 'Community English',
-                    createdDate: DateTime(2026, 9, 22),
-                    source: CollectionSource.community,
-                    remoteId: 'collection-1',
-                  ),
-                ],
-                audioIdsMap: const {'local-1': []},
-              ),
-            ),
-          ),
-        ],
+  testWidgets('已加入合集详情仍展示公开文件列表，仅底部按钮改为开始学习', (tester) async {
+    final detailNotifier = _TestCommunityCollectionFiles(
+      files,
+      PublicCollectionCatalogEntry(
+        id: 'collection-1',
+        name: 'Remote public name',
+        description: 'Public description',
+        coverUrl: null,
+        authorNickname: 'Public author',
+        fileCount: files.length,
+        publishedAt: DateTime(2026, 9, 22),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpDetail(tester, subscribed: true, detailNotifier: detailNotifier);
 
-    expect(find.text('0 items'), findsOneWidget);
+    expect(detailNotifier.buildCalls, greaterThan(0));
+    expect(find.text('Remote public name'), findsOneWidget);
+    expect(find.text('Stale local name'), findsNothing);
+    expect(find.text('2 items'), findsOneWidget);
+    expect(find.text('Track 1'), findsOneWidget);
+    expect(find.text('Start Practicing'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.text('Track 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Collection First'), findsNothing);
+    expect(find.text('Track 1'), findsOneWidget);
   });
 }
 
@@ -282,6 +282,7 @@ class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
 class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
   final List<CommunityCollectionFile> files;
   final PublicCollectionCatalogEntry? collection;
+  var buildCalls = 0;
   var refreshCalls = 0;
   var forceRefreshCalls = 0;
 
@@ -291,6 +292,7 @@ class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
   Future<CommunityCollectionPagedState<CommunityCollectionFile>> build(
     String collectionId,
   ) async {
+    buildCalls++;
     return CommunityCollectionPagedState.fromFirstPage(
       CommunityCollectionCatalogPage(
         cursor: null,

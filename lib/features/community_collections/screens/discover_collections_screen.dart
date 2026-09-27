@@ -13,8 +13,6 @@ import '../models/community_collection_models.dart';
 import '../models/community_collection_paging.dart';
 import '../community_collection_routes.dart';
 import '../data/trigger_community_catalog_refresh.dart';
-import '../data/trigger_community_sync.dart';
-import '../../podcast/data/trigger_podcast_catalog_refresh.dart';
 import '../../podcast/models/podcast_catalog.dart';
 import '../../podcast/providers/discover_podcasts_provider.dart';
 import '../providers/community_enrollment_provider.dart';
@@ -107,7 +105,7 @@ class _DiscoverCommunityCollectionsScreenState
     final hasPodcastEntry = podcasts?.isNotEmpty ?? false;
     if (items.isEmpty && !hasPodcastEntry) {
       return RefreshIndicator(
-        onRefresh: _forceRefresh,
+        onRefresh: _forceRefreshCatalog,
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -123,7 +121,7 @@ class _DiscoverCommunityCollectionsScreenState
       );
     }
     return RefreshIndicator(
-      onRefresh: _forceRefresh,
+      onRefresh: _forceRefreshCatalog,
       child: ListView.builder(
         controller: _scrollController,
         itemCount:
@@ -160,13 +158,9 @@ class _DiscoverCommunityCollectionsScreenState
     );
   }
 
-  /// 手动刷新同时强制更新公开列表和已订阅合集；后台生命周期刷新不走这里。
-  Future<void> _forceRefresh() async {
-    await Future.wait([
-      triggerCommunityCatalogRefresh(ref, force: true),
-      triggerCommunitySync(ref, force: true),
-      triggerPodcastCatalogRefresh(ref, force: true),
-    ]);
+  /// 强制刷新公开合集目录；发现页浏览不触发已订阅内容同步。
+  Future<void> _forceRefreshCatalog() {
+    return triggerCommunityCatalogRefresh(ref, force: true);
   }
 
   Future<void> _enroll(PublicCollectionCatalogEntry item) async {

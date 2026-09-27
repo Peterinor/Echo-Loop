@@ -6,12 +6,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../auth/sign_in_required_dialog.dart';
 import '../../../l10n/app_localizations.dart';
-import '../../../models/audio_item.dart';
 import '../../../models/collection.dart';
-import '../../../providers/audio_library_provider.dart';
 import '../../../providers/collection_provider.dart';
 import '../../../router/app_router.dart';
-import '../../../widgets/audio_list_view.dart';
 import '../models/community_collection_models.dart';
 import '../models/community_collection_paging.dart';
 import '../providers/community_collection_detail_provider.dart';
@@ -19,7 +16,7 @@ import '../providers/community_enrollment_provider.dart';
 import '../providers/discover_community_collections_provider.dart';
 import '../widgets/community_collection_header.dart';
 
-/// 社区合集详情页；文件预览和加入均使用 v2 数据。
+/// 社区合集公开详情页；文件列表统一使用公开详情数据，订阅状态只决定底部操作。
 class CommunityCollectionDetailScreen extends ConsumerStatefulWidget {
   final String remoteId;
 
@@ -36,10 +33,7 @@ class _CommunityCollectionDetailScreenState
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          _localCollection(ref.read(collectionListProvider)) != null) {
-        return;
-      }
+      if (!mounted) return;
       if (ref
               .read(communityCollectionFilesProvider(widget.remoteId))
               .valueOrNull !=
@@ -59,32 +53,7 @@ class _CommunityCollectionDetailScreenState
               .firstOrNull,
         );
     final collectionState = ref.watch(collectionListProvider);
-    final localCollection = _localCollection(collectionState);
-    final localId = localCollection?.id;
-
-    // 已加入合集时，列表真相在本地数据库；不要为了渲染本地列表再等待远端
-    // catalog 请求，避免重新进入详情页被网络加载阻塞。
-    if (localCollection != null) {
-      final catalogEntry = _catalogEntryFromLocal(
-        localCollection,
-        collectionState.getAudioCount(localCollection.id),
-      );
-      return Scaffold(
-        appBar: AppBar(title: Text(catalogEntry.name)),
-        body: _Content(
-          catalogEntry: catalogEntry,
-          remotePage: null,
-          fileCount: collectionState.getAudioCount(localCollection.id),
-          localId: localId,
-          onLoadMore: () {},
-          onEnroll: () => _enroll(context, ref),
-          onPreviewFileTap: (_) => _showEnrollDialog(context, ref),
-          onLearn: () {
-            context.go(AppRoutes.collectionDetail(localCollection.id));
-          },
-        ),
-      );
-    }
+    final localId = _localCollection(collectionState)?.id;
 
     final files = ref.watch(communityCollectionFilesProvider(widget.remoteId));
     final catalogEntry = files.valueOrNull?.collection ?? listedCatalogEntry;
@@ -123,7 +92,6 @@ class _CommunityCollectionDetailScreenState
                   .loadMore(),
             ),
             onEnroll: () => _enroll(context, ref),
-            onPreviewFileTap: (_) => _showEnrollDialog(context, ref),
             onLearn: () {
               if (localId != null) {
                 context.go(AppRoutes.collectionDetail(localId));
@@ -142,6 +110,7 @@ class _CommunityCollectionDetailScreenState
         .refresh(force: true);
   }
 
+  /// 按远端 ID 查找本地订阅，仅用于选择底部操作及学习跳转目标。
   Collection? _localCollection(CollectionState state) {
     for (final collection in state.collections) {
       if (collection.isCommunity && collection.remoteId == widget.remoteId) {
@@ -149,47 +118,6 @@ class _CommunityCollectionDetailScreenState
       }
     }
     return null;
-  }
-
-  PublicCollectionCatalogEntry _catalogEntryFromLocal(
-    Collection collection,
-    int count,
-  ) {
-    return PublicCollectionCatalogEntry(
-      id: collection.remoteId ?? widget.remoteId,
-      name: collection.name,
-      description: collection.description,
-      coverUrl: collection.coverUrl,
-      authorNickname: collection.authorNickname,
-      fileCount: count,
-      publishedAt: collection.publishedAt ?? collection.createdDate,
-      updatedAt: collection.updatedAt,
-    );
-  }
-
-  /// 未加入合集时，点击预览素材先提示用户添加合集。
-  Future<void> _showEnrollDialog(BuildContext context, WidgetRef ref) async {
-    final l10n = AppLocalizations.of(context)!;
-    final shouldEnroll = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l10n.enrollNeededTitle),
-        content: Text(l10n.enrollNeededMessage),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: Text(l10n.cancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(l10n.addToMyCollections),
-          ),
-        ],
-      ),
-    );
-    if (shouldEnroll == true && context.mounted) {
-      await _enroll(context, ref);
-    }
   }
 
   Future<void> _enroll(BuildContext context, WidgetRef ref) async {
@@ -227,7 +155,6 @@ class _Content extends StatelessWidget {
   final String? localId;
   final VoidCallback onLoadMore;
   final VoidCallback onEnroll;
-  final ValueChanged<CommunityCollectionFile> onPreviewFileTap;
   final VoidCallback onLearn;
 
   const _Content({
@@ -237,7 +164,6 @@ class _Content extends StatelessWidget {
     required this.localId,
     required this.onLoadMore,
     required this.onEnroll,
-    required this.onPreviewFileTap,
     required this.onLearn,
   });
 
@@ -254,18 +180,14 @@ class _Content extends StatelessWidget {
       updatedAt: collection.updatedAt,
       fileCount: fileCount,
     );
-    final audioList = switch (localId) {
-      final String id => _LocalAudioList(localId: id, header: header),
-      _ => _PreviewList(
-        header: header,
-        files: remotePage?.items ?? const [],
-        hasMore: remotePage?.hasMore ?? false,
-        isLoadingMore: remotePage?.isLoadingMore ?? false,
-        loadMoreError: remotePage?.loadMoreError,
-        onLoadMore: onLoadMore,
-        onTap: onPreviewFileTap,
-      ),
-    };
+    final audioList = _PreviewList(
+      header: header,
+      files: remotePage?.items ?? const [],
+      hasMore: remotePage?.hasMore ?? false,
+      isLoadingMore: remotePage?.isLoadingMore ?? false,
+      loadMoreError: remotePage?.loadMoreError,
+      onLoadMore: onLoadMore,
+    );
     return Column(
       children: [
         Expanded(child: audioList),
@@ -289,24 +211,6 @@ class _Content extends StatelessWidget {
   }
 }
 
-class _LocalAudioList extends ConsumerWidget {
-  final String localId;
-  final Widget header;
-
-  const _LocalAudioList({required this.localId, required this.header});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final collection = ref.watch(collectionListProvider);
-    final items = collection
-        .getAudioIds(localId)
-        .map((id) => ref.read(audioLibraryProvider.notifier).getItemById(id))
-        .whereType<AudioItem>()
-        .toList(growable: false);
-    return AudioListView(items: items, collectionId: localId, header: header);
-  }
-}
-
 class _PreviewList extends StatelessWidget {
   final Widget header;
   final List<CommunityCollectionFile> files;
@@ -314,7 +218,6 @@ class _PreviewList extends StatelessWidget {
   final bool isLoadingMore;
   final Object? loadMoreError;
   final VoidCallback onLoadMore;
-  final ValueChanged<CommunityCollectionFile> onTap;
 
   const _PreviewList({
     required this.header,
@@ -323,7 +226,6 @@ class _PreviewList extends StatelessWidget {
     required this.isLoadingMore,
     required this.loadMoreError,
     required this.onLoadMore,
-    required this.onTap,
   });
 
   @override
@@ -400,7 +302,6 @@ class _PreviewList extends StatelessWidget {
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
-            onTap: () => onTap(file),
           );
         },
       ),

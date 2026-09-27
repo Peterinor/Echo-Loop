@@ -210,6 +210,46 @@ void main() {
     expect(api.detailCalls, ['remote-1', 'remote-1']);
   });
 
+  test('后台全量同步过期后刷新所有已订阅合集', () async {
+    await _insertCollection(database, 'local-1', 'remote-1', 'One');
+    await _insertCollection(database, 'local-2', 'remote-2', 'Two');
+    await _insertFile(database, 'local-1', 'file-1', 'Old one');
+    await _insertFile(database, 'local-2', 'file-2', 'Old two');
+
+    const lastSyncAtKey = 'community_collection_last_sync_at_v2';
+    final now = DateTime(2026, 1, 1, 12);
+    final previousSyncAt = now
+        .subtract(const Duration(hours: 3))
+        .millisecondsSinceEpoch;
+    SharedPreferences.setMockInitialValues({lastSyncAtKey: previousSyncAt});
+    final preferences = await SharedPreferences.getInstance();
+    final api = _FakeCommunityApi(
+      [_catalogEntry('remote-1', 'One'), _catalogEntry('remote-2', 'Two')],
+      {
+        'remote-1': [_file('file-1', 'Updated one')],
+        'remote-2': [_file('file-2', 'Updated two')],
+      },
+    );
+    final service = CommunitySyncService(
+      database: database,
+      api: api,
+      preferences: preferences,
+      now: () => now,
+    );
+
+    final outcome = await service.syncAll();
+    final firstAudio = await database.audioItemDao.getByRemoteAudioId('file-1');
+    final secondAudio = await database.audioItemDao.getByRemoteAudioId(
+      'file-2',
+    );
+
+    expect(outcome, isA<CommunitySyncCompleted>());
+    expect(api.detailCalls, unorderedEquals(['remote-1', 'remote-2']));
+    expect(firstAudio?.name, 'Updated one');
+    expect(secondAudio?.name, 'Updated two');
+    expect(preferences.getInt(lastSyncAtKey), now.millisecondsSinceEpoch);
+  });
+
   test('单合集强制同步只更新目标合集且不重置全量同步节流时间', () async {
     await _insertCollection(database, 'local-1', 'remote-1', 'One');
     await _insertCollection(database, 'local-2', 'remote-2', 'Two');
