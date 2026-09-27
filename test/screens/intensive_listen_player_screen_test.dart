@@ -451,13 +451,14 @@ void main() {
         ),
         findsNothing,
       );
-      expect(
-        tester.getRect(find.byType(SentenceExplanationView)).left,
-        closeTo(
-          tester.getRect(find.text('Sentence 1/5')).left + AppSpacing.l,
-          1,
-        ),
+      final pageViewRect = tester.getRect(
+        find.byKey(const ValueKey('intensive-sentence-page-view')),
       );
+      final explanationRect = tester.getRect(
+        find.byType(SentenceExplanationView),
+      );
+      expect(explanationRect.left, closeTo(pageViewRect.left, 1));
+      expect(explanationRect.right, closeTo(pageViewRect.right, 1));
     });
 
     testWidgets('普通模式显示播放遍数（默认 1 次）', (tester) async {
@@ -895,8 +896,8 @@ void main() {
       );
       final screenWidth =
           tester.view.physicalSize.width / tester.view.devicePixelRatio;
-      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.l));
-      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.l));
+      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.m));
+      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.m));
 
       final subtitleRegionRect = tester.getRect(
         find.byKey(PracticeNormalModeView.subtitleMainRegionKey),

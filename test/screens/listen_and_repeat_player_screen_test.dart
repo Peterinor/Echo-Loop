@@ -36,6 +36,7 @@ import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/common/playback_controls.dart';
 import 'package:echo_loop/widgets/common/recording_button.dart';
 import 'package:echo_loop/widgets/common/bookmark_toggle_row.dart';
+import 'package:echo_loop/widgets/practice/sentence_explanation_view.dart';
 
 import '../helpers/mock_providers.dart';
 
@@ -455,6 +456,19 @@ void main() {
       final pager = find.byKey(
         const ValueKey('listen-and-repeat-sentence-page-view'),
       );
+      final pagerRect = tester.getRect(pager);
+      final screenWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.m));
+      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.m));
+      final progressTextRect = tester.getRect(find.text('Sentence 3/5'));
+      expect(pagerRect.left, closeTo(progressTextRect.left, 1));
+      final explanationRect = tester.getRect(
+        find.byType(SentenceExplanationView).first,
+      );
+      expect(explanationRect.left, closeTo(pagerRect.left, 1));
+      expect(explanationRect.right, closeTo(pagerRect.right, 1));
+
       await tester.fling(pager, const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
       expect(controller.goToSentenceCalls, 1);

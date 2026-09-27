@@ -746,7 +746,7 @@ class _IntensiveListenPlayerScreenState
                                       playerState.currentSentenceIndex,
                                   itemCount: player.sentences.length,
                                   horizontalPadding: const EdgeInsets.symmetric(
-                                    horizontal: AppSpacing.l,
+                                    horizontal: AppSpacing.m,
                                   ),
                                   isTransitionLocked:
                                       playerState.annotationState?.phase
@@ -1061,11 +1061,7 @@ class _AnnotationContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // 与顶部进度区使用相同边距，保持句次、收藏和讲解内容左右对齐。
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
-      child: Column(children: [Expanded(child: child)]),
-    );
+    return Column(children: [Expanded(child: child)]);
   }
 }
 

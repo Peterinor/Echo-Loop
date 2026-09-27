@@ -157,6 +157,27 @@ class _BlindWaitingSpyReviewDifficultPractice
   }
 }
 
+class _RecordingReviewDifficultPractice extends TestReviewDifficultPractice {
+  _RecordingReviewDifficultPractice(super.initialState, super.sentences);
+
+  int goToSentenceCalls = 0;
+
+  @override
+  Future<void> goToSentence(int index) async {
+    goToSentenceCalls += 1;
+    if (index < 0 || index >= state.totalSentences) return;
+    state = state.copyWith(
+      currentSentenceIndex: index,
+      currentPlayCount: 1,
+      isAnnotationMode: false,
+      isTextRevealed: false,
+      isPauseBetweenPlays: false,
+      isPauseBetweenSentences: false,
+      clearRepeatFlowState: true,
+    );
+  }
+}
+
 /// 测试用 BookmarkDao
 class _TestBookmarkDao implements BookmarkDao {
   @override
@@ -413,6 +434,145 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Sentence 3/10'), findsOneWidget);
+    });
+
+    testWidgets('正文左滑切到下一句并同步进度', (tester) async {
+      final player = _RecordingReviewDifficultPractice(
+        createPlayerState(currentSentenceIndex: 2),
+        createTestSentences(
+          count: 5,
+        ).map((s) => s.copyWith(isBookmarked: true)).toList(),
+      );
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(currentSentenceIndex: 2),
+          playerFactory: (_, __) => player,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.fling(
+        find.byKey(
+          const ValueKey('review-difficult-practice-sentence-page-view'),
+        ),
+        const Offset(-400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.state.currentSentenceIndex, 3);
+      expect(find.text('Sentence 4/5'), findsOneWidget);
+    });
+
+    testWidgets('可滑动区域左右各留24dp且正文与分页区域对齐', (tester) async {
+      await tester.pumpWidget(
+        createTestWidget(playerState: createPlayerState(isTextRevealed: true)),
+      );
+      await tester.pumpAndSettle();
+
+      final pageViewRect = tester.getRect(
+        find.byKey(
+          const ValueKey('review-difficult-practice-sentence-page-view'),
+        ),
+      );
+      final screenRect = tester.getRect(find.byType(Scaffold));
+      final subtitleRect = tester.getRect(
+        find.byKey(PracticeNormalModeView.subtitleMainRegionKey),
+      );
+
+      expect(pageViewRect.left, closeTo(screenRect.left + AppSpacing.m, 1));
+      expect(pageViewRect.right, closeTo(screenRect.right - AppSpacing.m, 1));
+      expect(subtitleRect.left, closeTo(pageViewRect.left, 1));
+      expect(subtitleRect.right, closeTo(pageViewRect.right, 1));
+    });
+
+    testWidgets('正文右滑切到上一句并同步进度', (tester) async {
+      final player = _RecordingReviewDifficultPractice(
+        createPlayerState(currentSentenceIndex: 2),
+        createTestSentences(
+          count: 5,
+        ).map((s) => s.copyWith(isBookmarked: true)).toList(),
+      );
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(currentSentenceIndex: 2),
+          playerFactory: (_, __) => player,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.fling(
+        find.byKey(
+          const ValueKey('review-difficult-practice-sentence-page-view'),
+        ),
+        const Offset(400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.state.currentSentenceIndex, 1);
+      expect(find.text('Sentence 2/5'), findsOneWidget);
+    });
+
+    testWidgets('跟读模式正文左滑后切换为新句盲听', (tester) async {
+      final player = _RecordingReviewDifficultPractice(
+        createPlayerState(currentSentenceIndex: 2, isAnnotationMode: true),
+        createTestSentences(
+          count: 5,
+        ).map((s) => s.copyWith(isBookmarked: true)).toList(),
+      );
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentSentenceIndex: 2,
+            isAnnotationMode: true,
+          ),
+          playerFactory: (_, __) => player,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.fling(
+        find.byKey(
+          const ValueKey('review-difficult-practice-sentence-page-view'),
+        ),
+        const Offset(-400, 0),
+        1000,
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.state.currentSentenceIndex, 3);
+      expect(player.state.isAnnotationMode, isFalse);
+      expect(find.text('Sentence 4/5'), findsOneWidget);
+    });
+
+    testWidgets('短距离或垂直拖动正文不会切句', (tester) async {
+      final player = _RecordingReviewDifficultPractice(
+        createPlayerState(currentSentenceIndex: 2),
+        createTestSentences(
+          count: 5,
+        ).map((s) => s.copyWith(isBookmarked: true)).toList(),
+      );
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(currentSentenceIndex: 2),
+          playerFactory: (_, __) => player,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final pageView = find.byKey(
+        const ValueKey('review-difficult-practice-sentence-page-view'),
+      );
+      await tester.drag(pageView, const Offset(-32, 0));
+      await tester.drag(pageView, const Offset(0, -80));
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 0);
+      expect(player.state.currentSentenceIndex, 2);
     });
 
     testWidgets('显示偷看和听不懂按钮', (tester) async {

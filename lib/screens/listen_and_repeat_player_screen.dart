@@ -676,6 +676,9 @@ class _ListenAndRepeatPlayerScreenState
                                   ),
                                   currentIndex: ctrlState.sentenceIndex,
                                   itemCount: ctrl.sentences.length,
+                                  horizontalPadding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.m,
+                                  ),
                                   isTransitionLocked: ctrlState.isTransitioning,
                                   onSentenceSettled: (index) =>
                                       ctrl.goToSentence(
@@ -688,45 +691,39 @@ class _ListenAndRepeatPlayerScreenState
                                     final isActive =
                                         sentenceIndex ==
                                         ctrlState.sentenceIndex;
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: AppSpacing.m,
-                                      ),
-                                      child: Column(
-                                        children: [
-                                          Expanded(
-                                            child: SentenceExplanationView(
-                                              text: sentence.text,
-                                              aiNotifier: ref.read(
-                                                sentenceAiNotifierProvider,
-                                              ),
-                                              audioItemId: widget.audioItemId,
-                                              sentenceIndex: sentence.index,
-                                              sentenceStartMs: sentence
-                                                  .startTime
-                                                  .inMilliseconds,
-                                              sentenceEndMs: sentence
-                                                  .endTime
-                                                  .inMilliseconds,
-                                              highlightedSegments: isActive
-                                                  ? currentAttempt
-                                                        ?.referenceSegments
-                                                  : null,
-                                              enableGuide: false,
-                                              isActiveSentence: isActive,
-                                              onStopMainPlayer:
-                                                  ctrl.enterWaitingForUser,
-                                              onToolbarButtonTapped: () {
-                                                AppLogger.log(
-                                                  'L&R Screen',
-                                                  '工具栏点击: 打断流程',
-                                                );
-                                                ctrl.onUserInteraction();
-                                              },
+                                    return Column(
+                                      children: [
+                                        Expanded(
+                                          child: SentenceExplanationView(
+                                            text: sentence.text,
+                                            aiNotifier: ref.read(
+                                              sentenceAiNotifierProvider,
                                             ),
+                                            audioItemId: widget.audioItemId,
+                                            sentenceIndex: sentence.index,
+                                            sentenceStartMs: sentence
+                                                .startTime
+                                                .inMilliseconds,
+                                            sentenceEndMs:
+                                                sentence.endTime.inMilliseconds,
+                                            highlightedSegments: isActive
+                                                ? currentAttempt
+                                                      ?.referenceSegments
+                                                : null,
+                                            enableGuide: false,
+                                            isActiveSentence: isActive,
+                                            onStopMainPlayer:
+                                                ctrl.enterWaitingForUser,
+                                            onToolbarButtonTapped: () {
+                                              AppLogger.log(
+                                                'L&R Screen',
+                                                '工具栏点击: 打断流程',
+                                              );
+                                              ctrl.onUserInteraction();
+                                            },
                                           ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     );
                                   },
                                 ),
