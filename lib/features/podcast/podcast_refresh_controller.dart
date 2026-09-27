@@ -2,7 +2,7 @@
 ///
 /// 约束：
 /// - App 生命周期只负责触发本控制器，不直接遍历合集或拼刷新策略。
-/// - 真实刷新统一走 [PodcastRepository.refresh]，复用其 10 分钟节流与 inflight 合并。
+/// - 真实刷新统一走 [PodcastRepository.refresh]，复用其 60 分钟节流与 inflight 合并。
 /// - 单个 feed 刷新失败不影响其他已订阅播客；失败只记日志，不打断全局静默刷新。
 library;
 

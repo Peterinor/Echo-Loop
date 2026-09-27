@@ -705,16 +705,42 @@ void main() {
       return ref;
     }
 
-    test('普通刷新 10 分钟内节流，不访问 RSS', () async {
+    test('普通刷新距离上次刷新 59 分钟时节流，不访问 RSS', () async {
       final dio = _CountingDio(body: '<rss></rss>');
       final repo = PodcastRepository(
-        makeRef(podcast(lastRefreshedAt: DateTime.now())),
+        makeRef(
+          podcast(
+            lastRefreshedAt: DateTime.now().subtract(
+              const Duration(minutes: 59),
+            ),
+          ),
+        ),
         dio: dio,
       );
 
       await repo.refresh('podcast-1');
 
       expect(dio.callCount, 0);
+    });
+
+    test('普通刷新距离上次刷新 60 分钟后访问 RSS', () async {
+      final dio = _CountingDio(
+        body: '<rss version="2.0"><channel><title>VOA</title></channel></rss>',
+      );
+      final container = makeContainer(
+        podcast(
+          lastRefreshedAt: DateTime.now().subtract(const Duration(minutes: 60)),
+        ),
+      );
+      addTearDown(container.dispose);
+      final repoProvider = Provider(
+        (ref) =>
+            PodcastRepository(ref, dio: dio, feedParser: PodcastFeedParser()),
+      );
+
+      await container.read(repoProvider).refresh('podcast-1');
+
+      expect(dio.callCount, 1);
     });
 
     test('force=true 绕过节流并访问 RSS', () async {
