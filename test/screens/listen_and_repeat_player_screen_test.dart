@@ -424,6 +424,43 @@ void main() {
       expect(find.byIcon(Icons.tune), findsOneWidget);
     });
 
+    testWidgets('音频启动期间显示普通加载态，不显示视频画布', (tester) async {
+      final load = Completer<MediaLoadResult>();
+      final controller = _TestListenAndRepeatController(
+        createState(),
+        createTestSentences(count: 5),
+        startPlayingNoop: true,
+      );
+
+      await tester.pumpWidget(
+        _createTestWidget(
+          controller: controller,
+          mediaStartup: MediaLearningStartup(
+            loadKey: 'audio-1',
+            load: () => load.future,
+            cancel: () async {},
+            showVideoLoading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is ColoredBox && widget.color == Colors.black,
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+
+      load.complete(MediaLoadResult.ready);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+    });
+
     testWidgets('视频画面位于进度条上方', (tester) async {
       final controller = _TestListenAndRepeatController(
         createState(usesMediaEngine: true),

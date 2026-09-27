@@ -38,7 +38,7 @@ class ManagedMediaVisualSurface extends StatefulWidget {
   /// 当前 generation 首次 ready 后调用一次。
   final VoidCallback? onReady;
 
-  /// 是否展示视频加载文案；音频学习任务只需要通用加载状态。
+  /// 是否使用视频加载样式；音频任务使用普通页面加载遮罩。
   final bool showVideoLoading;
 
   @override
@@ -180,16 +180,22 @@ class _MediaLoadingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    // 视频加载画布是固定格式的临时状态，不应被系统字体缩放撑破。用局部
-    // MediaQuery 固定整个遮罩，确保进度圈、间距和文案始终是同一视觉规格。
+    final theme = Theme.of(context);
+    // 视频加载画布是固定格式的临时状态，不应被系统字体缩放撑破。音频任务
+    // 使用主题色提示，避免在普通页面背景上显示视频样式的黑色画布。
     return MediaQuery.withNoTextScaling(
       child: _MediaOverlayFrame(
+        showVideoCanvas: showVideoLoading,
         child: Semantics(
           label: showVideoLoading ? l10n.videoLoading : null,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(color: Colors.white),
+              CircularProgressIndicator(
+                color: showVideoLoading
+                    ? Colors.white
+                    : theme.colorScheme.primary,
+              ),
               const SizedBox(height: 12),
               if (showVideoLoading)
                 Text(
@@ -219,11 +225,17 @@ class _MediaFailureOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final theme = Theme.of(context);
     return _MediaOverlayFrame(
+      showVideoCanvas: showVideoLoading,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.error_outline, size: 40, color: Colors.white),
+          Icon(
+            Icons.error_outline,
+            size: 40,
+            color: showVideoLoading ? Colors.white : theme.colorScheme.error,
+          ),
           const SizedBox(height: 12),
           if (showVideoLoading)
             Text(
@@ -239,14 +251,25 @@ class _MediaFailureOverlay extends StatelessWidget {
   }
 }
 
-/// 在任意父级约束内保留稳定的 16:9 视频画布，其余区域保持页面背景。
+/// 根据媒体类型绘制视频画布或普通页面遮罩。
 class _MediaOverlayFrame extends StatelessWidget {
-  const _MediaOverlayFrame({required this.child});
+  const _MediaOverlayFrame({
+    required this.child,
+    required this.showVideoCanvas,
+  });
 
   final Widget child;
+  final bool showVideoCanvas;
 
   @override
   Widget build(BuildContext context) {
+    if (!showVideoCanvas) {
+      return ColoredBox(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: Center(child: child),
+      );
+    }
+
     return ColoredBox(
       color: Theme.of(context).scaffoldBackgroundColor,
       child: LayoutBuilder(

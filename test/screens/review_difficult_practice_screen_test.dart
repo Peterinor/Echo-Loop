@@ -407,6 +407,37 @@ void main() {
       expect(find.text('Unclear'), findsOneWidget);
     });
 
+    testWidgets('音频启动期间显示普通加载态，不显示视频画布', (tester) async {
+      final load = Completer<MediaLoadResult>();
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(),
+          mediaStartup: MediaLearningStartup(
+            loadKey: 'audio-review-1',
+            load: () => load.future,
+            cancel: () async {},
+            showVideoLoading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is ColoredBox && widget.color == Colors.black,
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+
+      load.complete(MediaLoadResult.ready);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+    });
+
     testWidgets('音频难句补练不创建媒体画面', (tester) async {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
