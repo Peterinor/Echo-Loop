@@ -407,35 +407,32 @@ class _PodcastCollectionBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    return Column(
-      children: [
-        _PodcastFeedHeader(collection: collection, refreshState: refreshState),
-        Expanded(
-          child: RefreshIndicator(
-            onRefresh: onRefresh,
-            child: AudioListView(
-              items: audioItems,
-              collectionId: collection.id,
-              guideFirstAudioMenu: guideFirstAudioMenu,
-              menuGuideStep: menuGuideStep,
-              emptyState: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.5,
-                    child: Center(
-                      child: Text(
-                        l10n.communityCollectionEmpty,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ],
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: AudioListView(
+        items: audioItems,
+        collectionId: collection.id,
+        guideFirstAudioMenu: guideFirstAudioMenu,
+        menuGuideStep: menuGuideStep,
+        header: _PodcastFeedHeader(
+          collection: collection,
+          refreshState: refreshState,
+        ),
+        emptyState: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.5,
+              child: Center(
+                child: Text(
+                  l10n.communityCollectionEmpty,
+                  textAlign: TextAlign.center,
+                ),
               ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -458,13 +455,17 @@ class _PodcastFeedHeaderState extends State<_PodcastFeedHeader> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final meta = _decodeMeta(widget.collection.podcastMetaJson);
-    final imageUrl = meta?.imageUrl ?? widget.collection.coverUrl;
     final description = meta?.description ?? widget.collection.description;
 
     return PodcastFeedSummaryHeader(
-      imageUrl: imageUrl,
+      imageUrl: null,
       description: description,
       moreLabel: l10n.podcastShowMore,
+      showCover: false,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.m,
+        vertical: AppSpacing.m,
+      ),
       onTap: () => showPodcastFeedInfoSheet(
         context,
         widget.collection,
