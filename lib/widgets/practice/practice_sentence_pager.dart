@@ -45,6 +45,7 @@ class PracticeSentencePager extends StatefulWidget {
     required this.controller,
     required this.currentIndex,
     required this.itemCount,
+    this.horizontalPadding = EdgeInsets.zero,
     this.isTransitionLocked = false,
     required this.onSentenceSettled,
     required this.itemBuilder,
@@ -61,6 +62,9 @@ class PracticeSentencePager extends StatefulWidget {
 
   /// 可分页的句子总数。
   final int itemCount;
+
+  /// 分页手势区域的水平留白。
+  final EdgeInsets horizontalPadding;
 
   /// 是否正在执行不可被用户手势打断的自动翻页。
   final bool isTransitionLocked;
@@ -138,19 +142,22 @@ class _PracticeSentencePagerState extends State<PracticeSentencePager> {
       _initialSyncRequested = true;
       _schedulePageSync();
     }
-    return NotificationListener<ScrollNotification>(
-      onNotification: _handleScrollNotification,
-      child: PageView.builder(
-        key: widget.pageViewKey,
-        physics:
-            widget.isTransitionLocked ||
-                DictionaryPanelHost.isPanelOpenOf(context)
-            ? const NeverScrollableScrollPhysics()
-            : null,
-        controller: _pageController,
-        itemCount: widget.itemCount,
-        onPageChanged: _handlePageChanged,
-        itemBuilder: widget.itemBuilder,
+    return Padding(
+      padding: widget.horizontalPadding,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _handleScrollNotification,
+        child: PageView.builder(
+          key: widget.pageViewKey,
+          physics:
+              widget.isTransitionLocked ||
+                  DictionaryPanelHost.isPanelOpenOf(context)
+              ? const NeverScrollableScrollPhysics()
+              : null,
+          controller: _pageController,
+          itemCount: widget.itemCount,
+          onPageChanged: _handlePageChanged,
+          itemBuilder: widget.itemBuilder,
+        ),
       ),
     );
   }

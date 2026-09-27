@@ -31,6 +31,7 @@ import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/common/bookmark_toggle_row.dart';
 import 'package:echo_loop/widgets/practice/sentence_annotation_card.dart';
 import 'package:echo_loop/widgets/practice/sentence_explanation_view.dart';
+import 'package:echo_loop/widgets/practice/practice_normal_mode_view.dart';
 
 import '../helpers/mock_providers.dart';
 
@@ -452,7 +453,10 @@ void main() {
       );
       expect(
         tester.getRect(find.byType(SentenceExplanationView)).left,
-        closeTo(tester.getRect(find.text('Sentence 1/5')).left, 1),
+        closeTo(
+          tester.getRect(find.text('Sentence 1/5')).left + AppSpacing.l,
+          1,
+        ),
       );
     });
 
@@ -885,6 +889,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+
+      final pagerRect = tester.getRect(
+        find.byKey(const ValueKey('intensive-sentence-page-view')),
+      );
+      final screenWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.l));
+      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.l));
+
+      final subtitleRegionRect = tester.getRect(
+        find.byKey(PracticeNormalModeView.subtitleMainRegionKey),
+      );
+      expect(subtitleRegionRect.left, closeTo(pagerRect.left, 1));
+      expect(subtitleRegionRect.right, closeTo(pagerRect.right, 1));
 
       await tester.fling(
         find.byKey(const ValueKey('intensive-sentence-page-view')),

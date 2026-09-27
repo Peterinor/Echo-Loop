@@ -94,6 +94,11 @@ class PracticeNormalModeView extends StatelessWidget {
   /// 精听页会将入口放到顶部进度信息行，此时设为 false，避免重复显示。
   final bool showBookmarkRow;
 
+  /// 普通模式内容区的水平留白。
+  ///
+  /// 默认保留通用页面的 24 dp；逐句精听由外层分页器负责手势留白。
+  final EdgeInsets horizontalPadding;
+
   /// 查词来源上下文（null 时不启用点词/词组选择，渲染纯文本）
   final DictionaryLookupOrigin? lookupOrigin;
 
@@ -114,6 +119,9 @@ class PracticeNormalModeView extends StatelessWidget {
     this.sentenceText,
     this.showHiddenTextPlaceholderLines = true,
     this.showBookmarkRow = true,
+    this.horizontalPadding = const EdgeInsets.symmetric(
+      horizontal: AppSpacing.l,
+    ),
     this.lookupOrigin,
     this.onBeforeLookup,
   });
@@ -147,7 +155,7 @@ class PracticeNormalModeView extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+      padding: horizontalPadding,
       child: Column(
         children: [
           const SizedBox(height: AppSpacing.s),

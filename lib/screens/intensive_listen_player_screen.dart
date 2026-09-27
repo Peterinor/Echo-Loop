@@ -745,6 +745,9 @@ class _IntensiveListenPlayerScreenState
                                   currentIndex:
                                       playerState.currentSentenceIndex,
                                   itemCount: player.sentences.length,
+                                  horizontalPadding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.l,
+                                  ),
                                   isTransitionLocked:
                                       playerState.annotationState?.phase
                                           is WaitingAnnotationPageTransition,
@@ -793,6 +796,7 @@ class _IntensiveListenPlayerScreenState
                                             isTextRevealed:
                                                 isActivePage &&
                                                 playerState.isTextRevealed,
+                                            horizontalPadding: EdgeInsets.zero,
                                             showHiddenTextPlaceholderLines:
                                                 !playerState.usesMediaEngine ||
                                                 !presentation
