@@ -4069,6 +4069,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This collection has been removed. You can still use the local copy.';
 
   @override
+  String get communityCollectionRefreshFailed =>
+      'Sync failed. Pull down to retry.';
+
+  @override
   String get communityFileUnavailable =>
       'This file was removed from the shared collection';
 

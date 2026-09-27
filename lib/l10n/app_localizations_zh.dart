@@ -3888,6 +3888,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionDeprecated => '该合集已移除，本地副本仍可继续使用。';
 
   @override
+  String get communityCollectionRefreshFailed => '同步失败，下拉重试';
+
+  @override
   String get communityFileUnavailable => '该文件已从共享合集中移除';
 
   @override

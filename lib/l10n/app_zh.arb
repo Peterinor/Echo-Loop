@@ -1675,6 +1675,7 @@
   "removeCommunityConfirmMessage": "将删除本合集所有媒体、字幕和相关学习记录，此操作不可恢复。",
   "removeCommunityConfirmConfirm": "确认移除",
   "communityCollectionDeprecated": "该合集已移除，本地副本仍可继续使用。",
+  "communityCollectionRefreshFailed": "同步失败，下拉重试",
   "communityFileUnavailable": "该文件已从共享合集中移除",
   "communityFilesRemoved": "共享合集中有 {count} 个文件已移除",
   "@communityFilesRemoved": {

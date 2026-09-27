@@ -7088,6 +7088,12 @@ abstract class AppLocalizations {
   /// **'This collection has been removed. You can still use the local copy.'**
   String get communityCollectionDeprecated;
 
+  /// No description provided for @communityCollectionRefreshFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync failed. Pull down to retry.'**
+  String get communityCollectionRefreshFailed;
+
   /// No description provided for @communityFileUnavailable.
   ///
   /// In en, this message translates to:

@@ -2151,6 +2151,7 @@
   "removeCommunityConfirmMessage": "All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.",
   "removeCommunityConfirmConfirm": "Remove",
   "communityCollectionDeprecated": "This collection has been removed. You can still use the local copy.",
+  "communityCollectionRefreshFailed": "Sync failed. Pull down to retry.",
   "communityFileUnavailable": "This file was removed from the shared collection",
   "communityFilesRemoved": "{count} files were removed from shared collections",
   "@communityFilesRemoved": {
