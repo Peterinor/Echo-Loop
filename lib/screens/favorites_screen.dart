@@ -359,7 +359,7 @@ class _FavoritesScreenState extends ConsumerState<FavoritesScreen> {
             ),
             PopupMenuButton<_FavoritesMoreAction>(
               key: const Key('favorites-more'),
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(Icons.more_horiz),
               tooltip: MaterialLocalizations.of(context).showMenuTooltip,
               onSelected: (action) {
                 switch (action) {

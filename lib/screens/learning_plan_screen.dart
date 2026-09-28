@@ -686,32 +686,35 @@ class _LearningPlanScreenState extends ConsumerState<LearningPlanScreen> {
 
     if (items.isEmpty) return null;
 
-    return PopupMenuButton<String>(
-      key: const Key('learning_plan_more_menu'),
-      tooltip: MaterialLocalizations.of(context).showMenuTooltip,
-      icon: const Icon(Icons.more_vert),
-      itemBuilder: (_) => items,
-      onSelected: (value) {
-        switch (value) {
-          case 'manageSubtitles':
-            showManageSubtitlesSheet(context, ref, audioItem);
-          case 'editSubtitles':
-            context.push(
-              AppRoutes.subtitleEditor(audioItem.id),
-              extra: audioItem,
-            );
-          case 'export':
-            exportAudioItem(context, ref, audioItem);
-          case 'exportPdf':
-            AppRoutes.pushNested(
-              context,
-              AppRoutes.pdfPreviewSegment,
-              extra: audioItem,
-            );
-          case 'resetProgress':
-            _showResetProgressDialog(context, l10n, audioItem);
-        }
-      },
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.s),
+      child: PopupMenuButton<String>(
+        key: const Key('learning_plan_more_menu'),
+        tooltip: MaterialLocalizations.of(context).showMenuTooltip,
+        icon: const Icon(Icons.more_horiz),
+        itemBuilder: (_) => items,
+        onSelected: (value) {
+          switch (value) {
+            case 'manageSubtitles':
+              showManageSubtitlesSheet(context, ref, audioItem);
+            case 'editSubtitles':
+              context.push(
+                AppRoutes.subtitleEditor(audioItem.id),
+                extra: audioItem,
+              );
+            case 'export':
+              exportAudioItem(context, ref, audioItem);
+            case 'exportPdf':
+              AppRoutes.pushNested(
+                context,
+                AppRoutes.pdfPreviewSegment,
+                extra: audioItem,
+              );
+            case 'resetProgress':
+              _showResetProgressDialog(context, l10n, audioItem);
+          }
+        },
+      ),
     );
   }
 

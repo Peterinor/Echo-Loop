@@ -464,6 +464,13 @@ void main() {
         tester.widget<AppBar>(find.byType(AppBar)).actionsPadding,
         const EdgeInsets.only(right: AppSpacing.s),
       );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('favorites-more')),
+          matching: find.byIcon(Icons.more_horiz),
+        ),
+        findsOneWidget,
+      );
       final statistics = tester.getRect(
         find.byKey(const Key('favorites-statistics')),
       );

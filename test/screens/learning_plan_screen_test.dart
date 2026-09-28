@@ -509,6 +509,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
+      expect(find.byIcon(Icons.more_horiz), findsOneWidget);
+
       await tester.tap(find.byKey(const Key('learning_plan_more_menu')));
       await tester.pumpAndSettle();
 
