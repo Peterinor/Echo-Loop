@@ -286,7 +286,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectFullSentence(s.index),
-      onSentenceTap: _handleSentenceDetail,
+      onSentenceExplanationTap: _handleSentenceDetail,
       onSentenceBookmarkToggle: (s) => controller.toggleBookmark(s.index),
     );
   }
@@ -386,7 +386,7 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: playerState.bookmarkedIndices,
       onSentencePlayFrom: (s) => controller.selectBookmarkedSentence(s.index),
-      onSentenceTap: _handleSentenceDetail,
+      onSentenceExplanationTap: _handleSentenceDetail,
       onSentenceBookmarkToggle: (s) => controller.toggleBookmark(s.index),
     );
   }
@@ -484,9 +484,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
     await controller.syncBookmarks();
   }
 
-  /// 正文点击进入讲解页时，先把播放器真相源同步到被点句。
+  /// 点击左侧讲解按钮进入讲解页时，先把播放器真相源同步到被点句。
   ///
-  /// 左侧编号区仍负责“从这句播放”；正文区只切换焦点并保持暂停，避免返回列表时
+  /// 句子正文负责“从这句播放”；打开讲解时只切换焦点并保持暂停，避免返回列表时
   /// 自动跟随旧播放句，同时不因为查看讲解而误启动播放。
   Future<void> _selectSentenceForDetail(
     ListeningPractice controller,

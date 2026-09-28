@@ -326,8 +326,7 @@ void main() {
         );
         await tester.pump();
 
-        // 播放控制栏应存在（play_arrow 限定在 PlaybackControls 内，
-        // 因为当前播放句的编号区也会渲染 play_arrow）
+        // play_arrow 只应出现在播放控制栏中；句子列表左侧固定显示讲解图标。
         expect(
           find.descendant(
             of: find.byType(PlaybackControls),
@@ -599,43 +598,7 @@ void main() {
         await _disposeTree(tester);
       });
 
-      testWidgets('点击句子编号区从该句开始播放', (tester) async {
-        final item = createTestAudioItem();
-        final sentences = createTestSentences(count: 3);
-
-        await tester.pumpWidget(
-          createTestScreen(
-            const PlayerScreen(),
-            overrides: _audioOverrides(
-              practiceState: ListeningPracticeState(
-                currentAudioItem: item,
-                sentences: sentences,
-                currentFullIndex: 0,
-              ),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // 初始：第 1 句播放（编号区显示 ▶），第 2 句编号区显示 '2'
-        expect(find.text('2'), findsOneWidget);
-        expect(find.text('1'), findsNothing);
-
-        // 点击第 2 句编号区 → selectFullSentence(1) → currentFullIndex=1
-        await tester.tap(
-          find.byKey(
-            const ValueKey('$kMaskedSentenceNumberHitAreaKeyPrefix-1'),
-          ),
-        );
-        await tester.pump();
-
-        // 第 2 句变为播放（▶），第 1 句编号区恢复显示 '1'
-        expect(find.text('1'), findsOneWidget);
-        expect(find.text('2'), findsNothing);
-        await _disposeTree(tester);
-      });
-
-      testWidgets('点击句子主体先切换焦点再进入讲解页', (tester) async {
+      testWidgets('点击句子正文从该句开始播放', (tester) async {
         final item = createTestAudioItem();
         final sentences = createTestSentences(count: 3);
         final player = _RecordingListeningPractice(
@@ -654,13 +617,46 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        // 点击非当前句主体区，避开左侧编号播放热区。
+        // 点击第 2 句正文 → selectFullSentence(1) → currentFullIndex=1
         await tester.tap(
-          find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-2')),
+          find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
+        );
+        await tester.pump();
+
+        expect(player.selectFullCalls, [(index: 1, autoPlay: true)]);
+        expect(player.state.currentFullIndex, 1);
+        expect(find.byType(ParagraphSentenceListCard), findsOneWidget);
+        await _disposeTree(tester);
+      });
+
+      testWidgets('点击左侧讲解按钮先切换焦点再进入讲解页', (tester) async {
+        final item = createTestAudioItem();
+        final sentences = createTestSentences(count: 3);
+        final player = _RecordingListeningPractice(
+          ListeningPracticeState(
+            currentAudioItem: item,
+            sentences: sentences,
+            currentFullIndex: 0,
+          ),
+        );
+
+        await tester.pumpWidget(
+          createTestScreen(
+            const PlayerScreen(),
+            overrides: _recordingOverrides(player),
+          ),
         );
         await tester.pumpAndSettle();
 
-        // 正文点击只切换焦点，不自动播放；返回时列表会跟随新焦点。
+        // 点击非当前句的左侧讲解按钮。
+        await tester.tap(
+          find.byKey(
+            const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-2'),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // 进入讲解前只切换焦点，不自动播放；返回时列表会跟随新焦点。
         expect(player.selectFullCalls, [(index: 2, autoPlay: false)]);
         expect(player.state.currentFullIndex, 2);
         // 导航到讲解页 stub。

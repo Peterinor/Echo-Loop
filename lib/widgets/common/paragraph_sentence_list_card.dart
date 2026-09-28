@@ -79,10 +79,10 @@ class ParagraphSentenceListCard extends StatefulWidget {
   /// 已收藏句子索引集合（用于显示只读标记）
   final Set<int> bookmarkedSentenceIndices;
 
-  /// 点击句子主体（文本 / 书签）回调：进入句子讲解页
-  final ValueChanged<Sentence>? onSentenceTap;
+  /// 点击左侧讲解按钮回调：进入句子讲解页
+  final ValueChanged<Sentence>? onSentenceExplanationTap;
 
-  /// 点击句子编号区回调：从该句开始播放
+  /// 点击句子主体回调：从该句开始播放
   final ValueChanged<Sentence>? onSentencePlayFrom;
 
   /// 点击句子右侧收藏按钮回调：直接切换收藏状态
@@ -91,10 +91,10 @@ class ParagraphSentenceListCard extends StatefulWidget {
   /// 新手引导：挂引导 step 的句子本地索引（默认挂在 idx=1，回退到 idx=0）
   final int? guideTargetLocalIdx;
 
-  /// 新手引导：编号区 step
-  final GuideStep? numberAreaGuideStep;
+  /// 新手引导：左侧讲解按钮 step
+  final GuideStep? explanationAreaGuideStep;
 
-  /// 新手引导：主体区 step
+  /// 新手引导：句子主体播放 step
   final GuideStep? bodyAreaGuideStep;
 
   const ParagraphSentenceListCard({
@@ -106,11 +106,11 @@ class ParagraphSentenceListCard extends StatefulWidget {
     this.autoFocusEnabled = false,
     this.autoFocusResumeDelay = const Duration(seconds: 2),
     this.bookmarkedSentenceIndices = const {},
-    this.onSentenceTap,
+    this.onSentenceExplanationTap,
     this.onSentencePlayFrom,
     this.onSentenceBookmarkToggle,
     this.guideTargetLocalIdx,
-    this.numberAreaGuideStep,
+    this.explanationAreaGuideStep,
     this.bodyAreaGuideStep,
   });
 
@@ -368,7 +368,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
               final sentenceIndex = index ~/ 2;
               final sentence = widget.sentences[sentenceIndex];
               final isGuideTarget = widget.guideTargetLocalIdx == sentenceIndex;
-              final onSentenceTap = widget.onSentenceTap;
+              final onSentenceExplanationTap = widget.onSentenceExplanationTap;
               final onSentencePlayFrom = widget.onSentencePlayFrom;
               final onSentenceBookmarkToggle = widget.onSentenceBookmarkToggle;
               return MaskedSentenceTile(
@@ -379,17 +379,17 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
                 isBookmarked: widget.bookmarkedSentenceIndices.contains(
                   sentence.index,
                 ),
-                onDetailTap: onSentenceTap == null
+                onDetailTap: onSentenceExplanationTap == null
                     ? null
-                    : () => onSentenceTap(sentence),
+                    : () => onSentenceExplanationTap(sentence),
                 onPlayFromTap: onSentencePlayFrom == null
                     ? null
                     : () => onSentencePlayFrom(sentence),
                 onBookmarkTap: onSentenceBookmarkToggle == null
                     ? null
                     : () => onSentenceBookmarkToggle(sentence),
-                numberAreaGuideStep: isGuideTarget
-                    ? widget.numberAreaGuideStep
+                explanationAreaGuideStep: isGuideTarget
+                    ? widget.explanationAreaGuideStep
                     : null,
                 bodyAreaGuideStep: isGuideTarget
                     ? widget.bodyAreaGuideStep

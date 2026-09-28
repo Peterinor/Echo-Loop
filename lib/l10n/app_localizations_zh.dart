@@ -3723,10 +3723,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get guideFavoritesVocabularyListDescription => '这里是你收藏的单词、词组、意群。';
 
   @override
-  String get guideSentenceTileNumberDescription => '点击编号从这句开始播放。';
+  String get guideSentenceTileBodyDescription => '点击句子从这里开始播放。';
 
   @override
-  String get guideSentenceTileBodyDescription => '点击句子查看讲解。';
+  String get guideSentenceTileExplanationDescription => '点击左侧讲解图标查看这句话的讲解。';
+
+  @override
+  String get viewSentenceExplanation => '查看句子讲解';
 
   @override
   String get guideSubtitleEditorBoundaryHandleDescription =>

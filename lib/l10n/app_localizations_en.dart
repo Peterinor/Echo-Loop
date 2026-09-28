@@ -3888,12 +3888,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your saved words, phrases, and sense groups.';
 
   @override
-  String get guideSentenceTileNumberDescription =>
-      'Tap the number to play from this sentence.';
+  String get guideSentenceTileBodyDescription =>
+      'Tap the sentence to play from here.';
 
   @override
-  String get guideSentenceTileBodyDescription =>
-      'Tap the sentence to view explanations.';
+  String get guideSentenceTileExplanationDescription =>
+      'Tap the explanation icon on the left to view this sentence\'s explanation.';
+
+  @override
+  String get viewSentenceExplanation => 'View sentence explanation';
 
   @override
   String get guideSubtitleEditorBoundaryHandleDescription =>

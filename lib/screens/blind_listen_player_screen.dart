@@ -88,9 +88,9 @@ class _BlindListenPlayerScreenState
   /// 同步阶段（几十 ms），不阻塞下一次点击。
   bool _isSeeking = false;
 
-  /// 新手引导：编号区 / 主体区 Showcase key（随 State 生命周期存在）
-  final GlobalKey _guideNumberKey = GlobalKey(
-    debugLabel: 'guideSentenceNumber',
+  /// 新手引导：讲解按钮 / 主体播放区 Showcase key（随 State 生命周期存在）
+  final GlobalKey _guideExplanationKey = GlobalKey(
+    debugLabel: 'guideSentenceExplanation',
   );
   final GlobalKey _guideBodyKey = GlobalKey(debugLabel: 'guideSentenceBody');
   ProviderSubscription<BlindListenPlayerState>? _playerSubscription;
@@ -181,7 +181,7 @@ class _BlindListenPlayerScreenState
 
   // ========== 句子点击 ==========
 
-  /// 点击句子编号 → 从该句开始播放
+  /// 点击句子正文 → 从该句开始播放
   ///
   /// guard 只 hold seekToSentence 的同步阶段（Provider 内 _cancelAll + state.copyWith
   /// 完成立即返回，_playCurrentParagraph 是 unawaited 异步执行）。
@@ -671,21 +671,21 @@ class _BlindListenPlayerScreenState
           )
         : l10n.intensiveListenProgress(sentenceIdx, player.totalSentenceCount);
 
-    // 新手引导：编号→开播、文本→讲解。统一挂在第 1 句（idx=0），首项最显眼。
+    // 新手引导：文本→开播、左侧图标→讲解。统一挂在第 1 句（idx=0），首项最显眼。
     const guideTargetLocalIdx = 0;
-    final numberStep = GuideStep(
-      key: _guideNumberKey,
-      description: l10n.guideSentenceTileNumberDescription,
-    );
     final bodyStep = GuideStep(
       key: _guideBodyKey,
       description: l10n.guideSentenceTileBodyDescription,
+    );
+    final explanationStep = GuideStep(
+      key: _guideExplanationKey,
+      description: l10n.guideSentenceTileExplanationDescription,
     );
     final guideFlows = <GuideFlow>[
       GuideFlow(
         flowId: GuideFlowIds.sentenceTileTour,
         shouldRun: sentences.isNotEmpty,
-        steps: [numberStep, bodyStep],
+        steps: [bodyStep, explanationStep],
       ),
     ];
 
@@ -754,13 +754,13 @@ class _BlindListenPlayerScreenState
               playingSentenceIndex: playerState.playingSentenceIndex,
               autoFocusEnabled: true,
               bookmarkedSentenceIndices: playerState.bookmarkedSentenceIndices,
-              onSentenceTap: _handleSentenceDetail,
+              onSentenceExplanationTap: _handleSentenceDetail,
               onSentencePlayFrom: _handleSentencePlayFrom,
               onSentenceBookmarkToggle: (sentence) => ref
                   .read(blindListenPlayerProvider.notifier)
                   .toggleBookmark(widget.audioItemId, sentence),
               guideTargetLocalIdx: guideTargetLocalIdx,
-              numberAreaGuideStep: numberStep,
+              explanationAreaGuideStep: explanationStep,
               bodyAreaGuideStep: bodyStep,
             ),
             topContent: topContent,

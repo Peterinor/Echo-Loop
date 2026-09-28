@@ -520,7 +520,7 @@ void main() {
     expect(find.byType(TabBar), findsNothing);
     expect(find.byType(TabBarView), findsOneWidget);
     final card = tester.widget<ParagraphSentenceListCard>(cardFinder);
-    expect(card.onSentenceTap, isNotNull);
+    expect(card.onSentenceExplanationTap, isNotNull);
 
     final cardRect = tester.getRect(cardFinder);
     final viewportWidth =
@@ -807,7 +807,7 @@ void main() {
     expect(find.byIcon(Icons.bookmarks_outlined), findsOneWidget);
   });
 
-  testMediaWidgets('收藏列表播放中仍可点击编号、正文和书签热区', (tester) async {
+  testMediaWidgets('收藏列表播放中仍可点击正文、讲解按钮和书签热区', (tester) async {
     await tester.pumpWidget(
       createTestScreen(
         MediaPlaybackScreen(audioItem: item),
@@ -837,7 +837,7 @@ void main() {
     }
 
     await tester.tap(
-      find.byKey(const ValueKey('$kMaskedSentenceNumberHitAreaKeyPrefix-1')),
+      find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
     );
     await tester.pump(const Duration(milliseconds: 20));
     expect(container.read(mediaPlaybackProvider).currentBookmarkIndex, 1);
@@ -846,7 +846,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.tap(
-      find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
+      find.byKey(
+        const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-1'),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('Sentence Detail'), findsOneWidget);

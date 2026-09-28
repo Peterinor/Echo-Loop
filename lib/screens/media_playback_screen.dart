@@ -449,7 +449,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       autoFocusEnabled: true,
       bookmarkedSentenceIndices: state.bookmarkedIndices,
       onSentencePlayFrom: onPlayFrom,
-      onSentenceTap: _handleSentenceDetail,
+      onSentenceExplanationTap: _handleSentenceDetail,
       onSentenceBookmarkToggle: (s) => _handleBookmarkToggle(s.index),
     );
   }

@@ -108,9 +108,9 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
   /// 切段清理期间冻结录音状态副作用和自动启动。
   bool _isParagraphTransitioning = false;
 
-  /// 新手引导：编号区 / 主体区 Showcase key（随 State 生命周期存在）
-  final GlobalKey _guideNumberKey = GlobalKey(
-    debugLabel: 'retellGuideSentenceNumber',
+  /// 新手引导：讲解按钮 / 主体播放区 Showcase key（随 State 生命周期存在）
+  final GlobalKey _guideExplanationKey = GlobalKey(
+    debugLabel: 'retellGuideSentenceExplanation',
   );
   final GlobalKey _guideBodyKey = GlobalKey(
     debugLabel: 'retellGuideSentenceBody',
@@ -1347,7 +1347,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     await showRetellSettingsSheet(context);
   }
 
-  /// 点击句子编号 → 从该句开始播放
+  /// 点击句子正文 → 从该句开始播放
   ///
   /// 分场景处理：
   /// - **listening 阶段**：seekToSentence 内 _cancelAll 已经处理音频清理，
@@ -1557,22 +1557,22 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     // 录音结果（从 controller state 获取）
     final currentAttempt = retellRecState.currentAttempt;
 
-    // 新手引导：编号→开播、文本→讲解。统一挂在第 1 句（idx=0），首项最显眼。
+    // 新手引导：文本→开播、左侧图标→讲解。统一挂在第 1 句（idx=0），首项最显眼。
     // 盲听和复述共用同一个 flow id —— 用户先在任一页看过就不再弹另一页。
     const guideTargetLocalIdx = 0;
-    final numberStep = GuideStep(
-      key: _guideNumberKey,
-      description: l10n.guideSentenceTileNumberDescription,
-    );
     final bodyStep = GuideStep(
       key: _guideBodyKey,
       description: l10n.guideSentenceTileBodyDescription,
+    );
+    final explanationStep = GuideStep(
+      key: _guideExplanationKey,
+      description: l10n.guideSentenceTileExplanationDescription,
     );
     final guideFlows = <GuideFlow>[
       GuideFlow(
         flowId: GuideFlowIds.sentenceTileTour,
         shouldRun: sentences.isNotEmpty,
-        steps: [numberStep, bodyStep],
+        steps: [bodyStep, explanationStep],
       ),
     ];
 
@@ -1650,13 +1650,13 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
                         ? state.playingSentenceIndex
                         : -1,
                     bookmarkedSentenceIndices: state.bookmarkedSentenceIndices,
-                    onSentenceTap: _handleSentenceDetail,
+                    onSentenceExplanationTap: _handleSentenceDetail,
                     onSentencePlayFrom: _handleSentencePlayFrom,
                     onSentenceBookmarkToggle: (sentence) => ref
                         .read(retellPlayerProvider.notifier)
                         .toggleBookmark(widget.audioItemId, sentence),
                     guideTargetLocalIdx: guideTargetLocalIdx,
-                    numberAreaGuideStep: numberStep,
+                    explanationAreaGuideStep: explanationStep,
                     bodyAreaGuideStep: bodyStep,
                   ),
                   contentControls:

@@ -6782,17 +6782,23 @@ abstract class AppLocalizations {
   /// **'Your saved words, phrases, and sense groups.'**
   String get guideFavoritesVocabularyListDescription;
 
-  /// No description provided for @guideSentenceTileNumberDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap the number to play from this sentence.'**
-  String get guideSentenceTileNumberDescription;
-
   /// No description provided for @guideSentenceTileBodyDescription.
   ///
   /// In en, this message translates to:
-  /// **'Tap the sentence to view explanations.'**
+  /// **'Tap the sentence to play from here.'**
   String get guideSentenceTileBodyDescription;
+
+  /// No description provided for @guideSentenceTileExplanationDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the explanation icon on the left to view this sentence\'s explanation.'**
+  String get guideSentenceTileExplanationDescription;
+
+  /// No description provided for @viewSentenceExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'View sentence explanation'**
+  String get viewSentenceExplanation;
 
   /// No description provided for @guideSubtitleEditorBoundaryHandleDescription.
   ///

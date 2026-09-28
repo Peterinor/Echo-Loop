@@ -23,10 +23,10 @@ import '../../utils/keyword_extraction.dart';
 import '../guide_flow.dart';
 import '../practice/sentence_word_selection.dart';
 
-/// 句子编号点击区 key 前缀（供 widget test 精准点击，避免点到文本本身）。
+/// 句子讲解按钮 key 前缀（供 widget test 精准点击，避免点到文本本身）。
 @visibleForTesting
-const String kMaskedSentenceNumberHitAreaKeyPrefix =
-    'masked-sentence-number-hit-area';
+const String kMaskedSentenceExplanationHitAreaKeyPrefix =
+    'masked-sentence-explanation-hit-area';
 
 /// 句子主体点击区 key 前缀（供 widget test 精准点击，避免受内部文本布局影响）。
 @visibleForTesting
@@ -44,9 +44,8 @@ const _wordSpacing = 4.0;
 /// 遮盖句子 Tile
 ///
 /// 三个独立点击区：
-/// - **编号区**（左侧 32dp 宽，撑满 tile 全高）：`onPlayFromTap`，点击从该句开播。
-///   当前播放句的编号位置渲染 ▶ play_arrow 图标，提示"点击=播放"。
-/// - **主体区**（中间 Expanded）：`onDetailTap`，点击进入句子讲解页。
+/// - **讲解区**（左侧 32dp 宽，撑满 tile 全高）：`onDetailTap`，点击进入句子讲解页。
+/// - **主体区**（中间 Expanded）：`onPlayFromTap`，点击从该句开始播放。
 /// - **收藏区**（右侧独立按钮）：`onBookmarkTap`，直接收藏/取消收藏。
 class MaskedSentenceTile extends ConsumerWidget {
   /// 句子数据
@@ -64,19 +63,19 @@ class MaskedSentenceTile extends ConsumerWidget {
   /// 是否已收藏
   final bool isBookmarked;
 
-  /// 点击编号区回调：从该句开始播放
+  /// 点击句子主体回调：从该句开始播放
   final VoidCallback? onPlayFromTap;
 
-  /// 点击主体（文本/书签）区回调：进入句子讲解页
+  /// 点击左侧讲解按钮回调：进入句子讲解页
   final VoidCallback? onDetailTap;
 
   /// 点击右侧收藏按钮回调：直接切换收藏状态
   final VoidCallback? onBookmarkTap;
 
-  /// 新手引导：编号区 GuideStep（非空时包 GuideTarget 高亮编号区）
-  final GuideStep? numberAreaGuideStep;
+  /// 新手引导：讲解按钮 GuideStep（非空时包 GuideTarget 高亮左侧讲解按钮）
+  final GuideStep? explanationAreaGuideStep;
 
-  /// 新手引导：主体区 GuideStep（非空时包 GuideTarget 高亮文本区）
+  /// 新手引导：主体区 GuideStep（非空时包 GuideTarget 高亮可播放文本区）
   final GuideStep? bodyAreaGuideStep;
 
   const MaskedSentenceTile({
@@ -89,7 +88,7 @@ class MaskedSentenceTile extends ConsumerWidget {
     this.onPlayFromTap,
     this.onDetailTap,
     this.onBookmarkTap,
-    this.numberAreaGuideStep,
+    this.explanationAreaGuideStep,
     this.bodyAreaGuideStep,
   });
 
@@ -122,15 +121,16 @@ class MaskedSentenceTile extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _wrapWithGuide(
-              numberAreaGuideStep,
-              _SentenceNumberHitArea(
+              explanationAreaGuideStep,
+              _SentenceExplanationHitArea(
                 key: ValueKey(
-                  '$kMaskedSentenceNumberHitAreaKeyPrefix-${sentence.index}',
+                  '$kMaskedSentenceExplanationHitAreaKeyPrefix-${sentence.index}',
                 ),
-                displayNumber: sentence.index + 1,
-                isPlayingSentence: isPlayingSentence,
                 theme: theme,
-                onTap: onPlayFromTap,
+                label:
+                    AppLocalizations.of(context)?.viewSentenceExplanation ??
+                    'View sentence explanation',
+                onTap: onDetailTap,
               ),
             ),
             Expanded(
@@ -141,7 +141,7 @@ class MaskedSentenceTile extends ConsumerWidget {
                     '$kMaskedSentenceBodyHitAreaKeyPrefix-${sentence.index}',
                   ),
                   theme: theme,
-                  onTap: onDetailTap,
+                  onTap: onPlayFromTap,
                   child: _buildMaskedText(
                     theme,
                     tokenize(sentence.text),
@@ -216,22 +216,18 @@ class MaskedSentenceTile extends ConsumerWidget {
   }
 }
 
-/// 编号点击区
+/// 左侧讲解按钮。
 ///
-/// 固定 32dp 宽，给正文释放更多横向空间，同时保留独立播放热区
-/// （热区随 tile 全高撑开，窄宽度不影响可点性）。
-/// 当前播放句渲染 ▶ play_arrow（与正在播放视觉绑定），否则渲染数字。
-class _SentenceNumberHitArea extends StatelessWidget {
-  final int displayNumber;
-  final bool isPlayingSentence;
+/// 固定 32dp 宽，给正文释放更多横向空间；热区随 tile 全高撑开。
+class _SentenceExplanationHitArea extends StatelessWidget {
   final VoidCallback? onTap;
   final ThemeData theme;
+  final String label;
 
-  const _SentenceNumberHitArea({
+  const _SentenceExplanationHitArea({
     super.key,
-    required this.displayNumber,
-    required this.isPlayingSentence,
     required this.theme,
+    required this.label,
     this.onTap,
   });
 
@@ -242,31 +238,34 @@ class _SentenceNumberHitArea extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
         child: Center(
-          child: isPlayingSentence
-              ? Icon(
-                  Icons.play_arrow,
-                  size: 20,
-                  color: theme.colorScheme.primary,
-                )
-              : Text(
-                  '$displayNumber',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
+          child: Icon(
+            Icons.auto_awesome,
+            size: 18,
+            color: Colors.purple.shade400,
+          ),
         ),
       ),
     );
 
-    if (onTap == null) return inner;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        // 背景在外层 AnimatedContainer 上，splash 会被遮挡，仅用 highlight 反馈
-        splashColor: Colors.transparent,
-        highlightColor: theme.colorScheme.primary.withValues(alpha: 0.12),
-        child: inner,
+    return Semantics(
+      button: onTap != null,
+      label: label,
+      child: Tooltip(
+        message: label,
+        child: onTap == null
+            ? inner
+            : Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  // 背景在外层 AnimatedContainer 上，splash 会被遮挡，仅用 highlight 反馈
+                  splashColor: Colors.transparent,
+                  highlightColor: theme.colorScheme.primary.withValues(
+                    alpha: 0.12,
+                  ),
+                  child: inner,
+                ),
+              ),
       ),
     );
   }
@@ -274,7 +273,7 @@ class _SentenceNumberHitArea extends StatelessWidget {
 
 /// 主体点击区（文本）
 ///
-/// 撑满剩余宽度，撑满 tile 全高。点击进入句子讲解页。
+/// 撑满剩余宽度，撑满 tile 全高。点击从该句开始播放。
 class _SentenceBodyHitArea extends StatelessWidget {
   final ThemeData theme;
   final VoidCallback? onTap;
