@@ -6,8 +6,10 @@ library;
 
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
+import '../models/study_stage.dart';
 import '../theme/app_theme.dart';
 import 'common/learning_briefing_sheet_content.dart';
+import 'study/study_stage_visuals.dart';
 
 /// 显示盲听简报底部弹窗
 ///
@@ -83,6 +85,7 @@ class BlindListenBriefingSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+    final visual = studyStageVisual(StudyStage.blindListen, l10n);
 
     // 阶段副标题
     final subtitle = isFirstStudy
@@ -104,8 +107,12 @@ class BlindListenBriefingSheet extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.l),
 
-          // 耳机图标
-          Icon(Icons.headphones, size: 56, color: theme.colorScheme.primary),
+          // 与学习任务列表共用阶段图标和颜色。
+          Icon(
+            visual.icon,
+            size: 56,
+            color: visual.iconColor ?? theme.colorScheme.primary,
+          ),
           const SizedBox(height: AppSpacing.m),
 
           // 标题

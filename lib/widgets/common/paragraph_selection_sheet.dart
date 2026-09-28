@@ -27,6 +27,7 @@ const paragraphDurationOptions = [0, 10, 15, 20, 25, 30, 45, 60, 90, -1];
 /// 显示段落选择弹窗
 ///
 /// [icon] 顶部图标
+/// [iconColor] 顶部任务图标颜色；未传时使用主题主色
 /// [title] 标题文字
 /// [subtitle] 说明文字
 /// [sentences] 字幕句子列表
@@ -43,6 +44,7 @@ const paragraphDurationOptions = [0, 10, 15, 20, 25, 30, 45, 60, 90, -1];
 Future<void> showParagraphSelectionSheet({
   required BuildContext context,
   required IconData icon,
+  Color? iconColor,
   required String title,
   required String subtitle,
   required List<Sentence> sentences,
@@ -93,6 +95,7 @@ Future<void> showParagraphSelectionSheet({
     ),
     builder: (context) => _ParagraphSelectionSheet(
       icon: icon,
+      iconColor: iconColor,
       title: title,
       subtitle: subtitle,
       sentences: sentences,
@@ -122,6 +125,7 @@ Future<void> showParagraphSelectionSheet({
 
 class _ParagraphSelectionSheet extends StatefulWidget {
   final IconData icon;
+  final Color? iconColor;
   final String title;
   final String subtitle;
   final List<Sentence> sentences;
@@ -166,6 +170,7 @@ class _ParagraphSelectionSheet extends StatefulWidget {
 
   const _ParagraphSelectionSheet({
     required this.icon,
+    this.iconColor,
     required this.title,
     required this.subtitle,
     required this.sentences,
@@ -255,7 +260,11 @@ class _ParagraphSelectionSheetState extends State<_ParagraphSelectionSheet> {
           ),
 
           // 图标
-          Icon(widget.icon, size: 56, color: theme.colorScheme.primary),
+          Icon(
+            widget.icon,
+            size: 56,
+            color: widget.iconColor ?? theme.colorScheme.primary,
+          ),
           const SizedBox(height: AppSpacing.s),
 
           // 标题
@@ -279,15 +288,31 @@ class _ParagraphSelectionSheetState extends State<_ParagraphSelectionSheet> {
 
           const SizedBox(height: AppSpacing.xs),
 
-          // 说明
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
-            child: Text(
-              widget.subtitle,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+          // 学习提示与其他任务入口统一使用灯泡提示卡片。
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.m),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.lightbulb_outline,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: AppSpacing.s),
+                Expanded(
+                  child: Text(
+                    widget.subtitle,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
 

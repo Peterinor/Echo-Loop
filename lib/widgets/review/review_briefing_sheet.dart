@@ -8,11 +8,13 @@ import '../../l10n/app_localizations.dart';
 import '../../models/difficult_practice_settings.dart';
 import '../../models/intensive_listen_settings.dart'
     show IntensiveListenSettings;
+import '../../models/study_stage.dart';
 import '../../models/stage_settings_overrides.dart' show BriefingPauseChoice;
 import '../../theme/app_theme.dart';
 import '../../utils/playback_speed.dart';
 import '../common/briefing_action_row.dart';
 import '../common/learning_briefing_sheet_content.dart';
+import '../study/study_stage_visuals.dart';
 
 /// 复习步骤提示弹窗。
 ///
@@ -98,6 +100,14 @@ class _ReviewBriefingSheetState extends State<_ReviewBriefingSheet> {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+    final stageVisual = switch (widget.subStage) {
+      SubStageType.reviewDifficultPractice => studyStageVisual(
+        StudyStage.reviewDifficultPractice,
+        l10n,
+      ),
+      SubStageType.reviewRetellSummary => studyRetellSummaryVisual(l10n),
+      _ => _unsupportedSubStage(widget.subStage),
+    };
 
     return LearningBriefingSheetContent(
       child: Column(
@@ -113,9 +123,9 @@ class _ReviewBriefingSheetState extends State<_ReviewBriefingSheet> {
           ),
           const SizedBox(height: AppSpacing.l),
           Icon(
-            _iconForSubStage(widget.subStage),
+            stageVisual.icon,
             size: 56,
-            color: theme.colorScheme.primary,
+            color: stageVisual.iconColor ?? theme.colorScheme.primary,
           ),
           const SizedBox(height: AppSpacing.m),
           Text(
@@ -255,14 +265,6 @@ class _ReviewBriefingSheetState extends State<_ReviewBriefingSheet> {
 /// `learning_plan_screen.dart` 的 `_startReviewSubStage`），不会传入这里。
 Never _unsupportedSubStage(SubStageType subStage) =>
     throw ArgumentError('复习简报弹窗不支持子步骤 $subStage');
-
-IconData _iconForSubStage(SubStageType subStage) {
-  return switch (subStage) {
-    SubStageType.reviewDifficultPractice => Icons.hearing,
-    SubStageType.reviewRetellSummary => Icons.summarize,
-    _ => _unsupportedSubStage(subStage),
-  };
-}
 
 String _titleForSubStage(AppLocalizations l10n, SubStageType subStage) {
   return switch (subStage) {

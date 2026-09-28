@@ -3637,6 +3637,7 @@ class _ReviewRoundSection extends ConsumerWidget {
 
   /// 复习子阶段名称与描述映射
   _StepData _subStageData(SubStageType subStage) {
+    final retellSummaryVisual = studyRetellSummaryVisual(l10n);
     return switch (subStage) {
       SubStageType.blindListen => _stepDataForStage(
         StudyStage.blindListen,
@@ -3663,9 +3664,9 @@ class _ReviewRoundSection extends ConsumerWidget {
         l10n.reviewRetellParagraphDesc,
       ),
       SubStageType.reviewRetellSummary => _StepData(
-        icon: Icons.summarize,
-        iconColor: Colors.cyan,
-        name: l10n.stepFullTextRetelling,
+        icon: retellSummaryVisual.icon,
+        iconColor: retellSummaryVisual.iconColor,
+        name: retellSummaryVisual.name,
         description: l10n.reviewRetellSummaryDesc,
       ),
     };
