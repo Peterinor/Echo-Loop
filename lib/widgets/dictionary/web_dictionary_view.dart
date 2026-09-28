@@ -17,6 +17,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/app_localizations.dart';
+import '../../services/app_logger.dart';
 import '../../theme/app_theme.dart';
 
 /// 移动端 User-Agent：强制各词典站返回移动版页面（布局更紧凑、适合弹窗窄屏）。
@@ -99,7 +100,13 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
   void _armTimeout() {
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(_loadTimeout, () {
-      if (mounted && _loading) _onError();
+      if (mounted && _loading) {
+        AppLogger.log(
+          'WebDictionary',
+          'load timeout source=${widget.sourceId} host=${widget.url.host}',
+        );
+        _onError();
+      }
     });
   }
 
@@ -194,7 +201,22 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
                 if (!_loading) return;
                 if (request.isForMainFrame != true) return;
                 if (error.type == WebResourceErrorType.CANCELLED) return;
+                AppLogger.log(
+                  'WebDictionary',
+                  'load error source=${widget.sourceId} '
+                      'type=${error.type} host=${request.url.host} '
+                      'description=${error.description}',
+                );
                 _onError();
+              },
+              onReceivedHttpError: (_, request, errorResponse) {
+                if (request.isForMainFrame != true) return;
+                AppLogger.log(
+                  'WebDictionary',
+                  'HTTP error source=${widget.sourceId} '
+                      'status=${errorResponse.statusCode} '
+                      'host=${request.url.host}',
+                );
               },
             ),
             // 加载期间不透明遮罩 + 居中转圈：盖住未绘制的空白/上一帧，
