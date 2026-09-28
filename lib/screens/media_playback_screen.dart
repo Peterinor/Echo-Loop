@@ -831,7 +831,8 @@ class _MediaControls extends ConsumerWidget {
                 context,
                 icon: state.settings.singleSentenceMode
                     ? Icons.format_quote
-                    : Icons.article,
+                    : Icons.menu,
+                key: const ValueKey('media-list-mode-toggle-button'),
                 active: state.settings.singleSentenceMode,
                 onPressed: () => controller.updateSettings(
                   state.settings.copyWith(
@@ -898,13 +899,17 @@ class _MediaControls extends ConsumerWidget {
       isSelected: isBookmarks,
       icon: Badge(
         isLabelVisible: bookmarkCount > 0,
+        backgroundColor: AppTheme.bookmarkCountBadgeColor,
+        textColor: AppTheme.bookmarkCountBadgeTextColor,
         label: Text(badgeLabel),
         child: const Icon(Icons.bookmarks_outlined),
       ),
       selectedIcon: Badge(
         isLabelVisible: bookmarkCount > 0,
+        backgroundColor: AppTheme.bookmarkCountSelectedBadgeColor,
+        textColor: AppTheme.bookmarkCountSelectedBadgeTextColor,
         label: Text(badgeLabel),
-        child: const Icon(Icons.bookmarks),
+        child: const Icon(Icons.bookmarks, color: AppTheme.bookmarkColor),
       ),
       color: colorScheme.onSurface.withValues(alpha: 0.6),
       style: isBookmarks
@@ -967,14 +972,17 @@ class _MediaControls extends ConsumerWidget {
     required IconData icon,
     required bool active,
     required VoidCallback onPressed,
+    Key? key,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = active
+        ? colorScheme.primary
+        : colorScheme.onSurface.withValues(alpha: 0.6);
     return IconButton(
+      key: key,
       icon: Icon(icon),
       iconSize: 22,
-      color: active
-          ? colorScheme.primary
-          : colorScheme.onSurface.withValues(alpha: 0.6),
+      color: iconColor,
       style: active
           ? IconButton.styleFrom(backgroundColor: colorScheme.primaryContainer)
           : null,
@@ -1136,32 +1144,61 @@ class _MediaInfoBar extends StatelessWidget {
     final captionStyle = AppTextStyles.caption(
       context,
     ).copyWith(color: mutedColor);
+    final groupSpacing = MediaQuery.sizeOf(context).width <= 360 ? 4.0 : 12.0;
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (state.hasSentences) ...[
-          Icon(
-            state.settings.singleSentenceMode
-                ? Icons.format_quote
-                : Icons.article,
-            size: 14,
-            color: mutedColor,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                key: const ValueKey('media-info-playlist-mode-icon'),
+                state.playlistMode == PlaylistMode.bookmarks
+                    ? Icons.bookmarks
+                    : Icons.article,
+                size: 14,
+                color: mutedColor,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                state.playlistMode == PlaylistMode.bookmarks
+                    ? l10n.bookmarked
+                    : l10n.fullText,
+                style: captionStyle,
+              ),
+            ],
           ),
-          const SizedBox(width: 3),
-          Text(
-            state.settings.singleSentenceMode
-                ? l10n.singleSentenceMode
-                : l10n.listMode,
-            style: captionStyle,
+          SizedBox(width: groupSpacing),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (state.settings.singleSentenceMode)
+                Icon(Icons.format_quote, size: 14, color: mutedColor)
+              else
+                Icon(
+                  key: const ValueKey('media-info-sentence-mode-icon'),
+                  Icons.menu,
+                  size: 14,
+                  color: mutedColor,
+                ),
+              const SizedBox(width: 3),
+              Text(
+                state.settings.singleSentenceMode
+                    ? l10n.singleSentenceMode
+                    : l10n.listMode,
+                style: captionStyle,
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
         ],
         Text(
           formatPlaybackSpeedLabel(state.settings.playbackSpeed),
           style: captionStyle,
         ),
         if (state.settings.loopWhole) ...[
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
           _loopBadge(
             Icons.repeat,
             state.settings.wholeLoopCount,
@@ -1171,7 +1208,7 @@ class _MediaInfoBar extends StatelessWidget {
           ),
         ],
         if (state.settings.loopSentence) ...[
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
           _loopBadge(
             Icons.repeat_one,
             state.settings.sentenceLoopCount,
@@ -1185,7 +1222,9 @@ class _MediaInfoBar extends StatelessWidget {
     return Padding(
       key: const ValueKey('media-info-bar'),
       padding: EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, 0),
-      child: Center(child: row),
+      child: Center(
+        child: FittedBox(fit: BoxFit.scaleDown, child: row),
+      ),
     );
   }
 

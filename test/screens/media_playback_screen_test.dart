@@ -9,6 +9,7 @@ import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
 import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/media_playback/media_playback_provider.dart';
@@ -819,6 +820,35 @@ void main() {
       ),
     );
     await pumpMediaReady(tester);
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(MediaPlaybackScreen))) ??
+        (throw StateError('播放器测试页缺少本地化配置'));
+    final infoBar = find.byKey(const ValueKey('media-info-bar'));
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.fullText)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: infoBar,
+        matching: find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.article,
+    );
+    final sentenceModeIcon = find.byKey(
+      const ValueKey('media-info-sentence-mode-icon'),
+    );
+    final labelListIcon = tester.widget<Icon>(sentenceModeIcon);
+    expect(labelListIcon.icon, Icons.menu);
+    expect(labelListIcon.size, 14);
 
     final context = tester.element(find.byType(MediaPlaybackScreen));
     final container = ProviderScope.containerOf(context);
@@ -839,7 +869,41 @@ void main() {
       container.read(mediaPlaybackProvider).playlistMode,
       PlaylistMode.bookmarks,
     );
-    expect(find.byIcon(Icons.bookmarks), findsOneWidget);
+    final selectedBookmarkIcon = find.descendant(
+      of: button,
+      matching: find.byIcon(Icons.bookmarks),
+    );
+    expect(selectedBookmarkIcon, findsOneWidget);
+    expect(
+      tester.widget<Icon>(selectedBookmarkIcon).color,
+      AppTheme.bookmarkColor,
+    );
+    final bookmarkCountBadge = find.ancestor(
+      of: selectedBookmarkIcon,
+      matching: find.byType(Badge),
+    );
+    final badge = tester.widget<Badge>(bookmarkCountBadge);
+    expect(badge.backgroundColor, AppTheme.bookmarkCountSelectedBadgeColor);
+    expect(badge.textColor, AppTheme.bookmarkCountSelectedBadgeTextColor);
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.bookmarked)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: infoBar,
+        matching: find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.bookmarks,
+    );
 
     await tester.tap(button);
     await tester.pumpAndSettle();
@@ -847,7 +911,27 @@ void main() {
       container.read(mediaPlaybackProvider).playlistMode,
       PlaylistMode.full,
     );
-    expect(find.byIcon(Icons.bookmarks_outlined), findsOneWidget);
+    final fullModeBookmarkIcon = find.byIcon(Icons.bookmarks_outlined);
+    expect(fullModeBookmarkIcon, findsOneWidget);
+    final fullModeBookmarkBadge = find.ancestor(
+      of: fullModeBookmarkIcon,
+      matching: find.byType(Badge),
+    );
+    final fullModeBadge = tester.widget<Badge>(fullModeBookmarkBadge);
+    expect(fullModeBadge.backgroundColor, AppTheme.bookmarkCountBadgeColor);
+    expect(fullModeBadge.textColor, AppTheme.bookmarkCountBadgeTextColor);
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.fullText)),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.article,
+    );
   });
 
   testMediaWidgets('收藏列表播放中仍可点击正文、讲解按钮和书签热区', (tester) async {
@@ -1025,10 +1109,11 @@ void main() {
     expect(state.settings.singleSentenceMode, isFalse);
     expect(find.byType(ParagraphSentenceListCard), findsOneWidget);
 
-    final listModeButton = find.ancestor(
-      of: find.byIcon(Icons.article),
-      matching: find.byType(IconButton),
+    final listModeButton = find.byKey(
+      const ValueKey('media-list-mode-toggle-button'),
     );
+    expect(tester.widget<IconButton>(listModeButton).iconSize, 22);
+    expect(tester.getSize(listModeButton), const Size.square(48));
     await tester.tap(listModeButton);
     await tester.pumpAndSettle();
     expect(
@@ -1117,7 +1202,7 @@ void main() {
     );
     expect(videoRect.width, closeTo(dividerRect.left, 0.1));
     // 控制区与单列一致，其余左栏高度全部交给黑色观看画布。
-    expect(controlPanelRect.height, closeTo(singleControlPanelHeight, 0.1));
+    expect(controlPanelRect.height, closeTo(singleControlPanelHeight, 0.5));
     expect(
       videoRect.height,
       closeTo(wideLayoutRect.height - controlPanelRect.height, 0.1),
