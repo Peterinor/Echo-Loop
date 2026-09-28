@@ -205,7 +205,16 @@ void main() {
         ),
         GoRoute(
           path: '/collections/:collectionId/:audioId/player',
-          builder: (context, state) => const Scaffold(body: Text('Player')),
+          builder: (context, state) {
+            final routeItem = state.extra;
+            return Scaffold(
+              body: Text(
+                routeItem is AudioItem
+                    ? 'Media Test: ${routeItem.name}'
+                    : 'Missing AudioItem',
+              ),
+            );
+          },
         ),
         GoRoute(
           path: '/collections/:collectionId/:audioId/blind-listen',
@@ -322,7 +331,7 @@ void main() {
       await tester.tap(find.byKey(const Key('learning_plan_free_play_button')));
       await tester.pumpAndSettle();
 
-      expect(find.text('Player'), findsOneWidget);
+      expect(find.text('Media Test: Test Audio'), findsOneWidget);
     });
 
     testWidgets('视频条目：页面正常渲染不崩溃，AppBar 显示视频名称', (tester) async {
@@ -488,7 +497,7 @@ void main() {
       expect(lp.loadAudioCalls, isEmpty);
     });
 
-    testWidgets('视频条目：随心听分流到视频测试页', (tester) async {
+    testWidgets('视频条目：随心听进入媒体页', (tester) async {
       final lp = _RecordingListeningPractice();
       await tester.pumpWidget(
         createTestWidget(
@@ -502,7 +511,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Video Test'), findsOneWidget);
-      expect(find.text('Player'), findsNothing);
+      expect(find.text('Missing AudioItem'), findsNothing);
     });
 
     testWidgets('AppBar「更多」菜单：有字幕音频显示 4 项操作', (tester) async {
@@ -1985,7 +1994,7 @@ void main() {
       await tester.tap(find.text('Warm-up Listening'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Player'), findsOneWidget);
+      expect(find.text('Media Test: Test Audio'), findsOneWidget);
     });
 
     testWidgets('已开始学习后预热卡消失', (tester) async {

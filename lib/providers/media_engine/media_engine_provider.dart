@@ -416,6 +416,14 @@ class MediaEngine extends _$MediaEngine {
     _handler?.setSkipHandlers(onPrevious: onPrevious, onNext: onNext);
   }
 
+  /// 注册/清空系统媒体面板的相对快进、回退命令回调。
+  void setSeekHandlers({
+    Future<void> Function()? onRewind,
+    Future<void> Function()? onFastForward,
+  }) {
+    _handler?.setSeekHandlers(onRewind: onRewind, onFastForward: onFastForward);
+  }
+
   void setLogicalPlaying(bool? playing) {
     _handler?.setLogicalPlaying(playing);
   }

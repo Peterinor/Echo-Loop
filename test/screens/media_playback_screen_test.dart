@@ -47,6 +47,7 @@ void main() {
   late MediaSessionRouter router;
   late Directory appDir;
   late File mediaFile;
+  late File audioFile;
   late AudioItem item;
   late FakeAudioItemDao audioItemDao;
 
@@ -73,6 +74,8 @@ void main() {
     router = MediaSessionRouter(defaultHandler: BaseAudioHandler());
     mediaFile = File('${appDir.path}/echo-loop-video-screen.mp4');
     await mediaFile.writeAsBytes(const [0, 1, 2]);
+    audioFile = File('${appDir.path}/echo-loop-audio-screen.mp3');
+    await audioFile.writeAsBytes(const [0, 1, 2]);
     audioItemDao = FakeAudioItemDao()
       ..transcriptSrtStore['video-screen'] =
           '1\n00:00:01,000 --> 00:00:03,000\nFirst sentence.\n';
@@ -212,7 +215,7 @@ void main() {
     expect(find.text('Failed to load video'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(backend.openCalls, isNotEmpty);
-    expect(find.text('No transcript'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
     expect(find.text('Screen Video'), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
     final viewportWidth =
@@ -255,6 +258,33 @@ void main() {
       findsOneWidget,
     );
     expect(backend.videoTrackCalls, contains(false));
+  });
+
+  testMediaWidgets('音频随心听使用媒体引擎且只隐藏视频画面', (tester) async {
+    final audioItem = AudioItem(
+      id: item.id,
+      name: 'Screen Audio',
+      audioPath: 'echo-loop-audio-screen.mp3',
+      addedDate: item.addedDate,
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: audioItem),
+        overrides: [
+          mediaBackendFactoryProvider.overrideWithValue(() => backend),
+          mediaSessionRouterProvider.overrideWithValue(router),
+        ],
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    expect(backend.openCalls, [audioFile.path]);
+    expect(backend.videoViewSizes, isEmpty);
+    expect(find.byKey(const ValueKey('media-visual-surface')), findsNothing);
+    expect(find.byKey(const ValueKey('media-control-panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-progress-bar')), findsOneWidget);
+    expect(find.text('Screen Audio'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
   });
 
   testMediaWidgets('已创建意群播放器后退出页面不在卸载期修改媒体状态', (tester) async {
@@ -588,18 +618,31 @@ void main() {
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
     expect(find.text('Sentence 1/2'), findsOneWidget);
     expect(find.text('0:01 - 0:03'), findsOneWidget);
-    final pagerRect = tester.getRect(
-      find.byKey(kFullSingleSentenceSwipeAreaKey),
+    final swipeArea = find.byKey(kFullSingleSentenceSwipeAreaKey);
+    final pagerRect = tester.getRect(swipeArea);
+    final pagerRootRect = tester.getRect(find.byType(FreePlayerSentencePager));
+    final infoRowRect = tester.getRect(find.byType(PracticeSentenceInfoRow));
+    final pagerHostRect = tester.getRect(
+      find.ancestor(of: swipeArea, matching: find.byType(Padding)).first,
     );
+    expect(pagerRect.left, pagerHostRect.left + AppSpacing.m);
+    expect(pagerRect.right, pagerHostRect.right - AppSpacing.m);
+    expect(infoRowRect.left, pagerRootRect.left);
+    expect(infoRowRect.right, pagerRootRect.right);
     expect(
       tester.getRect(find.byType(SentenceExplanationView).hitTestable()).left,
-      pagerRect.left + AppSpacing.m,
-      reason: '视频随心听讲解区应相对分页器保留宿主级水平边距',
+      pagerRect.left,
+      reason: '随心听讲解内容应与已留白的滑动区左边缘对齐',
+    );
+    expect(
+      tester.getRect(find.byType(SentenceExplanationView).hitTestable()).right,
+      pagerRect.right,
+      reason: '随心听讲解内容应与已留白的滑动区右边缘对齐',
     );
     final viewportWidth =
         tester.view.physicalSize.width / tester.view.devicePixelRatio;
     expect(pagerRect.left, greaterThan(0));
-    expect(pagerRect.right, greaterThanOrEqualTo(viewportWidth));
+    expect(pagerRect.right, lessThan(viewportWidth));
 
     await releaseMediaPage(tester);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -1283,7 +1326,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AppBar), findsOneWidget);
-    expect(find.text('No transcript'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
     expect(find.byIcon(Icons.fullscreen), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
   });

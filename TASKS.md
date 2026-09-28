@@ -1,6 +1,6 @@
 # Echo Loop 当前任务清单
 
-> 仅保留待办；最新完成任务“在线词典列表添加 Britannica”（2026-09-28）已归档，详见 [2026-09-28 归档](./docs/tasks-archive/tasks-2026-09-28-completed.md)。
+> 仅保留待办；最新完成任务“修复随心听精听模式滑动区水平留白”（2026-09-28）已归档，详见 [2026-09-28 归档](./docs/tasks-archive/tasks-2026-09-28-completed.md)。
 
 ## 优先处理
 

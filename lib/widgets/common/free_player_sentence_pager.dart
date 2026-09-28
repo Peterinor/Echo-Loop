@@ -109,24 +109,51 @@ class _FreePlayerSentencePagerState extends State<FreePlayerSentencePager> {
 
     _syncPage(targetPosition);
 
-    return PageView.builder(
-      key: widget.scope == FreePlayerSentenceScope.bookmarks
-          ? kBookmarkSingleSentenceSwipeAreaKey
-          : kFullSingleSentenceSwipeAreaKey,
-      // 面板开着时不接受滑动：屏障按区域放行正文文本以支持连续点词，而触屏的
-      // 水平拖拽不被文本消费，会穿到这里造成「切句了但面板还开着」。
-      // 文本区域的 tap / 长按 / 手柄拖拽不受影响。
-      physics: DictionaryPanelHost.isPanelOpenOf(context)
-          ? const NeverScrollableScrollPhysics()
-          : null,
-      controller: _pageController,
-      itemCount: widget.sentences.length,
-      onPageChanged: _onPageChanged,
-      itemBuilder: (context, position) => _buildSentencePage(
-        widget.sentences[position],
-        position: position,
-        isActivePage: position == targetPosition,
-      ),
+    final currentSentence = widget.sentences[targetPosition];
+    return Column(
+      children: [
+        PracticeSentenceInfoRow(
+          progressText: AppLocalizations.of(context)!.intensiveListenProgress(
+            targetPosition + 1,
+            widget.sentences.length,
+          ),
+          durationText: AppLocalizations.of(context)!.sentenceDuration(
+            (currentSentence.duration.inMilliseconds / 1000).toStringAsFixed(1),
+          ),
+          timestampText:
+              '${SubtitleParser.formatDuration(currentSentence.startTime)} - '
+              '${SubtitleParser.formatDuration(currentSentence.endTime)}',
+          trailing: BookmarkToggleRow(
+            isDifficult: widget.bookmarkedSentenceIndices.contains(
+              currentSentence.index,
+            ),
+            onTap: () => widget.actions.onBookmarkToggle(currentSentence.index),
+          ),
+        ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+            child: PageView.builder(
+              key: widget.scope == FreePlayerSentenceScope.bookmarks
+                  ? kBookmarkSingleSentenceSwipeAreaKey
+                  : kFullSingleSentenceSwipeAreaKey,
+              // 面板开着时不接受滑动：屏障按区域放行正文文本以支持连续点词，而触屏的
+              // 水平拖拽不被文本消费，会穿到这里造成「切句了但面板还开着」。
+              // 文本区域的 tap / 长按 / 手柄拖拽不受影响。
+              physics: DictionaryPanelHost.isPanelOpenOf(context)
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              controller: _pageController,
+              itemCount: widget.sentences.length,
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, position) => _buildSentencePage(
+                widget.sentences[position],
+                isActivePage: position == targetPosition,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -173,53 +200,28 @@ class _FreePlayerSentencePagerState extends State<FreePlayerSentencePager> {
     );
   }
 
-  Widget _buildSentencePage(
-    Sentence sentence, {
-    required int position,
-    required bool isActivePage,
-  }) {
-    // 信息行属于分页器宿主，固定在讲解滚动区上方；讲解组件只滚动工具栏和正文。
+  Widget _buildSentencePage(Sentence sentence, {required bool isActivePage}) {
+    // 分页页填满视口，讲解组件只滚动工具栏和正文。
     return Column(
       children: [
-        PracticeSentenceInfoRow(
-          progressText: AppLocalizations.of(
-            context,
-          )!.intensiveListenProgress(position + 1, widget.sentences.length),
-          durationText: AppLocalizations.of(context)!.sentenceDuration(
-            (sentence.duration.inMilliseconds / 1000).toStringAsFixed(1),
-          ),
-          timestampText:
-              '${SubtitleParser.formatDuration(sentence.startTime)} - '
-              '${SubtitleParser.formatDuration(sentence.endTime)}',
-          trailing: BookmarkToggleRow(
-            isDifficult: widget.bookmarkedSentenceIndices.contains(
-              sentence.index,
-            ),
-            onTap: () => widget.actions.onBookmarkToggle(sentence.index),
-          ),
-        ),
         Expanded(
-          // 与其余句子练习页一致，由宿主统一提供讲解区横向边距。
-          // 不能只传入内容内边距，否则解析面板会绕过该间距贴到页面边缘。
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
-            child: SentenceExplanationView(
-              key: ValueKey(sentence.index),
-              text: sentence.text,
-              audioItemId: widget.audioItem.id,
-              sentenceIndex: sentence.index,
-              sentenceStartMs: sentence.startTime.inMilliseconds,
-              sentenceEndMs: sentence.endTime.inMilliseconds,
-              explanationContext: const SentenceExplanationContext(
-                source: 'freePlayer',
-              ),
-              onStopMainPlayer: widget.actions.onStopMainPlayer,
-              senseGroupRangePlayback: widget.actions.senseGroupRangePlayback,
-              onToolbarButtonTapped: widget.actions.onToolbarButtonTapped,
-              enableGuide: isActivePage,
-              isActiveSentence: isActivePage,
-              showTranscript: widget.showTranscript,
+          // 滑动区已由宿主提供水平留白，内容无需再次缩进。
+          child: SentenceExplanationView(
+            key: ValueKey(sentence.index),
+            text: sentence.text,
+            audioItemId: widget.audioItem.id,
+            sentenceIndex: sentence.index,
+            sentenceStartMs: sentence.startTime.inMilliseconds,
+            sentenceEndMs: sentence.endTime.inMilliseconds,
+            explanationContext: const SentenceExplanationContext(
+              source: 'freePlayer',
             ),
+            onStopMainPlayer: widget.actions.onStopMainPlayer,
+            senseGroupRangePlayback: widget.actions.senseGroupRangePlayback,
+            onToolbarButtonTapped: widget.actions.onToolbarButtonTapped,
+            enableGuide: isActivePage,
+            isActiveSentence: isActivePage,
+            showTranscript: widget.showTranscript,
           ),
         ),
       ],

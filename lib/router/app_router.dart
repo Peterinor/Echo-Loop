@@ -5,6 +5,8 @@
 /// 详情页使用 parentNavigatorKey 确保全屏展示。
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +30,7 @@ import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
 import '../features/onboarding_survey/screens/onboarding_survey_screen.dart';
 import '../features/subtitle_editor/subtitle_simple_editor_screen.dart';
 import '../models/audio_item.dart';
+import '../providers/audio_library_provider.dart';
 import '../services/app_logger.dart';
 import '../screens/library_screen.dart';
 import '../screens/collection_detail_screen.dart';
@@ -35,7 +38,6 @@ import '../screens/study_screen.dart';
 import '../screens/favorites_screen.dart';
 import '../screens/settings_screen.dart';
 import '../screens/learning_plan_screen.dart';
-import '../screens/player_screen.dart';
 import '../screens/media_playback_screen.dart';
 import '../screens/blind_listen_player_screen.dart';
 import '../screens/intensive_listen_player_screen.dart';
@@ -242,14 +244,20 @@ GoRoute _sentenceDetailRoute() => GoRoute(
   },
 );
 
-/// 音频随心听播放器路由工厂。合集内变体挂在 `/collections/:collectionId` 之下
-/// （[path] 传相对段），独立音频变体挂在顶层（[path] 传绝对路径）。
-///
-/// 同 §7.17：嵌套让 URL 自表达完整栈；extra 重解析丢失时首帧退回入口页。
+/// 音频随心听兼容路由。保留原路径与讲解子路由，并解析 URL 中的材料 ID，
+/// 使正常导航和 extra 丢失后的路由恢复都进入统一媒体播放器。
 GoRoute _audioPlayerRoute(String path) => GoRoute(
   path: path,
   parentNavigatorKey: rootNavigatorKey,
-  builder: (context, state) => const PlayerScreen(),
+  builder: (context, state) {
+    final audioItemId = state.pathParameters['audioId'];
+    if (audioItemId == null) return const _RestoredRoutePopper();
+    final extra = state.extra;
+    return _AudioPlayerRoute(
+      audioItemId: audioItemId,
+      initialAudioItem: extra is AudioItem ? extra : null,
+    );
+  },
   routes: [_sentenceDetailRoute()],
 );
 
@@ -761,4 +769,66 @@ class _RestoredRoutePopperState extends State<_RestoredRoutePopper> {
 
   @override
   Widget build(BuildContext context) => const Scaffold();
+}
+
+/// 按自表达 URL 恢复音频随心听材料，并复用音视频随心听媒体页面。
+class _AudioPlayerRoute extends ConsumerStatefulWidget {
+  const _AudioPlayerRoute({required this.audioItemId, this.initialAudioItem});
+
+  final String audioItemId;
+  final AudioItem? initialAudioItem;
+
+  @override
+  ConsumerState<_AudioPlayerRoute> createState() => _AudioPlayerRouteState();
+}
+
+class _AudioPlayerRouteState extends ConsumerState<_AudioPlayerRoute> {
+  bool _libraryLoadAttempted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialAudioItem?.id != widget.audioItemId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_loadLibraryWhenNeeded());
+      });
+    }
+  }
+
+  Future<void> _loadLibraryWhenNeeded() async {
+    if (!mounted) return;
+    setState(() => _libraryLoadAttempted = true);
+    final library = ref.read(audioLibraryProvider);
+    if (library.audioItems.isNotEmpty || library.isLoading) return;
+    try {
+      await ref.read(audioLibraryProvider.notifier).loadLibrary();
+    } catch (error, stackTrace) {
+      AppLogger.log(
+        'Navigation',
+        'audio media route library load failed: $error\n$stackTrace',
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final library = ref.watch(audioLibraryProvider);
+    final routeItem = widget.initialAudioItem;
+    final item = routeItem?.id == widget.audioItemId
+        ? routeItem
+        : _findAudioItem(library.audioItems, widget.audioItemId);
+    if (item != null) return MediaPlaybackScreen(audioItem: item);
+    if (library.isLoading || !_libraryLoadAttempted) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    return const _RestoredRoutePopper();
+  }
+
+  AudioItem? _findAudioItem(List<AudioItem> items, String audioItemId) {
+    for (final item in items) {
+      if (item.id == audioItemId) return item;
+    }
+    return null;
+  }
 }

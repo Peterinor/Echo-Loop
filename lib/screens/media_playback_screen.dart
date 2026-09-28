@@ -35,7 +35,7 @@ import 'sentence_detail_screen.dart';
 
 /// media_kit 随心听页面。
 ///
-/// 当前从带画面轨的媒体入口进入；命名与状态按未来音频/视频共用方向设计。
+/// 音频与视频共用页面、播放控制和媒体会话，仅视频材料渲染画面。
 class MediaPlaybackScreen extends ConsumerStatefulWidget {
   const MediaPlaybackScreen({super.key, required this.audioItem});
 
@@ -139,8 +139,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         onPrevious: () => unawaited(_controller.previousSentence()),
         onNext: () => unawaited(_controller.nextSentence()),
         child: Scaffold(
-          backgroundColor: state.visualTrackExpanded ? Colors.black : null,
-          appBar: state.visualTrackExpanded
+          backgroundColor: widget.audioItem.isVideo && state.visualTrackExpanded
+              ? Colors.black
+              : null,
+          appBar: widget.audioItem.isVideo && state.visualTrackExpanded
               ? null
               : AppBar(
                   titleSpacing: 0,
@@ -151,6 +153,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
             loadKey: widget.audioItem.id,
             load: () => _controller.load(widget.audioItem),
             cancel: _controller.cancelLoad,
+            showVideoLoading: widget.audioItem.isVideo,
             child: DictionaryPanelHost(
               handleBackButton: true,
               child: _buildBody(context, state, l10n),
@@ -162,7 +165,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   }
 
   Widget _buildAppBarTitle(MediaPlaybackState state, AppLocalizations l10n) {
-    final item = state.audioItem ?? widget.audioItem;
+    final loadedItem = state.audioItem;
+    final item = loadedItem != null && loadedItem.id == widget.audioItem.id
+        ? loadedItem
+        : widget.audioItem;
     final collectionNames = ref.watch(
       collectionListProvider.select((s) {
         final ids = s.audioToCollectionsMap[item.id] ?? const <String>[];
@@ -185,8 +191,19 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     MediaPlaybackState state,
     AppLocalizations l10n,
   ) {
-    if (state.visualTrackExpanded) {
+    final hasVideoTrack = widget.audioItem.isVideo;
+    if (hasVideoTrack && state.visualTrackExpanded) {
       return _buildMediaVisualSurface(state);
+    }
+
+    if (!hasVideoTrack) {
+      return Column(
+        key: const ValueKey('media-playback-audio-layout'),
+        children: [
+          Expanded(child: _buildTranscriptView(context, state, l10n)),
+          _buildControlPanel(context, state),
+        ],
+      );
     }
 
     return LayoutBuilder(
@@ -321,7 +338,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
             ),
             const SizedBox(height: AppSpacing.m),
             Text(
-              l10n.videoNoTranscript,
+              l10n.noTranscript,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -509,15 +526,17 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           startTimeMs: sentence.startTime.inMilliseconds,
           endTimeMs: sentence.endTime.inMilliseconds,
           rangePlayback: controller.senseGroupRangePlayback,
-          mediaSession: SentenceDetailMediaSession(
-            readState: () => ref.read(mediaPlaybackProvider),
-            setVisible: controller.setVisualTrackVisible,
-            setSubtitleVisible: controller.setVideoSubtitleVisible,
-            setFullscreen: _setVisualTrackExpanded,
-            buildVideoView: (size) => ref
-                .read(mediaEngineProvider.notifier)
-                .buildVideoView(viewportSize: size),
-          ),
+          mediaSession: widget.audioItem.isVideo
+              ? SentenceDetailMediaSession(
+                  readState: () => ref.read(mediaPlaybackProvider),
+                  setVisible: controller.setVisualTrackVisible,
+                  setSubtitleVisible: controller.setVideoSubtitleVisible,
+                  setFullscreen: _setVisualTrackExpanded,
+                  buildVideoView: (size) => ref
+                      .read(mediaEngineProvider.notifier)
+                      .buildVideoView(viewportSize: size),
+                )
+              : null,
         ),
       );
       if (!mounted) return;

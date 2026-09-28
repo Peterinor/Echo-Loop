@@ -5,7 +5,7 @@ import 'sentence.dart';
 
 /// media_kit 随心听页面的业务状态。
 ///
-/// 该状态面向未来音频/视频共用的媒体播放器；当前仅由带画面轨的媒体入口使用。
+/// 音频和视频随心听共用此状态；只有视频媒体会使用画面轨相关字段。
 class MediaPlaybackState {
   const MediaPlaybackState({
     this.audioItem,

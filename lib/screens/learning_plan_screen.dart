@@ -619,9 +619,12 @@ class _LearningPlanScreenState extends ConsumerState<LearningPlanScreen> {
       return;
     }
     if (widget.collectionId != null) {
-      context.push(AppRoutes.player(widget.collectionId!, widget.audioItemId));
+      context.push(
+        AppRoutes.player(widget.collectionId!, widget.audioItemId),
+        extra: audioItem,
+      );
     } else {
-      context.push(AppRoutes.audioPlayer(widget.audioItemId));
+      context.push(AppRoutes.audioPlayer(widget.audioItemId), extra: audioItem);
     }
   }
 
