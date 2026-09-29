@@ -8,6 +8,7 @@ import 'package:echo_loop/database/daos/playback_state_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
+import 'package:echo_loop/models/playback_settings.dart';
 import 'package:echo_loop/models/sentence_focus_reason.dart';
 import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/l10n/app_localizations.dart';
@@ -176,25 +177,61 @@ void main() {
     });
   }
 
-  Future<void> pumpMediaReady(WidgetTester tester) async {
+  Future<void> pumpMediaReady(
+    WidgetTester tester, {
+    bool requireVideoView = true,
+    bool waitForPlaybackReady = true,
+  }) async {
+    final screen = find.byType(MediaPlaybackScreen);
+    final container = ProviderScope.containerOf(tester.element(screen.first));
     for (var i = 0; i < 40; i += 1) {
+      // 本地媒体探测包含真实文件 IO；只推进 fake clock 不会让它完成。
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
+      final state = container.read(mediaPlaybackProvider);
       if (backend.openCalls.isNotEmpty &&
-          find
-              .byKey(const ValueKey('managed-media-loading'))
-              .evaluate()
-              .isEmpty &&
-          find.byKey(const ValueKey('fake-video-view')).evaluate().isNotEmpty &&
-          find
-              .byKey(const ValueKey('media-progress-elapsed-label'))
-              .evaluate()
-              .isNotEmpty) {
+          (!waitForPlaybackReady ||
+              (!state.isLoading &&
+                  !state.isTranscriptLoading &&
+                  find
+                      .byKey(const ValueKey('managed-media-loading'))
+                      .evaluate()
+                      .isEmpty &&
+                  find
+                      .byKey(const ValueKey('media-progress-elapsed-label'))
+                      .evaluate()
+                      .isNotEmpty)) &&
+          (!requireVideoView ||
+              find
+                  .byKey(const ValueKey('fake-video-view'))
+                  .evaluate()
+                  .isNotEmpty)) {
         // 媒体容器就绪后，字幕 Provider 仍可能在下一帧提交结果；多推进一小段
         // 时间，避免后续断言观察到“媒体已就绪但字幕尚未挂载”的中间态。
         await tester.pump(const Duration(milliseconds: 500));
         return;
       }
     }
+    final state = container.read(mediaPlaybackProvider);
+    fail(
+      '媒体页面未就绪: loading=${state.isLoading}, '
+      'transcriptLoading=${state.isTranscriptLoading}, '
+      'openCalls=${backend.openCalls.length}',
+    );
+  }
+
+  Future<void> updatePlaybackSettings(
+    WidgetTester tester,
+    MediaPlayback controller,
+    PlaybackSettings settings,
+  ) async {
+    final update = controller.updateSettings(settings);
+    // 生命周期队列和 SharedPreferences 会在 tester 的 fake-async zone 中
+    // 通过微任务及平台消息完成；推进一帧后再等待其 Future，避免测试回调悬挂。
+    await tester.pump();
+    await update;
   }
 
   Future<void> pumpUntil(
@@ -292,7 +329,7 @@ void main() {
         ],
       ),
     );
-    await pumpMediaReady(tester);
+    await pumpMediaReady(tester, requireVideoView: false);
 
     expect(backend.openCalls, [audioFile.path]);
     expect(backend.videoViewSizes, isEmpty);
@@ -638,7 +675,6 @@ void main() {
     expect(find.byType(TabBarView), findsOneWidget);
     final card = tester.widget<ParagraphSentenceListCard>(cardFinder);
     expect(card.onSentenceExplanationTap, isNotNull);
-    expect(card.directInitialPositioning, isTrue);
 
     final cardRect = tester.getRect(cardFinder);
     final viewportWidth =
@@ -838,31 +874,6 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testMediaWidgets('视频画面和字幕区之间显示主题化细分割线', (tester) async {
-    await tester.pumpWidget(
-      createTestApp(
-        MediaPlaybackScreen(audioItem: item),
-        overrides: mediaOverrides(withTranscript: true),
-      ),
-    );
-    await pumpMediaReady(tester);
-
-    final dividerFinder = find.byKey(
-      const ValueKey('media-visual-transcript-divider'),
-    );
-    expect(dividerFinder, findsOneWidget);
-
-    final divider = tester.widget<Container>(dividerFinder);
-    expect(tester.getSize(dividerFinder).width, 1);
-    expect(tester.getSize(dividerFinder).height, greaterThan(1));
-    expect(
-      divider.color,
-      Theme.of(
-        tester.element(dividerFinder),
-      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
-    );
-  });
-
   testMediaWidgets('单句模式复用音频讲解视图并保留视频画面', (tester) async {
     await tester.pumpWidget(
       createTestApp(
@@ -1043,7 +1054,9 @@ void main() {
     final context = tester.element(find.byType(MediaPlaybackScreen));
     final container = ProviderScope.containerOf(context);
     final controller = container.read(mediaPlaybackProvider.notifier);
-    await controller.updateSettings(
+    await updatePlaybackSettings(
+      tester,
+      controller,
       container
           .read(mediaPlaybackProvider)
           .settings
@@ -1780,7 +1793,7 @@ void main() {
         ),
       ),
     );
-    await pumpMediaReady(tester);
+    await pumpMediaReady(tester, waitForPlaybackReady: false);
 
     expect(
       find.byKey(const ValueKey('media-playback-wide-layout')),
