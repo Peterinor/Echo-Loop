@@ -16,40 +16,6 @@ import '../../theme/app_theme.dart';
 import '../guide_flow.dart';
 import 'masked_sentence_tile.dart';
 
-/// 计算自动跟随当前播放句时 [ItemScrollController.scrollTo] 的锚定 alignment。
-///
-/// 纯函数，便于单元测试。列表统一使用 [ClampingScrollPhysics]，越界滚动会被逐帧
-/// clamp 到自然边界（详见 [_ParagraphSentenceListCardState.build]），因此边界句的
-/// 贴边交给物理处理，这里只需决定锚点：
-/// - **目标可见**：命中 `scrollTo` 的「可见分支」（不改底层 `anchor`），返回 0.4
-///   让中间句与首次定位保持一致；靠边时会被 clamp 到自然边缘（末句贴底 / 首句贴顶，
-///   无留白、无回弹）。
-/// - **目标不可见**（大跳转，命中 else 分支会把底层 `anchor` 设为传入 alignment）：
-///   返回 0.0，令 `anchor` 维持 0（普通列表语义），目标落到顶部、若为末句则被
-///   clamp 到底部，均无留白。
-double autoFollowAlignment({required bool targetVisible}) {
-  return targetVisible ? 0.4 : 0.0;
-}
-
-/// 自动跟随的「目标定位容差带」半宽（占视口比例）。
-///
-/// 目标句的 leading edge 落在 `[0.4 - 容差, 0.4 + 容差]` 内即视为已大致定位。
-const double kAutoFollowCenterTolerance = 0.08;
-
-/// 目标句当前是否已大致位于 0.4 锚点附近，已定位则无需再滚动。
-///
-/// 纯函数，便于单元测试。仅用 leading edge 判断：随播放逐句推进，下一句的 leading
-/// edge 会比当前句更靠下；一旦越出容差带就重新居中，避免「当前句逐句下移直到贴底、
-/// 再突然跳回顶部」的漂移（参见 [_ParagraphSentenceListCardState._focusPlayingSentence]）。
-///
-/// [leadingEdge] 为目标 item 顶边相对视口的比例（[ItemPosition.itemLeadingEdge]）。
-bool isTargetWellCentered({
-  required double leadingEdge,
-  double tolerance = kAutoFollowCenterTolerance,
-}) {
-  return (leadingEdge - 0.4).abs() <= tolerance;
-}
-
 /// 判断列表中的句子集合或顺序是否真正变化。
 ///
 /// provider 的派生 getter 可能在每次播放进度更新时返回新 List；不能
@@ -142,6 +108,8 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
   final ItemScrollController _itemScrollController = ItemScrollController();
   final ItemPositionsListener _itemPositionsListener =
       ItemPositionsListener.create();
+  ScrollPosition? _scrollPosition;
+  BuildContext? _playingItemContext;
   Timer? _resumeFocusTimer;
   bool _userSuspendedFocus = false;
   int _focusRequestGeneration = 0;
@@ -173,8 +141,8 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
   /// 在不可见状态下把当前句定位到视口锚点，完成后更新 [_initialFocusDone]。
   ///
   /// 先 [ItemScrollController.jumpTo]（alignment=0）把目标放到顶边并保持普通列表 anchor；
-  /// 下一帧目标已可见，再由 [scrollTo] 的可见分支调整偏移。随心听定位用 1ms 完成校正，
-  /// 且校正期间列表不可见；初次定位与后续自动跟随统一使用 0.4 锚点。首尾边界由滚动
+  /// 布局完成后通过原生 ScrollPosition 校正偏移，保持 anchor=0，
+  /// 校正期间列表不可见；初次定位与后续自动跟随统一使用 0.4 锚点。首尾边界由滚动
   /// 范围自然约束。
   void _centerInitialFocus(int targetIndex) {
     final generation = ++_focusRequestGeneration;
@@ -188,7 +156,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
         return;
       }
       _itemScrollController.jumpTo(index: targetIndex, alignment: 0);
-      _schedulePositionCorrection(targetIndex, generation);
+      _schedulePositionCorrection(generation);
     });
   }
 
@@ -196,9 +164,9 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
   ///
   /// post-frame 回调自身不会请求新帧；恢复页面时若没有其他状态变化，单纯注册回调
   /// 会让定位停在安全顶边位置，因此这里显式安排下一帧。
-  void _schedulePositionCorrection(int targetIndex, int generation) {
+  void _schedulePositionCorrection(int generation) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _correctPositionImmediately(targetIndex, generation);
+      _correctPositionImmediately(generation);
     });
     WidgetsBinding.instance.scheduleFrame();
   }
@@ -209,7 +177,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
     }
   }
 
-  void _correctPositionImmediately(int targetIndex, int generation) {
+  void _correctPositionImmediately(int generation) {
     if (!mounted ||
         !widget.autoFocusEnabled ||
         !widget.focusActive ||
@@ -217,29 +185,25 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
         !_itemScrollController.isAttached) {
       return;
     }
-    if (widget.directInitialPositioning) {
-      _itemScrollController.jumpTo(
-        index: targetIndex,
-        alignment: autoFollowAlignment(targetVisible: true),
-      );
-      if (mounted && generation == _focusRequestGeneration) {
-        setState(() => _initialFocusDone = true);
-      }
+
+    final scroll = _scrollPosition;
+    final itemContext = _playingItemContext;
+    if (scroll == null ||
+        !scroll.hasContentDimensions ||
+        itemContext == null ||
+        !itemContext.mounted) {
       return;
     }
-
-    _itemScrollController
-        .scrollTo(
-          index: targetIndex,
-          duration: const Duration(milliseconds: 1),
-          curve: Curves.easeInOut,
-          alignment: autoFollowAlignment(targetVisible: true),
-        )
-        .whenComplete(() {
-          if (mounted && generation == _focusRequestGeneration) {
-            setState(() => _initialFocusDone = true);
-          }
-        });
+    final render = itemContext.findRenderObject();
+    if (render is! RenderBox || !render.hasSize) return;
+    final viewport = RenderAbstractViewport.of(render);
+    final target =
+        (viewport.getOffsetToReveal(render, 0).offset -
+                0.4 * scroll.viewportDimension)
+            .clamp(scroll.minScrollExtent, scroll.maxScrollExtent)
+            .toDouble();
+    scroll.jumpTo(target);
+    setState(() => _initialFocusDone = true);
   }
 
   /// 无动画定位到指定当前句；仅首次定位和页面恢复需要暂时隐藏列表。
@@ -259,45 +223,78 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
         return;
       }
       _itemScrollController.jumpTo(index: targetIndex, alignment: 0);
-      _schedulePositionCorrection(targetIndex, generation);
+      _schedulePositionCorrection(generation);
     });
   }
 
+  /// 从当前偏移连续滚动，远处句子进入布局范围后再精确对齐。
+  ///
+  /// 始终保留 anchor=0，不切换底层列表或先跳到目标顶部。按视口分段可支持
+  /// 高度不同的句子且保留按需渲染；每段均限制在真实滚动范围内。
   void _focusWithPlaybackAnimation() {
     if (!widget.autoFocusEnabled ||
         !widget.focusActive ||
         _userSuspendedFocus) {
       return;
     }
-    final localSentenceIndex = _playingSentenceLocalIndex();
-    if (localSentenceIndex == null) return;
-    final targetIndex = localSentenceIndex * 2;
+    final localIndex = _playingSentenceLocalIndex();
+    if (localIndex == null) return;
     final generation = ++_focusRequestGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          !widget.autoFocusEnabled ||
-          !widget.focusActive ||
-          _userSuspendedFocus ||
-          generation != _focusRequestGeneration ||
-          !_itemScrollController.isAttached) {
-        return;
-      }
-      final position = _targetPosition(targetIndex);
-      if (position == null) {
-        // 远距离跳转直接定位，避免 scrollTo 的双列表淡入淡出和整段滚动动画。
-        _focusImmediately(hideWhilePositioning: false);
-        return;
-      }
-      if (isTargetWellCentered(leadingEdge: position.itemLeadingEdge)) {
-        return;
-      }
-      _itemScrollController.scrollTo(
-        index: targetIndex,
-        alignment: autoFollowAlignment(targetVisible: true),
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
-      );
+      unawaited(_animateToSentence(localIndex * 2, generation));
     });
+  }
+
+  /// 新请求、手势和页面离开都会使旧滚动失效，防止过期动画继续追赶旧句。
+  bool _canContinueFocus(int generation) =>
+      mounted &&
+      widget.autoFocusEnabled &&
+      widget.focusActive &&
+      !_userSuspendedFocus &&
+      generation == _focusRequestGeneration;
+
+  Future<void> _animateToSentence(int targetIndex, int generation) async {
+    while (_canContinueFocus(generation)) {
+      final scroll = _scrollPosition;
+      if (scroll == null || !scroll.hasContentDimensions) return;
+      final position = _targetPosition(targetIndex);
+      if (position != null) {
+        final target =
+            (scroll.pixels +
+                    (position.itemLeadingEdge - 0.4) * scroll.viewportDimension)
+                .clamp(scroll.minScrollExtent, scroll.maxScrollExtent)
+                .toDouble();
+        if ((target - scroll.pixels).abs() < 0.5) return;
+        await scroll.animateTo(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+        return;
+      }
+      final positions = _itemPositionsListener.itemPositions.value;
+      if (positions.isEmpty) return;
+      final first = positions.reduce((a, b) => a.index < b.index ? a : b);
+      final last = positions.reduce((a, b) => a.index > b.index ? a : b);
+      final direction = targetIndex < first.index ? -1 : 1;
+      final remaining = direction < 0
+          ? first.index - targetIndex
+          : targetIndex - last.index;
+      final visibleCount = last.index - first.index + 1;
+      final duration = (280 * visibleCount / remaining).round().clamp(16, 90);
+      final target =
+          (scroll.pixels + direction * scroll.viewportDimension * 0.8)
+              .clamp(scroll.minScrollExtent, scroll.maxScrollExtent)
+              .toDouble();
+      if ((target - scroll.pixels).abs() < 0.5) return;
+      await scroll.animateTo(
+        target,
+        duration: Duration(milliseconds: duration),
+        curve: Curves.linear,
+      );
+      // 位置监听在布局后更新，等本帧完成再读取下一段目标。
+      await WidgetsBinding.instance.endOfFrame;
+    }
   }
 
   @override
@@ -319,16 +316,26 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
         widget.focusRequestRevision != oldWidget.focusRequestRevision;
 
     if (!widget.autoFocusEnabled) {
+      _cancelFocusAnimation();
       _resumeFocusTimer?.cancel();
       _userSuspendedFocus = false;
       return;
     }
 
-    if (!widget.focusActive) return;
+    if (!widget.focusActive) {
+      _cancelFocusAnimation();
+      return;
+    }
 
     if (becameFocusActive || focusRestoreRequested) {
       _userSuspendedFocus = false;
-      _focusImmediately(hideWhilePositioning: false);
+      if (becameFocusActive &&
+          !focusRestoreRequested &&
+          widget.focusReason == SentenceFocusReason.navigation) {
+        _focusWithPlaybackAnimation();
+      } else {
+        _focusImmediately(hideWhilePositioning: false);
+      }
       return;
     }
 
@@ -365,6 +372,17 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       } else if (!_userSuspendedFocus) {
         _focusPlayingSentence();
       }
+    }
+  }
+
+  /// 暂停聚焦时同时取消当前像素动画，防止拖动进度条期间列表仍在移动。
+  void _cancelFocusAnimation() {
+    _focusRequestGeneration += 1;
+    final scroll = _scrollPosition;
+    if (scroll != null &&
+        scroll.hasPixels &&
+        scroll.isScrollingNotifier.value) {
+      scroll.jumpTo(scroll.pixels);
     }
   }
 
@@ -405,64 +423,14 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
 
     _resumeFocusTimer?.cancel();
     _userSuspendedFocus = true;
+    _focusRequestGeneration += 1;
     return false;
   }
 
-  /// 自动跟随当前播放句，同时尊重用户手动滚动后的短暂停留。
-  ///
-  /// 仅用于「播放中逐句推进」的平滑跟随（[didUpdateWidget] / 手动滚动后恢复）。
-  /// 「初次定位」（首次进入 / 切 Tab）不走这里，而是由 [initState] /
-  /// [_centerInitialFocus] 在列表不可见时完成，再按定位模式淡入或瞬时显出。
-  void _focusPlayingSentence() {
-    if (!widget.autoFocusEnabled ||
-        !widget.focusActive ||
-        _userSuspendedFocus) {
-      return;
-    }
-    final localSentenceIndex = _playingSentenceLocalIndex();
-    if (localSentenceIndex == null) return;
-    final targetIndex = localSentenceIndex * 2;
+  /// 学习页面与随心听共享同一套连续滚动及边界处理。
+  void _focusPlayingSentence() => _focusWithPlaybackAnimation();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted ||
-          !widget.autoFocusEnabled ||
-          !widget.focusActive ||
-          _userSuspendedFocus ||
-          !_itemScrollController.isAttached) {
-        return;
-      }
-      final position = _targetPosition(targetIndex);
-      if (position == null) {
-        // 目标尚未渲染（首次进入恢复进度 / 大跳转）。此时不能直接 scrollTo 居中：
-        // 不可见分支会把底层 anchor 设为 alignment，居中会在边界留白。改为先即时
-        // jumpTo 到 clamp 安全的 anchor=0 位置把目标渲染出来，下一帧再走可见分支
-        // 居中，避免恢复进度时把当前句卡在顶部。
-        _itemScrollController.jumpTo(
-          index: targetIndex,
-          alignment: autoFollowAlignment(targetVisible: false),
-        );
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _focusPlayingSentence();
-        });
-        return;
-      }
-      // 已大致位于 0.4 锚点附近则不动，否则重新定位——边界句滚到自然边缘被 clamp 硬停。
-      if (isTargetWellCentered(leadingEdge: position.itemLeadingEdge)) {
-        return;
-      }
-      _itemScrollController.scrollTo(
-        index: targetIndex,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        alignment: autoFollowAlignment(targetVisible: true),
-      );
-    });
-  }
-
-  /// 目标元素当前的可见位置；不在可见集合中（大跳转/未渲染）时返回 null。
-  ///
-  /// 用于：① 判断是否已居中（[isTargetWellCentered]）；② 决定 [scrollTo] 走
-  /// 「可见分支」还是「跳转分支」，据此选 alignment（见 [autoFollowAlignment]）。
+  /// 获取已布局元素的位置，用于计算保持 anchor=0 的像素偏移。
   ItemPosition? _targetPosition(int targetIndex) {
     for (final position in _itemPositionsListener.itemPositions.value) {
       if (position.index == targetIndex) return position;
@@ -502,7 +470,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
             // 保持普通列表 anchor，居中校正时边界才会自然贴顶/贴底。
             initialAlignment: 0,
             // 硬停物理：自动跟随滚到自然边界即停，越界被逐帧 clamp，杜绝到头/尾时
-            // 的自动回弹（详见 [autoFollowAlignment]）。
+            // 的自动回弹。
             physics: const ClampingScrollPhysics(),
             padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
             itemCount: widget.sentences.isEmpty
@@ -526,29 +494,39 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
               final onSentenceExplanationTap = widget.onSentenceExplanationTap;
               final onSentencePlayFrom = widget.onSentencePlayFrom;
               final onSentenceBookmarkToggle = widget.onSentenceBookmarkToggle;
-              return MaskedSentenceTile(
-                sentence: sentence,
-                displayMode: widget.displayMode,
-                keywordIndices: widget.keywordMap[sentence.index] ?? const {},
-                isPlayingSentence: sentenceIndex == widget.playingSentenceIndex,
-                isBookmarked: widget.bookmarkedSentenceIndices.contains(
-                  sentence.index,
-                ),
-                onDetailTap: onSentenceExplanationTap == null
-                    ? null
-                    : () => onSentenceExplanationTap(sentence),
-                onPlayFromTap: onSentencePlayFrom == null
-                    ? null
-                    : () => onSentencePlayFrom(sentence),
-                onBookmarkTap: onSentenceBookmarkToggle == null
-                    ? null
-                    : () => onSentenceBookmarkToggle(sentence),
-                explanationAreaGuideStep: isGuideTarget
-                    ? widget.explanationAreaGuideStep
-                    : null,
-                bodyAreaGuideStep: isGuideTarget
-                    ? widget.bodyAreaGuideStep
-                    : null,
+              return Builder(
+                builder: (itemContext) {
+                  _scrollPosition = Scrollable.of(itemContext).position;
+                  if (sentenceIndex == _playingSentenceLocalIndex()) {
+                    _playingItemContext = itemContext;
+                  }
+                  return MaskedSentenceTile(
+                    sentence: sentence,
+                    displayMode: widget.displayMode,
+                    keywordIndices:
+                        widget.keywordMap[sentence.index] ?? const {},
+                    isPlayingSentence:
+                        sentenceIndex == widget.playingSentenceIndex,
+                    isBookmarked: widget.bookmarkedSentenceIndices.contains(
+                      sentence.index,
+                    ),
+                    onDetailTap: onSentenceExplanationTap == null
+                        ? null
+                        : () => onSentenceExplanationTap(sentence),
+                    onPlayFromTap: onSentencePlayFrom == null
+                        ? null
+                        : () => onSentencePlayFrom(sentence),
+                    onBookmarkTap: onSentenceBookmarkToggle == null
+                        ? null
+                        : () => onSentenceBookmarkToggle(sentence),
+                    explanationAreaGuideStep: isGuideTarget
+                        ? widget.explanationAreaGuideStep
+                        : null,
+                    bodyAreaGuideStep: isGuideTarget
+                        ? widget.bodyAreaGuideStep
+                        : null,
+                  );
+                },
               );
             },
           ),

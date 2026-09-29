@@ -3,7 +3,7 @@
 /// 重点验证到头/尾时不再自动越界回弹（用 ClampingScrollPhysics 硬停）：
 /// - 末句贴底、首句贴顶，无大片留白（非居中）；
 /// - 自动滚动过程中滚动位置始终落在 [min, max] 区间内（不越界）；
-/// - [autoFollowAlignment] 纯函数的锚点决策。
+/// - 远距离切句连续滚动，末尾不启动无效动画。
 library;
 
 import 'package:flutter/material.dart';
@@ -21,38 +21,6 @@ import 'package:echo_loop/widgets/common/paragraph_sentence_list_card.dart';
 import '../../helpers/shared/test_fixtures.dart';
 
 void main() {
-  group('autoFollowAlignment', () {
-    test('目标可见 → 0.4（与首次定位一致）', () {
-      expect(autoFollowAlignment(targetVisible: true), 0.4);
-    });
-
-    test('目标不可见 → 0.0（保持 anchor 0，避免留白）', () {
-      expect(autoFollowAlignment(targetVisible: false), 0.0);
-    });
-  });
-
-  group('isTargetWellCentered', () {
-    test('leading edge 位于 0.4 锚点 → 已定位', () {
-      expect(isTargetWellCentered(leadingEdge: 0.4), isTrue);
-    });
-
-    test('leading edge 在容差带内 → 已居中', () {
-      expect(isTargetWellCentered(leadingEdge: 0.4 + 0.05), isTrue);
-      expect(isTargetWellCentered(leadingEdge: 0.4 - 0.05), isTrue);
-    });
-
-    test('0.5 位置不再视作已定位于 0.4 锚点', () {
-      expect(isTargetWellCentered(leadingEdge: 0.5), isFalse);
-    });
-
-    test('leading edge 越出容差带 → 需重新居中', () {
-      // 逐句下移漂移到底部：leading edge 偏大，应触发重新居中。
-      expect(isTargetWellCentered(leadingEdge: 0.7), isFalse);
-      // 贴顶：leading edge 接近 0，应触发重新居中。
-      expect(isTargetWellCentered(leadingEdge: 0.0), isFalse);
-    });
-  });
-
   group('ParagraphSentenceListCard 自动跟随', () {
     const sentenceCount = 24;
 
@@ -60,6 +28,7 @@ void main() {
     Widget buildHost({
       required int playingIndex,
       bool directInitialPositioning = false,
+      bool multiline = false,
       bool focusActive = true,
       int? focusRequestRevision,
       SentenceFocusReason? focusReason,
@@ -79,7 +48,18 @@ void main() {
               child: SizedBox(
                 height: 220,
                 child: ParagraphSentenceListCard(
-                  sentences: createTestSentences(count: sentenceCount),
+                  sentences: createTestSentences(count: sentenceCount)
+                      .map(
+                        (sentence) => multiline && sentence.index.isEven
+                            ? sentence.copyWith(
+                                text: List.filled(
+                                  35,
+                                  'long sentence',
+                                ).join(' '),
+                              )
+                            : sentence,
+                      )
+                      .toList(),
                   displayMode: RetellDisplayMode.showAll,
                   keywordMap: const {},
                   playingSentenceIndex: playingIndex,
@@ -112,6 +92,116 @@ void main() {
 
     // 边界容差：内边距(8) + 分隔线 + 行高取整。
     const edgeTol = 24.0;
+
+    testWidgets('远距离切句沿原位置滚动，首帧不跳到目标顶部', (tester) async {
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: 5,
+          directInitialPositioning: true,
+          focusRequestRevision: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final before = tileRect(tester, 5);
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: 18,
+          directInitialPositioning: true,
+          focusRequestRevision: 2,
+          focusReason: SentenceFocusReason.navigation,
+        ),
+      );
+      await tester.pump();
+      expect(
+        tileRect(tester, 5).top,
+        closeTo(before.top, 1),
+        reason: '动画开始前必须保留原位置，不能先跳到目标句',
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tileRect(tester, 5).top, greaterThan(before.top - 100));
+      await tester.pumpAndSettle();
+      final list = viewportRect(tester);
+      expect(
+        tileRect(tester, 18).top,
+        closeTo(list.top + list.height * 0.4, 3),
+      );
+    });
+
+    testWidgets('不同高度句子向上远距离定位也连续滚动', (tester) async {
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: 18,
+          multiline: true,
+          directInitialPositioning: true,
+          focusRequestRevision: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final before = tileRect(tester, 18).top;
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: 5,
+          multiline: true,
+          directInitialPositioning: true,
+          focusRequestRevision: 2,
+          focusReason: SentenceFocusReason.navigation,
+        ),
+      );
+      await tester.pump();
+      expect(tileRect(tester, 18).top, closeTo(before, 1));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tileRect(tester, 18).top, lessThan(before + 100));
+      await tester.pumpAndSettle();
+      final list = viewportRect(tester);
+      expect(tileRect(tester, 5).top, closeTo(list.top + list.height * 0.4, 3));
+    });
+
+    testWidgets('直接定位后播放到末尾，最后两句切换不再推动列表', (tester) async {
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: 5,
+          directInitialPositioning: true,
+          focusRequestRevision: 1,
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (var index = 6; index < sentenceCount - 1; index++) {
+        await tester.pumpWidget(
+          buildHost(
+            playingIndex: index,
+            directInitialPositioning: true,
+            focusRequestRevision: index,
+            focusReason: SentenceFocusReason.playback,
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+      final before = tileRect(tester, sentenceCount - 1);
+      await tester.pumpWidget(
+        buildHost(
+          playingIndex: sentenceCount - 1,
+          directInitialPositioning: true,
+          focusRequestRevision: 2,
+          focusReason: SentenceFocusReason.playback,
+        ),
+      );
+      expect(
+        tester
+            .stateList<ScrollableState>(find.byType(Scrollable))
+            .every((state) => !state.position.isScrollingNotifier.value),
+        isTrue,
+        reason: '已经到达底部时不应再启动滚动动画',
+      );
+      for (var frame = 0; frame < 24; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(
+          tileRect(tester, sentenceCount - 1).bottom,
+          closeTo(before.bottom, 1),
+          reason: '已经贴底时不得继续滚动',
+        );
+      }
+      await tester.pumpAndSettle();
+    });
 
     testWidgets('末句：贴底停住，不居中留白', (tester) async {
       await tester.pumpWidget(buildHost(playingIndex: sentenceCount - 1));
@@ -380,7 +470,7 @@ void main() {
       );
     });
 
-    testWidgets('进度 seek 直接定位且列表保持可见', (tester) async {
+    testWidgets('进度 seek 平滑定位且列表保持可见', (tester) async {
       await tester.pumpWidget(
         buildHost(
           playingIndex: 5,
@@ -396,7 +486,7 @@ void main() {
           playingIndex: 14,
           directInitialPositioning: true,
           focusRequestRevision: 2,
-          focusReason: SentenceFocusReason.immediate,
+          focusReason: SentenceFocusReason.navigation,
         ),
       );
       expect(
@@ -404,7 +494,7 @@ void main() {
             .widget<Opacity>(find.byKey(kParagraphListInitialFocusKey))
             .opacity,
         1,
-        reason: 'seek 后保持列表可见，直接切换到目标句',
+        reason: 'seek 后保持列表可见，平滑滚动到目标句',
       );
       await tester.pumpAndSettle();
 
@@ -415,7 +505,7 @@ void main() {
       );
     });
 
-    testWidgets('播放焦点远距离跳转到末句时不播放跨列表滚动', (tester) async {
+    testWidgets('播放焦点远距离滚动到末句时自然贴底', (tester) async {
       await tester.pumpWidget(
         buildHost(
           playingIndex: 0,
@@ -440,7 +530,7 @@ void main() {
       expect(
         last.bottom,
         closeTo(list.bottom, edgeTol),
-        reason: '远距离切到末句时应直接定位，不经过整列表滚动动画',
+        reason: '远距离滚动到末句后应自然贴底',
       );
     });
 

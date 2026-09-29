@@ -64,6 +64,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   Duration? _seekPreviewPosition;
   int _seekPreviewToken = 0;
   int _focusRestoreRevision = 0;
+  bool _isProgressDragging = false;
   bool _routeVisible = true;
   bool _isNavigatingToDetail = false;
 
@@ -149,10 +150,31 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     unawaited(_fullscreenSubscription.cancel());
     unawaited(_releaseFullscreen());
     _playlistViewController.dispose();
-    // 页面销毁时在后台启动幂等收尾，防止媒体资源继续工作或丢失最终统计。
-    unawaited(_controller.finishStudyPage(generation: _studyPageGeneration));
+    _scheduleStudyPageFinish();
     scheduleMicrotask(_sleepTimer.cancel);
     super.dispose();
+  }
+
+  /// 销毁兜底在当前生命周期结束后执行，避免暂停或清空状态时修改构建中的 provider。
+  ///
+  /// 捕获当前页面代际，防止延迟任务释放新页面；后台收尾没有调用方等待，
+  /// 因此必须记录并接住异常，避免释放失败变成未处理的异步异常。
+  void _scheduleStudyPageFinish() {
+    final controller = _controller;
+    final generation = _studyPageGeneration;
+    unawaited(
+      Future<void>(() async {
+        try {
+          await controller.finishStudyPage(generation: generation);
+        } catch (error, stackTrace) {
+          AppLogger.log(
+            'StudyExit',
+            'media dispose cleanup failed generation=$generation '
+                'error=$error\n$stackTrace',
+          );
+        }
+      }),
+    );
   }
 
   Future<void> _releaseFullscreen() async {
@@ -496,7 +518,8 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       keywordMap: const {},
       playingSentenceIndex: playingLocalIndex ?? currentSentenceIndex ?? -1,
       autoFocusEnabled: true,
-      focusActive: _routeVisible && mode == state.playlistMode,
+      focusActive:
+          _routeVisible && !_isProgressDragging && mode == state.playlistMode,
       focusRequestRevision: state.sentenceFocusRevision,
       focusReason: state.sentenceFocusReason,
       focusRestoreRevision: _focusRestoreRevision,
@@ -673,7 +696,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
                 total: total,
                 onDragStart: (details) {
                   _seekPreviewToken += 1;
-                  _updateSeekPreview(details.timeStamp);
+                  setState(() {
+                    _isProgressDragging = true;
+                    _seekPreviewPosition = details.timeStamp;
+                  });
                 },
                 onDragUpdate: (details) =>
                     _updateSeekPreview(details.timeStamp),
@@ -715,6 +741,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     MediaPlayback controller,
   ) async {
     await controller.seekAbsolute(target);
+    if (!mounted || token != _seekPreviewToken) return;
+    setState(() {
+      _isProgressDragging = false;
+    });
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (!mounted || token != _seekPreviewToken) return;
     setState(() => _seekPreviewPosition = null);

@@ -558,7 +558,7 @@ void main() {
     await controller.seekAbsolute(Duration.zero);
     expect(
       container.read(mediaPlaybackProvider).sentenceFocusReason,
-      SentenceFocusReason.immediate,
+      SentenceFocusReason.navigation,
     );
     unawaited(controller.play());
     await Future<void>.delayed(Duration.zero);

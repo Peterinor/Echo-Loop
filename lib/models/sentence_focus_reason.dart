@@ -6,6 +6,6 @@ enum SentenceFocusReason {
   /// 用户点击句子、切换上下句或完成进度条 seek。
   navigation,
 
-  /// 页面首次恢复或 route 返回时的无动画定位。
+  /// 首次恢复或 route 返回时的无动画定位。
   immediate,
 }

@@ -724,14 +724,14 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
           currentBookmarkIndex: selected.index,
           lastPlayedBookmarkIndex: selected.index,
           requestSentenceFocus: true,
-          sentenceFocusReason: SentenceFocusReason.immediate,
+          sentenceFocusReason: SentenceFocusReason.navigation,
         );
       } else if (idx >= 0) {
         state = state.copyWith(
           currentFullIndex: idx,
           lastPlayedFullIndex: idx,
           requestSentenceFocus: true,
-          sentenceFocusReason: SentenceFocusReason.immediate,
+          sentenceFocusReason: SentenceFocusReason.navigation,
         );
       }
     }

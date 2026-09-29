@@ -33,6 +33,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:echo_loop/services/app_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
@@ -311,6 +312,77 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  for (final pauseFails in [false, true]) {
+    testMediaWidgets('页面直接卸载时安全完成媒体收尾（暂停失败：$pauseFails）', (tester) async {
+      final visible = ValueNotifier(true);
+      addTearDown(visible.dispose);
+      await tester.pumpWidget(
+        createTestApp(
+          ValueListenableBuilder<bool>(
+            valueListenable: visible,
+            builder: (context, show, child) => show
+                ? MediaPlaybackScreen(audioItem: item)
+                : const SizedBox.shrink(),
+          ),
+          overrides: mediaOverrides(withTranscript: true),
+        ),
+      );
+      await pumpMediaReady(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MediaPlaybackScreen)),
+      );
+      final controller = container.read(mediaPlaybackProvider.notifier);
+      controller.senseGroupRangePlayback;
+      unawaited(controller.play());
+      await tester.pump();
+      expect(backend.playing, isTrue);
+
+      // 保留应用级 ProviderScope，直接卸载页面；不能预先调用 release 掩盖 dispose 问题。
+      AppLogger.instance.clear();
+      if (pauseFails) backend.pauseError = StateError('exit pause failure');
+      visible.value = false;
+      await tester.pumpAndSettle();
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains('media finish start'),
+        ),
+        isTrue,
+      );
+      // 收尾包含定时器和文件 IO，按完成日志推进模拟时钟，而不是等待固定时长。
+      bool cleanupFinished() => AppLogger.instance.entries.any(
+        (entry) =>
+            entry.message.contains('media finish complete') ||
+            entry.message.contains('media dispose cleanup failed'),
+      );
+      for (var frame = 0; frame < 50 && !cleanupFinished(); frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(() => Future<void>(() {}));
+      }
+      expect(cleanupFinished(), isTrue, reason: '页面收尾必须完成');
+      expect(tester.takeException(), isNull);
+      if (!pauseFails) expect(backend.playing, isFalse);
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains(
+            'Tried to modify a provider while the widget tree was building',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains('media dispose cleanup failed'),
+        ),
+        pauseFails,
+        reason: '后台释放失败必须记录，且不能成为未处理的异步异常',
+      );
+      expect(router.isRouted, isFalse);
+      expect(container.read(mediaPlaybackProvider).audioItem, isNull);
+      // 故障注入只覆盖本次页面退出，应用级 ProviderScope 清理恢复正常后端。
+      backend.pauseError = null;
+    });
+  }
 
   testMediaWidgets('视频播放控制区避让底部系统安全区', (tester) async {
     final originalPhysicalSize = tester.view.physicalSize;
@@ -1632,11 +1704,31 @@ void main() {
     await pumpMediaReady(tester);
     await tester.pumpAndSettle();
 
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MediaPlaybackScreen)),
+    );
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    unawaited(controller.play());
+    await tester.pump();
+
     final barRect = tester.getRect(
       find.byKey(const ValueKey('media-progress-bar')),
     );
+    final firstSentence = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 0,
+    );
+    final firstSentenceTop = tester.getRect(firstSentence).top;
     final gesture = await tester.startGesture(barRect.centerLeft);
     await tester.pump();
+    // 播放仍在进行时，播放进度可能继续跨句；拖动期间列表不能跟随这些更新滚动。
+    backend.emitPosition(const Duration(seconds: 20));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      tester.getRect(firstSentence).top,
+      closeTo(firstSentenceTop, 1),
+      reason: '拖动进度条期间暂停列表自动聚焦',
+    );
     await gesture.moveTo(barRect.center);
     await tester.pump();
 
@@ -1660,12 +1752,9 @@ void main() {
       reason: '进度条 seek 后列表应保持可见',
     );
     await tester.pumpAndSettle();
-    final container = ProviderScope.containerOf(
-      tester.element(find.byType(MediaPlaybackScreen)),
-    );
     expect(
       container.read(mediaPlaybackProvider).sentenceFocusReason,
-      SentenceFocusReason.immediate,
+      SentenceFocusReason.navigation,
     );
     final listRect = tester.getRect(find.byType(ScrollablePositionedList));
     final selectedTile = find.byWidgetPredicate(
