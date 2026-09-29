@@ -54,6 +54,8 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   static const _singleColumnControlPanelHeight = 176.0;
 
   late final TabController _playlistViewController;
+  final _fullSentencePagerController = FreePlayerSentencePagerController();
+  final _bookmarkSentencePagerController = FreePlayerSentencePagerController();
   late final MediaPlayback _controller;
   late final int _studyPageGeneration;
   late final MediaSleepTimer _sleepTimer;
@@ -192,8 +194,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         onPlayPause: () => state.isPlaying
             ? unawaited(_controller.pause())
             : unawaited(_controller.play()),
-        onPrevious: () => unawaited(_controller.previousSentence()),
-        onNext: () => unawaited(_controller.nextSentence()),
+        onPrevious: () =>
+            unawaited(_handleSentenceNavigation(-1, trigger: 'hotkey')),
+        onNext: () =>
+            unawaited(_handleSentenceNavigation(1, trigger: 'hotkey')),
         child: Scaffold(
           backgroundColor: widget.audioItem.isVideo && state.visualTrackExpanded
               ? Colors.black
@@ -420,6 +424,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           state.currentFullIndex,
           PlaylistMode.full,
           (s) => controller.selectFullSentence(s.index),
+          pagerController: _fullSentencePagerController,
         ),
         _buildBookmarkPane(state, l10n),
       ],
@@ -467,6 +472,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       PlaylistMode.bookmarks,
       (s) => controller.selectBookmarkedSentence(s.index),
       playingLocalIndex: playingLocalIndex,
+      pagerController: _bookmarkSentencePagerController,
     );
   }
 
@@ -477,6 +483,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     PlaylistMode mode,
     ValueChanged<Sentence> onPlayFrom, {
     int? playingLocalIndex,
+    required FreePlayerSentencePagerController pagerController,
   }) {
     final controller = ref.read(mediaPlaybackProvider.notifier);
     final settings = mode == PlaylistMode.bookmarks
@@ -491,6 +498,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
 
     final singleSentencePane = FreePlayerSentencePager(
       key: PageStorageKey('media-single-sentence-${audioItem.id}-${mode.name}'),
+      controller: pagerController,
       audioItem: audioItem,
       sentences: sentences,
       currentSentenceIndex: currentSentenceIndex ?? 0,
@@ -637,7 +645,13 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     double? minimumHeight,
     bool compact = false,
   }) {
-    final controls = _MediaControls(state: state, compact: compact);
+    final controls = _MediaControls(
+      state: state,
+      compact: compact,
+      onPrevious: () =>
+          unawaited(_handleSentenceNavigation(-1, trigger: 'button')),
+      onNext: () => unawaited(_handleSentenceNavigation(1, trigger: 'button')),
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: minimumHeight ?? 0),
       child: Container(
@@ -666,6 +680,78 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           ),
         ),
       ),
+    );
+  }
+
+  /// 将页面内的上一句/下一句统一路由到当前播放列表的单句分页器。
+  Future<void> _handleSentenceNavigation(
+    int offset, {
+    required String trigger,
+  }) async {
+    final state = ref.read(mediaPlaybackProvider);
+    final direction = offset < 0 ? 'previous' : 'next';
+    final currentPosition = state.currentPlayablePosition;
+    final sourceIndex =
+        currentPosition == null ||
+            currentPosition < 0 ||
+            currentPosition >= state.playableSentences.length
+        ? null
+        : state.playableSentences[currentPosition].index;
+    AppLogger.log(
+      'FreePlayerNavigation',
+      'request trigger=$trigger item=${state.audioItem?.id ?? widget.audioItem.id} '
+          'playlist=${state.playlistMode.name} direction=$direction '
+          'from=$sourceIndex isPlaying=${state.isPlaying} '
+          'singleSentence=${state.settings.singleSentenceMode}',
+    );
+    if (!state.hasSentences) {
+      if (offset < 0) {
+        await _controller.previousSentence();
+      } else {
+        await _controller.nextSentence();
+      }
+      return;
+    }
+    if (!state.settings.singleSentenceMode) {
+      if (offset < 0) {
+        await _controller.previousSentence();
+      } else {
+        await _controller.nextSentence();
+      }
+      return;
+    }
+
+    final sentences = state.playableSentences;
+    if (currentPosition == null) {
+      AppLogger.log(
+        'FreePlayerNavigation',
+        'ignored trigger=$trigger reason=no_current_position direction=$direction',
+      );
+      return;
+    }
+    final targetPosition = currentPosition + offset;
+    if (targetPosition < 0 || targetPosition >= sentences.length) {
+      AppLogger.log(
+        'FreePlayerNavigation',
+        'ignored trigger=$trigger reason=boundary direction=$direction '
+            'from=$sourceIndex targetPosition=$targetPosition '
+            'playableCount=${sentences.length}',
+      );
+      return;
+    }
+    final targetIndex = sentences[targetPosition].index;
+    AppLogger.log(
+      'FreePlayerNavigation',
+      'target trigger=$trigger direction=$direction from=$sourceIndex '
+          'to=$targetIndex autoPlay=${state.isPlaying}',
+    );
+
+    final pagerController = state.playlistMode == PlaylistMode.bookmarks
+        ? _bookmarkSentencePagerController
+        : _fullSentencePagerController;
+    await pagerController.animateToSentence(
+      sentences[targetPosition].index,
+      autoPlay: state.isPlaying,
     );
   }
 
@@ -844,13 +930,20 @@ String _formatRemainingMediaTime({
 }
 
 class _MediaControls extends ConsumerWidget {
-  const _MediaControls({required this.state, this.compact = false});
+  const _MediaControls({
+    required this.state,
+    required this.onPrevious,
+    required this.onNext,
+    this.compact = false,
+  });
 
   static const double _controlButtonSize = 56;
   static const double _mainControlGap = 48;
   static const double _compactControlGap = 12;
 
   final MediaPlaybackState state;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
   final bool compact;
 
   @override
@@ -881,14 +974,11 @@ class _MediaControls extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _navButton(
-                  Icons.replay_10,
-                  () => controller.previousSentence(),
-                ),
+                _navButton(Icons.replay_10, onPrevious),
                 const SizedBox(width: _mainControlGap),
                 _playPauseButton(context, controller),
                 const SizedBox(width: _mainControlGap),
-                _navButton(Icons.forward_10, () => controller.nextSentence()),
+                _navButton(Icons.forward_10, onNext),
               ],
             ),
           ],
@@ -944,17 +1034,12 @@ class _MediaControls extends ConsumerWidget {
             children: [
               _navButton(
                 Icons.skip_previous,
-                state.isFirstSentence
-                    ? null
-                    : () => controller.previousSentence(),
+                state.isFirstSentence ? null : onPrevious,
               ),
               const SizedBox(width: _mainControlGap),
               _playPauseButton(context, controller),
               const SizedBox(width: _mainControlGap),
-              _navButton(
-                Icons.skip_next,
-                state.isLastSentence ? null : () => controller.nextSentence(),
-              ),
+              _navButton(Icons.skip_next, state.isLastSentence ? null : onNext),
             ],
           ),
         ],

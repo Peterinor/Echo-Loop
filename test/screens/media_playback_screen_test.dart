@@ -197,6 +197,17 @@ void main() {
     }
   }
 
+  Future<void> pumpUntil(
+    WidgetTester tester,
+    bool Function() condition, {
+    String reason = 'condition was not met',
+  }) async {
+    for (var frame = 0; frame < 40 && !condition(); frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(condition(), isTrue, reason: reason);
+  }
+
   tearDown(() async {
     // 页面卸载会异步保存播放断点，先给 Drift 写入一个真实事件循环机会，
     // 再清理临时目录，避免释放流程访问已删除的测试数据库文件。
@@ -1013,6 +1024,142 @@ void main() {
 
     expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
     expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('播放中横滑切句等卡片停稳后再播放目标句', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    unawaited(controller.play());
+    await tester.pump();
+    expect(backend.playCalls, 1);
+
+    final pager = find.byKey(kFullSingleSentenceSwipeAreaKey);
+    final gesture = await tester.startGesture(tester.getCenter(pager));
+    await gesture.moveBy(Offset(-tester.getSize(pager).width * 0.7, 0));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    expect(backend.playCalls, 1);
+
+    await gesture.up();
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '分页停稳后应提交目标句',
+    );
+    await pumpUntil(
+      tester,
+      () => backend.playCalls == 2,
+      reason: '目标句提交后应恢复播放',
+    );
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(backend.playCalls, 2);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('播放中点击下一句等卡片动画结束后再播放目标句', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    unawaited(controller.play());
+    await tester.pump();
+    expect(backend.playCalls, 1);
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.skip_next));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    expect(backend.playCalls, 1);
+
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '卡片动画结束后应提交目标句',
+    );
+    await pumpUntil(
+      tester,
+      () => backend.playCalls == 2,
+      reason: '目标句提交后应恢复播放',
+    );
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(backend.playCalls, 2);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('暂停时点击下一句完成切卡片但不自动播放', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.skip_next));
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '卡片动画结束后应提交目标句',
+    );
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
+    expect(backend.playCalls, 0);
     expect(backend.seekCalls.last, const Duration(seconds: 4));
 
     await releaseMediaPage(tester);

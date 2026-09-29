@@ -774,6 +774,11 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   Future<void> selectFullSentence(int index, {bool autoPlay = true}) async {
     if (index < 0 || index >= state.sentences.length) return;
     final wasPlaying = state.isPlaying;
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection begin source=full from=${state.currentFullIndex} '
+          'to=$index autoPlay=$autoPlay wasPlaying=$wasPlaying',
+    );
     state = state.copyWith(
       currentFullIndex: index,
       lastPlayedFullIndex: index,
@@ -781,7 +786,17 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       sentenceFocusReason: SentenceFocusReason.navigation,
     );
     await _alignEngineToCurrent();
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection aligned source=full index=$index '
+          'position=${state.position.inMilliseconds}ms autoPlay=$autoPlay',
+    );
     if (autoPlay) {
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence selection requests playback source=full index=$index '
+            'resetWholeLoops=${!wasPlaying}',
+      );
       unawaited(play(resetWholeLoops: !wasPlaying));
     }
   }
@@ -793,6 +808,12 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     if (index < 0 || index >= state.sentences.length) return;
     if (!state.bookmarkedIndices.contains(index)) return;
     final wasPlaying = state.isPlaying;
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection begin source=bookmarks '
+          'from=${state.currentBookmarkIndex} to=$index '
+          'autoPlay=$autoPlay wasPlaying=$wasPlaying',
+    );
     state = state.copyWith(
       currentBookmarkIndex: index,
       lastPlayedBookmarkIndex: index,
@@ -800,7 +821,17 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       sentenceFocusReason: SentenceFocusReason.navigation,
     );
     await _alignEngineToCurrent();
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection aligned source=bookmarks index=$index '
+          'position=${state.position.inMilliseconds}ms autoPlay=$autoPlay',
+    );
     if (autoPlay) {
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence selection requests playback source=bookmarks index=$index '
+            'resetWholeLoops=${!wasPlaying}',
+      );
       unawaited(play(resetWholeLoops: !wasPlaying));
     }
   }
@@ -1404,6 +1435,20 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       wholeLoopsDone: resetWholeLoops ? 0 : state.wholeLoopsDone,
       sentenceRepeatsDone: resetSentenceRepeats ? 0 : state.sentenceRepeatsDone,
     );
+    final position = _currentPos;
+    final playable = _playable;
+    final currentSentence =
+        position != null && position >= 0 && position < playable.length
+        ? playable[position]
+        : null;
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence playback start item=${state.audioItem?.id} '
+          'sentence=${currentSentence?.index} '
+          'range=${currentSentence?.startTime.inMilliseconds}-'
+          '${currentSentence?.endTime.inMilliseconds}ms '
+          'generation=$gen session=$_playbackSessionId',
+    );
     _setPlaying(true);
     unawaited(_playSentenceDriven(gen));
   }
@@ -1418,11 +1463,34 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       }
       final sentence = playable[pos];
       _setCurrentFromSentence(sentence);
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence range dispatch begin item=${state.audioItem?.id} '
+            'sentence=${sentence.index} '
+            'range=${sentence.startTime.inMilliseconds}-'
+            '${sentence.endTime.inMilliseconds}ms generation=$gen '
+            'session=$_playbackSessionId',
+      );
       final result = await _engine.playRange(
         sentence.startTime,
         sentence.endTime,
         speed: state.settings.playbackSpeed,
+        onRangeReady: () => AppLogger.log(
+          'MediaPlayback',
+          'sentence backend play begin item=${state.audioItem?.id} '
+              'sentence=${sentence.index} '
+              'range=${sentence.startTime.inMilliseconds}-'
+              '${sentence.endTime.inMilliseconds}ms generation=$gen '
+              'session=$_playbackSessionId',
+        ),
         sessionId: _playbackSessionId,
+      );
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence range dispatch end item=${state.audioItem?.id} '
+            'sentence=${sentence.index} result=$result '
+            'generationCurrent=${gen == _playbackGen} '
+            'session=$_playbackSessionId',
       );
       if (gen != _playbackGen || result != SentencePlaybackResult.completed) {
         return;
