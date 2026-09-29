@@ -482,52 +482,64 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     final settings = mode == PlaylistMode.bookmarks
         ? state.bookmarkSettings
         : state.fullSettings;
-    if (settings.singleSentenceMode && currentSentenceIndex != null) {
-      final audioItem = state.audioItem ?? widget.audioItem;
-      final isBookmarkMode = mode == PlaylistMode.bookmarks;
-      return FreePlayerSentencePager(
-        key: PageStorageKey(
-          'media-single-sentence-${audioItem.id}-${mode.name}',
-        ),
-        audioItem: audioItem,
-        sentences: sentences,
-        currentSentenceIndex: currentSentenceIndex,
-        bookmarkedSentenceIndices: state.bookmarkedIndices,
-        showTranscript: settings.showTranscript,
-        isPlaying: state.isPlaying,
-        scope: isBookmarkMode
-            ? FreePlayerSentenceScope.bookmarks
-            : FreePlayerSentenceScope.full,
-        actions: FreePlayerSentenceActions(
-          onSentenceSelected: isBookmarkMode
-              ? controller.selectBookmarkedSentence
-              : controller.selectFullSentence,
-          onBookmarkToggle: _handleBookmarkToggle,
-          onStopMainPlayer: () => unawaited(controller.pause()),
-          onToolbarButtonTapped: () =>
-              unawaited(controller.pauseAfterCurrentSentence()),
-        ),
-      );
-    }
-    return ParagraphSentenceListCard(
-      key: ValueKey('media-sentence-list-${widget.audioItem.id}-${mode.name}'),
+    final audioItem = state.audioItem ?? widget.audioItem;
+    final isBookmarkMode = mode == PlaylistMode.bookmarks;
+    final showSingleSentence =
+        settings.singleSentenceMode && currentSentenceIndex != null;
+    final resolvedPlayingLocalIndex =
+        playingLocalIndex ?? currentSentenceIndex ?? -1;
+
+    final singleSentencePane = FreePlayerSentencePager(
+      key: PageStorageKey('media-single-sentence-${audioItem.id}-${mode.name}'),
+      audioItem: audioItem,
+      sentences: sentences,
+      currentSentenceIndex: currentSentenceIndex ?? 0,
+      bookmarkedSentenceIndices: state.bookmarkedIndices,
+      showTranscript: settings.showTranscript,
+      isPlaying: state.isPlaying,
+      scope: isBookmarkMode
+          ? FreePlayerSentenceScope.bookmarks
+          : FreePlayerSentenceScope.full,
+      actions: FreePlayerSentenceActions(
+        onSentenceSelected: isBookmarkMode
+            ? controller.selectBookmarkedSentence
+            : controller.selectFullSentence,
+        onBookmarkToggle: _handleBookmarkToggle,
+        onStopMainPlayer: () => unawaited(controller.pause()),
+        onToolbarButtonTapped: () =>
+            unawaited(controller.pauseAfterCurrentSentence()),
+      ),
+    );
+    final listPane = ParagraphSentenceListCard(
+      key: ValueKey('media-sentence-list-${audioItem.id}-${mode.name}'),
       sentences: sentences,
       displayMode: state.settings.showTranscript
           ? RetellDisplayMode.showAll
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
-      playingSentenceIndex: playingLocalIndex ?? currentSentenceIndex ?? -1,
+      playingSentenceIndex: resolvedPlayingLocalIndex,
       autoFocusEnabled: true,
       focusActive:
-          _routeVisible && !_isProgressDragging && mode == state.playlistMode,
+          !showSingleSentence &&
+          _routeVisible &&
+          !_isProgressDragging &&
+          mode == state.playlistMode,
       focusRequestRevision: state.sentenceFocusRevision,
       focusReason: state.sentenceFocusReason,
       focusRestoreRevision: _focusRestoreRevision,
       directInitialPositioning: true,
+      preserveScrollPositionOnReactivation: true,
       bookmarkedSentenceIndices: state.bookmarkedIndices,
       onSentencePlayFrom: onPlayFrom,
       onSentenceExplanationTap: _handleSentenceDetail,
       onSentenceBookmarkToggle: (s) => _handleBookmarkToggle(s.index),
+    );
+
+    return _MediaSentencePaneSwitcher(
+      key: ValueKey('media-sentence-pane-${audioItem.id}-${mode.name}'),
+      showList: !showSingleSentence,
+      listPane: listPane,
+      singleSentencePane: singleSentencePane,
     );
   }
 
@@ -1054,6 +1066,57 @@ class _MediaControls extends ConsumerWidget {
           ? IconButton.styleFrom(backgroundColor: colorScheme.primaryContainer)
           : null,
       onPressed: onPressed,
+    );
+  }
+}
+
+/// 首次打开列表后保留其滚动状态；列表未曾显示时不提前创建单句之外的内容。
+class _MediaSentencePaneSwitcher extends StatefulWidget {
+  const _MediaSentencePaneSwitcher({
+    super.key,
+    required this.showList,
+    required this.listPane,
+    required this.singleSentencePane,
+  });
+
+  final bool showList;
+  final Widget listPane;
+  final Widget singleSentencePane;
+
+  @override
+  State<_MediaSentencePaneSwitcher> createState() =>
+      _MediaSentencePaneSwitcherState();
+}
+
+class _MediaSentencePaneSwitcherState
+    extends State<_MediaSentencePaneSwitcher> {
+  late bool _hasShownList;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasShownList = widget.showList;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaSentencePaneSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showList) _hasShownList = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_hasShownList) return widget.singleSentencePane;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(
+          offstage: !widget.showList,
+          child: TickerMode(enabled: widget.showList, child: widget.listPane),
+        ),
+        if (!widget.showList) widget.singleSentencePane,
+      ],
     );
   }
 }

@@ -48,6 +48,9 @@ class ParagraphSentenceListCard extends StatefulWidget {
 
   /// 是否在定位完成前隐藏列表并在完成后瞬时显示，供需要无初始动画的播放器使用。
   final bool directInitialPositioning;
+
+  /// 列表暂时隐藏后，若焦点没有变化则保留滚动位置。
+  final bool preserveScrollPositionOnReactivation;
   final Duration autoFocusResumeDelay;
 
   /// 已收藏句子索引集合（用于显示只读标记）
@@ -83,6 +86,7 @@ class ParagraphSentenceListCard extends StatefulWidget {
     this.focusReason,
     this.focusRestoreRevision = 0,
     this.directInitialPositioning = false,
+    this.preserveScrollPositionOnReactivation = false,
     this.autoFocusResumeDelay = const Duration(seconds: 2),
     this.bookmarkedSentenceIndices = const {},
     this.onSentenceExplanationTap,
@@ -113,6 +117,12 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
   Timer? _resumeFocusTimer;
   bool _userSuspendedFocus = false;
   int _focusRequestGeneration = 0;
+  bool _hasInactiveFocusSnapshot = false;
+  int? _inactivePlayingSentenceIndex;
+  int? _inactiveFocusRequestRevision;
+  int _inactiveFocusRestoreRevision = 0;
+  SentenceFocusReason? _inactiveFocusReason;
+  bool _inactiveSentenceSequenceChanged = false;
 
   /// 初始定位时当前句在列表中的 item 索引。
   int _initialScrollIndex = 0;
@@ -309,6 +319,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
     final focusReenabled =
         !oldWidget.autoFocusEnabled && widget.autoFocusEnabled;
     final becameFocusActive = !oldWidget.focusActive && widget.focusActive;
+    final becameFocusInactive = oldWidget.focusActive && !widget.focusActive;
     final focusRestoreRequested =
         widget.focusRestoreRevision != oldWidget.focusRestoreRevision;
     final focusRequestChanged =
@@ -322,8 +333,41 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       return;
     }
 
-    if (!widget.focusActive) {
+    if (widget.preserveScrollPositionOnReactivation && becameFocusInactive) {
+      _captureInactiveFocusSnapshot();
+      _resumeFocusTimer?.cancel();
       _cancelFocusAnimation();
+      return;
+    }
+
+    if (!widget.focusActive) {
+      if (widget.preserveScrollPositionOnReactivation) {
+        _inactiveSentenceSequenceChanged =
+            _inactiveSentenceSequenceChanged || paragraphChanged;
+        _resumeFocusTimer?.cancel();
+      }
+      _cancelFocusAnimation();
+      return;
+    }
+
+    if (becameFocusActive &&
+        widget.preserveScrollPositionOnReactivation &&
+        _hasInactiveFocusSnapshot) {
+      final focusChangedWhileInactive =
+          widget.playingSentenceIndex != _inactivePlayingSentenceIndex ||
+          widget.focusRequestRevision != _inactiveFocusRequestRevision ||
+          widget.focusRestoreRevision != _inactiveFocusRestoreRevision ||
+          widget.focusReason != _inactiveFocusReason ||
+          _inactiveSentenceSequenceChanged ||
+          !_initialFocusDone;
+      _clearInactiveFocusSnapshot();
+      if (focusChangedWhileInactive) {
+        _resumeFocusTimer?.cancel();
+        _userSuspendedFocus = false;
+        _focusImmediately(hideWhilePositioning: false);
+      } else if (_userSuspendedFocus) {
+        _scheduleFocusResumeTimer();
+      }
       return;
     }
 
@@ -399,24 +443,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
 
     if (notification.direction == ScrollDirection.idle) {
       if (_userSuspendedFocus) {
-        _resumeFocusTimer?.cancel();
-        _resumeFocusTimer = Timer(widget.autoFocusResumeDelay, () {
-          if (!mounted || !widget.autoFocusEnabled || !widget.focusActive) {
-            return;
-          }
-          _userSuspendedFocus = false;
-          if (widget.focusRequestRevision != null &&
-              widget.focusReason == SentenceFocusReason.immediate) {
-            _focusImmediately(hideWhilePositioning: false);
-          } else if (widget.focusRequestRevision != null &&
-              widget.focusReason == SentenceFocusReason.navigation) {
-            _focusWithPlaybackAnimation();
-          } else if (widget.focusRequestRevision != null) {
-            _focusWithPlaybackAnimation();
-          } else {
-            _focusPlayingSentence();
-          }
-        });
+        _scheduleFocusResumeTimer();
       }
       return false;
     }
@@ -425,6 +452,43 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
     _userSuspendedFocus = true;
     _focusRequestGeneration += 1;
     return false;
+  }
+
+  /// 记录列表隐藏前的焦点；隐藏期间的更新会与这份快照比较。
+  void _captureInactiveFocusSnapshot() {
+    _hasInactiveFocusSnapshot = true;
+    _inactivePlayingSentenceIndex = widget.playingSentenceIndex;
+    _inactiveFocusRequestRevision = widget.focusRequestRevision;
+    _inactiveFocusRestoreRevision = widget.focusRestoreRevision;
+    _inactiveFocusReason = widget.focusReason;
+    _inactiveSentenceSequenceChanged = false;
+  }
+
+  /// 清除列表失焦期间用于比较的焦点快照。
+  void _clearInactiveFocusSnapshot() {
+    _hasInactiveFocusSnapshot = false;
+    _inactivePlayingSentenceIndex = null;
+    _inactiveFocusRequestRevision = null;
+    _inactiveFocusRestoreRevision = 0;
+    _inactiveFocusReason = null;
+    _inactiveSentenceSequenceChanged = false;
+  }
+
+  /// 手动滚动暂停期间先等待一段时间，再按当前焦点恢复自动跟随。
+  void _scheduleFocusResumeTimer() {
+    _resumeFocusTimer?.cancel();
+    _resumeFocusTimer = Timer(widget.autoFocusResumeDelay, () {
+      if (!mounted || !widget.autoFocusEnabled || !widget.focusActive) return;
+      _userSuspendedFocus = false;
+      if (widget.focusRequestRevision != null &&
+          widget.focusReason == SentenceFocusReason.immediate) {
+        _focusImmediately(hideWhilePositioning: false);
+      } else if (widget.focusRequestRevision != null) {
+        _focusWithPlaybackAnimation();
+      } else {
+        _focusPlayingSentence();
+      }
+    });
   }
 
   /// 学习页面与随心听共享同一套连续滚动及边界处理。

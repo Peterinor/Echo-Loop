@@ -705,6 +705,128 @@ void main() {
     );
   });
 
+  testMediaWidgets('精听与列表模式往返保留手动滚动位置', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    final scrollable = find.byType(ScrollablePositionedList);
+    await tester.drag(scrollable, const Offset(0, -900));
+    await tester.pumpAndSettle();
+
+    final listRect = tester.getRect(scrollable);
+    final trackedIndex = tester
+        .widgetList<MaskedSentenceTile>(find.byType(MaskedSentenceTile))
+        .map((tile) => tile.sentence.index)
+        .firstWhere((index) => index > 0);
+    final trackedSentence = find.byWidgetPredicate(
+      (widget) =>
+          widget is MaskedSentenceTile && widget.sentence.index == trackedIndex,
+    );
+    final trackedTop = tester.getRect(trackedSentence).top;
+    expect(tester.getRect(trackedSentence).bottom, greaterThan(listRect.top));
+    expect(trackedTop, lessThan(listRect.bottom));
+
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(trackedSentence).top,
+      closeTo(trackedTop, 2),
+      reason: '播放焦点未变时，切换模式不应重置用户滚动位置',
+    );
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('精听期间当前句变化后切回列表直接定位最新句', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await controller.selectFullSentence(12, autoPlay: false);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: false),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(ScrollablePositionedList);
+    final listRect = tester.getRect(scrollable);
+    final selectedSentence = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 12,
+    );
+    expect(selectedSentence, findsOneWidget);
+    expect(
+      tester.getRect(selectedSentence).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '精听期间焦点变化时，列表应直接对齐最新当前句',
+    );
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testMediaWidgets('视频画面和字幕区之间显示主题化细分割线', (tester) async {
     await tester.pumpWidget(
       createTestApp(
