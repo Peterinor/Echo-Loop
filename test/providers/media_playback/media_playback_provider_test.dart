@@ -229,13 +229,18 @@ void main() {
     expect(record?.studyTimeMilliseconds, greaterThanOrEqualTo(1000));
   });
 
-  test('媒体锁屏控制按字幕状态切句或前后 seek 10 秒', () async {
+  test('媒体锁屏控制统一为上一首、播放暂停、下一首并保留对应行为', () async {
     final controller = await loadController();
 
-    expect(
-      router.playbackState.value.controls,
-      contains(MediaControl.skipToNext),
-    );
+    final subtitleControls = router.playbackState.value.controls
+        .map((control) => control.action)
+        .toList();
+    expect(subtitleControls, [
+      MediaAction.skipToPrevious,
+      MediaAction.play,
+      MediaAction.skipToNext,
+    ]);
+    expect(router.playbackState.value.androidCompactActionIndices, [0, 1, 2]);
     await router.skipToNext();
     expect(backend.seekCalls.last, const Duration(seconds: 60));
 
@@ -243,13 +248,12 @@ void main() {
     transcriptSentences.clear();
     await loadController();
 
-    expect(router.playbackState.value.controls, contains(MediaControl.rewind));
     expect(
-      router.playbackState.value.controls,
-      contains(MediaControl.fastForward),
+      router.playbackState.value.controls.map((control) => control.action),
+      subtitleControls,
     );
-    await router.rewind();
-    await router.fastForward();
+    await router.skipToPrevious();
+    await router.skipToNext();
     expect(backend.seekCalls.takeLast(2), [
       Duration.zero,
       const Duration(seconds: 10),

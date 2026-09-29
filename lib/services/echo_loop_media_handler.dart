@@ -233,10 +233,16 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> skipToNext() async => _onSkipToNext?.call();
+  Future<void> skipToNext() async {
+    final callback = _onSkipToNext ?? _onFastForward;
+    await callback?.call();
+  }
 
   @override
-  Future<void> skipToPrevious() async => _onSkipToPrevious?.call();
+  Future<void> skipToPrevious() async {
+    final callback = _onSkipToPrevious ?? _onRewind;
+    await callback?.call();
+  }
 
   @override
   Future<void> rewind() async => _onRewind?.call();
@@ -254,23 +260,20 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
     await _becomingNoisySub?.cancel();
   }
 
+  /// 按统一的上一项、播放/暂停、下一项顺序发布系统媒体卡片 controls。
   void _broadcastState() {
     final playing = _logicalPlaying ?? _backend.playing;
-    final canSkip = _onSkipToPrevious != null || _onSkipToNext != null;
-    final canSeekRelative = _onRewind != null || _onFastForward != null;
+    final canNavigate =
+        _onSkipToPrevious != null ||
+        _onSkipToNext != null ||
+        _onRewind != null ||
+        _onFastForward != null;
     final controls = <MediaControl>[
-      if (canSkip) MediaControl.skipToPrevious,
-      if (canSeekRelative) MediaControl.rewind,
+      if (canNavigate) MediaControl.skipToPrevious,
       playing ? MediaControl.pause : MediaControl.play,
-      MediaControl.stop,
-      if (canSkip) MediaControl.skipToNext,
-      if (canSeekRelative) MediaControl.fastForward,
+      if (canNavigate) MediaControl.skipToNext,
     ];
-    final compactActions = canSkip
-        ? const [0, 1, 3]
-        : canSeekRelative
-        ? const [0, 1, 3]
-        : const [0, 1];
+    final compactActions = canNavigate ? const [0, 1, 2] : const [0];
     playbackState.add(
       PlaybackState(
         controls: controls,
@@ -278,9 +281,10 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
           MediaAction.play,
           MediaAction.pause,
           MediaAction.seek,
-          MediaAction.stop,
-          if (canSkip) ...{MediaAction.skipToNext, MediaAction.skipToPrevious},
-          if (canSeekRelative) ...{MediaAction.rewind, MediaAction.fastForward},
+          if (canNavigate) ...{
+            MediaAction.skipToNext,
+            MediaAction.skipToPrevious,
+          },
         },
         androidCompactActionIndices: compactActions,
         processingState: _mapState(),
