@@ -41,6 +41,10 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
   late final ListeningPractice _notifier;
   late final int _studyPageGeneration;
 
+  // 两个常驻 tab 各自持有分页控制器，避免切换列表时覆盖另一分页器的状态。
+  final _fullSentencePagerController = FreePlayerSentencePagerController();
+  final _bookmarkSentencePagerController = FreePlayerSentencePagerController();
+
   late TabController _tabController;
   int _previousTabIndex = 0;
   Duration? _seekPreviewPosition;
@@ -406,6 +410,9 @@ class _PlayerScreenState extends ConsumerState<PlayerScreen>
         ? playerState.bookmarkedSentences
         : playerState.sentences;
     return FreePlayerSentencePager(
+      controller: isBookmarkMode
+          ? _bookmarkSentencePagerController
+          : _fullSentencePagerController,
       audioItem: audioItem,
       sentences: playable,
       currentSentenceIndex: index,
