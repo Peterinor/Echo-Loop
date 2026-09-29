@@ -66,5 +66,10 @@ void main() {
     debugDefaultTargetPlatformOverride = null;
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
+
+    // 显式卸载路由树并推进 dispose 排入的异步收尾，避免测试框架在测试结束
+    // 时才执行页面兜底释放，遗留 fake-async Timer。
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 }

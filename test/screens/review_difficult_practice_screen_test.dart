@@ -23,6 +23,7 @@ import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/learning_progress_provider.dart';
 import 'package:echo_loop/providers/learning_session/learning_session_provider.dart';
 import 'package:echo_loop/providers/learning_session/review_difficult_practice_provider.dart';
+import 'package:echo_loop/providers/new_user_guide_provider.dart';
 import 'package:echo_loop/providers/notification_permission_provider.dart';
 import 'package:echo_loop/providers/repeat_flow/repeat_flow_engine.dart';
 import 'package:echo_loop/providers/repeat_flow/repeat_flow_phase.dart' as flow;
@@ -64,6 +65,11 @@ class _VideoViewMediaEngine extends MediaEngine {
     key: ValueKey('review-difficult-video-view'),
     color: Colors.black,
   );
+}
+
+class _DisabledGuideEnabledNotifier extends GuideEnabledNotifier {
+  @override
+  bool build() => false;
 }
 
 class _ReadySpeechPermissionService implements SpeechPermissionService {
@@ -321,6 +327,7 @@ void main() {
         ...learningSettingsOverrides(
           listenAndRepeatRatingEnabled: listenAndRepeatRatingEnabled,
         ),
+        guideEnabledProvider.overrideWith(_DisabledGuideEnabledNotifier.new),
         listeningPracticeProvider.overrideWith(
           () => TestListeningPractice(
             ListeningPracticeState(sentences: sentences),

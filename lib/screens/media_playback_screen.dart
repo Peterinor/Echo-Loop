@@ -164,19 +164,17 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   void _scheduleStudyPageFinish() {
     final controller = _controller;
     final generation = _studyPageGeneration;
-    unawaited(
-      Future<void>(() async {
-        try {
-          await controller.finishStudyPage(generation: generation);
-        } catch (error, stackTrace) {
-          AppLogger.log(
-            'StudyExit',
-            'media dispose cleanup failed generation=$generation '
-                'error=$error\n$stackTrace',
-          );
-        }
-      }),
-    );
+    scheduleMicrotask(() async {
+      try {
+        await controller.finishStudyPage(generation: generation);
+      } catch (error, stackTrace) {
+        AppLogger.log(
+          'StudyExit',
+          'media dispose cleanup failed generation=$generation '
+              'error=$error\n$stackTrace',
+        );
+      }
+    });
   }
 
   Future<void> _releaseFullscreen() async {
