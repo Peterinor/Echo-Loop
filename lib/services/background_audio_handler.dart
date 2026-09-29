@@ -530,8 +530,13 @@ Future<void> _prepareAudioHandler(EchoLoopAudioHandler handler) async {
   await handler.prepareArtwork();
 }
 
+StreamSubscription<Object>? _audioServiceErrorSubscription;
+
 Future<void> _initializeAudioService(MediaSessionRouter router) async {
   if (kIsWeb) return;
+  _audioServiceErrorSubscription ??= AudioService.asyncError.listen((error) {
+    AppLogger.log('BackgroundAudio', 'audio service async error: $error');
+  });
   await AudioService.init(
     builder: () => router,
     config: AudioServiceConfig(

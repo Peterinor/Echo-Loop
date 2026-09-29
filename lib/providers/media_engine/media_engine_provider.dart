@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audio_service/audio_service.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Ref;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -248,7 +249,11 @@ class MediaEngine extends _$MediaEngine {
       handler.setNowPlaying(id: item.id, title: item.name);
       await backend.open(path, initialPosition: initialPosition);
       await backend.setRate(speed);
-      _router?.activate(handler);
+      final router = _router;
+      router?.activate(handler);
+      if (router != null) {
+        await _waitForSystemMediaState(router, item.id);
+      }
       final duration =
           backend.duration ??
           await backend.durationStream
@@ -269,6 +274,57 @@ class MediaEngine extends _$MediaEngine {
       AppLogger.log('MediaEngine', 'loadMedia: failed id=${item.id} error=$e');
       state = state.copyWith(isLoading: false, errorMessage: e.toString());
       return null;
+    }
+  }
+
+  /// 等待系统媒体路由转发当前曲目和就绪态，再向页面报告加载完成。
+  ///
+  /// SwitchAudioHandler 切换内部 handler 后会异步订阅新 handler 的状态流；如果
+  /// 页面立刻起播并锁屏，iOS 可能先收到播放态、却还没有当前曲目。超时只记录诊断，
+  /// 不阻止前台播放。
+  Future<void> _waitForSystemMediaState(
+    MediaSessionRouter router,
+    String mediaId,
+  ) async {
+    final mediaItemReady = Completer<void>();
+    final playbackStateReady = Completer<void>();
+
+    void completeMediaItem(MediaItem? item) {
+      if (item?.id == mediaId && !mediaItemReady.isCompleted) {
+        mediaItemReady.complete();
+      }
+    }
+
+    void completePlaybackState(PlaybackState playbackState) {
+      if (playbackState.processingState == AudioProcessingState.ready &&
+          !playbackStateReady.isCompleted) {
+        playbackStateReady.complete();
+      }
+    }
+
+    final mediaItemSub = router.mediaItem.listen(completeMediaItem);
+    final playbackStateSub = router.playbackState.listen(
+      completePlaybackState,
+    );
+    completeMediaItem(router.mediaItem.value);
+    completePlaybackState(router.playbackState.value);
+
+    try {
+      await Future.wait<void>([
+        mediaItemReady.future,
+        playbackStateReady.future,
+      ]).timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      AppLogger.log(
+        'MediaEngine',
+        'system media state handoff timed out id=$mediaId '
+            'routed=${router.isRouted} '
+            'mediaItem=${router.mediaItem.value?.id} '
+            'processing=${router.playbackState.value.processingState.name}',
+      );
+    } finally {
+      await mediaItemSub.cancel();
+      await playbackStateSub.cancel();
     }
   }
 

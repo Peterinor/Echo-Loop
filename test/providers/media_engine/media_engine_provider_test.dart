@@ -83,7 +83,48 @@ void main() {
     expect(backend.openInitialPositions, [const Duration(seconds: 4)]);
     expect(backend.rateCalls, [1.25]);
     expect(router.isRouted, isTrue);
+    expect(router.mediaItem.value?.id, 'video-1');
+    expect(router.mediaItem.value?.title, 'Video');
+    expect(
+      router.playbackState.value.processingState,
+      AudioProcessingState.ready,
+    );
     expect(container.read(mediaEngineProvider).currentMediaId, 'video-1');
+
+    final playingState = router.playbackState.firstWhere(
+      (state) => state.playing,
+    );
+    await engine.play().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => throw StateError('engine.play timed out'),
+    );
+    await playingState.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => throw StateError(
+        'backend=${backend.playing} '
+        'handler=${router.inner.playbackState.value.playing} '
+        'router=${router.playbackState.value.playing}',
+      ),
+    );
+    expect(router.playbackState.value.playing, isTrue);
+
+    final clearedMediaItem = router.mediaItem.firstWhere(
+      (mediaItem) => mediaItem == null,
+    );
+    final idleState = router.playbackState.firstWhere(
+      (state) => state.processingState == AudioProcessingState.idle,
+    );
+    await engine.releaseFromScreen();
+    await Future.wait<void>([
+      clearedMediaItem.then<void>((_) {}),
+      idleState.then<void>((_) {}),
+    ]);
+    expect(router.isRouted, isFalse);
+    expect(router.mediaItem.value, isNull);
+    expect(
+      router.playbackState.value.processingState,
+      AudioProcessingState.idle,
+    );
   });
 
   test('playRange 到达区间终点后自动暂停，并在起播前通知就绪', () async {
