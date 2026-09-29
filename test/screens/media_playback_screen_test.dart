@@ -8,12 +8,14 @@ import 'package:echo_loop/database/daos/playback_state_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
+import 'package:echo_loop/models/sentence_focus_reason.dart';
 import 'package:echo_loop/models/sentence.dart';
 import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
 import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/media_playback/media_playback_provider.dart';
 import 'package:echo_loop/providers/favorite_sentence_lifecycle_provider.dart';
+import 'package:echo_loop/router/app_router.dart' show rootRouteObserver;
 import 'package:echo_loop/providers/sentence_ai_provider.dart';
 import 'package:echo_loop/screens/media_playback_screen.dart';
 import 'package:echo_loop/services/media_session_router.dart';
@@ -32,6 +34,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../helpers/mock_providers.dart';
 import '../helpers/shared/fake_media_player_backend.dart';
@@ -552,6 +555,7 @@ void main() {
     expect(find.byType(TabBarView), findsOneWidget);
     final card = tester.widget<ParagraphSentenceListCard>(cardFinder);
     expect(card.onSentenceExplanationTap, isNotNull);
+    expect(card.directInitialPositioning, isTrue);
 
     final cardRect = tester.getRect(cardFinder);
     final viewportWidth =
@@ -562,6 +566,71 @@ void main() {
     await releaseMediaPage(tester);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('讲解页面隐藏期间不跟随，返回后无动画定位最新当前句', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
+    await tester.pumpWidget(
+      createTestScreen(
+        MediaPlaybackScreen(audioItem: item),
+        navigatorObservers: [rootRouteObserver],
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    const selectedIndex = 12;
+    await controller.selectFullSentence(selectedIndex, autoPlay: false);
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(ScrollablePositionedList);
+    await tester.drag(scrollable, const Offset(0, -900));
+    await tester.pumpAndSettle();
+
+    final card = tester.widget<ParagraphSentenceListCard>(
+      find.byType(ParagraphSentenceListCard),
+    );
+    card.onSentenceExplanationTap!(sentences[selectedIndex]);
+    await tester.pumpAndSettle();
+    expect(find.text('Sentence Detail'), findsOneWidget);
+
+    // 模拟详情页覆盖期间当前播放句继续变化；底层字幕列表不应跟着滚动。
+    const latestIndex = 8;
+    await controller.selectFullSentence(latestIndex, autoPlay: false);
+
+    Navigator.of(tester.element(find.text('Sentence Detail'))).pop();
+    await tester.pumpAndSettle();
+
+    final listRect = tester.getRect(scrollable);
+    final selectedTile = find.byWidgetPredicate(
+      (widget) =>
+          widget is MaskedSentenceTile && widget.sentence.index == latestIndex,
+    );
+    expect(selectedTile, findsOneWidget);
+    expect(
+      tester.getRect(selectedTile).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '讲解返回后应在列表重新显示前恢复当前句位置',
+    );
+    expect(
+      tester.widget<Opacity>(find.byKey(kParagraphListInitialFocusKey)).opacity,
+      1,
+      reason: '从讲解页返回时列表保持可见并直接定位',
+    );
   });
 
   testMediaWidgets('视频画面和字幕区之间显示主题化细分割线', (tester) async {
@@ -1542,16 +1611,26 @@ void main() {
 
   testMediaWidgets('拖动进度圆点过程中实时刷新已播和剩余时间', (tester) async {
     backend.setDuration(const Duration(minutes: 2));
+    final transcript = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 5),
+        endTime: Duration(seconds: index * 5 + 4),
+      ),
+    );
     await tester.pumpWidget(
       createTestApp(
         MediaPlaybackScreen(audioItem: item),
-        overrides: [
-          mediaBackendFactoryProvider.overrideWithValue(() => backend),
-          mediaSessionRouterProvider.overrideWithValue(router),
-        ],
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: transcript,
+        ),
       ),
     );
     await pumpMediaReady(tester);
+    await tester.pumpAndSettle();
 
     final barRect = tester.getRect(
       find.byKey(const ValueKey('media-progress-bar')),
@@ -1575,6 +1654,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(backend.seekCalls.last.inSeconds, closeTo(60, 1));
+    expect(
+      tester.widget<Opacity>(find.byKey(kParagraphListInitialFocusKey)).opacity,
+      1,
+      reason: '进度条 seek 后列表应保持可见',
+    );
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MediaPlaybackScreen)),
+    );
+    expect(
+      container.read(mediaPlaybackProvider).sentenceFocusReason,
+      SentenceFocusReason.immediate,
+    );
+    final listRect = tester.getRect(find.byType(ScrollablePositionedList));
+    final selectedTile = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 12,
+    );
+    expect(selectedTile, findsOneWidget);
+    expect(
+      tester.getRect(selectedTile).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '进度条 seek 完成后当前句应落在 0.4 锚点',
+    );
     await tester.pump(const Duration(milliseconds: 180));
   });
 

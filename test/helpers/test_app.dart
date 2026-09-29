@@ -145,6 +145,7 @@ Widget createTestApp(
 Widget createTestScreen(
   Widget screen, {
   List<Override>? overrides,
+  List<NavigatorObserver> navigatorObservers = const [],
   Locale locale = const Locale('en'),
 }) {
   final defaultOverrides = <Override>[
@@ -171,7 +172,10 @@ Widget createTestScreen(
   // 合并自定义 overrides
   final allOverrides = <Override>[...defaultOverrides, ...(overrides ?? [])];
 
-  final router = createTestRouter(screen);
+  final router = createTestRouter(
+    screen,
+    navigatorObservers: navigatorObservers,
+  );
 
   return ProviderScope(
     overrides: allOverrides,
@@ -388,9 +392,13 @@ Future<void> pumpFullAppWithAudio(
 ///
 /// 将传入的 [screen] 作为初始路由页面，
 /// 并添加常用的 stub 路由用于导航测试。
-GoRouter createTestRouter(Widget screen) {
+GoRouter createTestRouter(
+  Widget screen, {
+  List<NavigatorObserver> navigatorObservers = const [],
+}) {
   return GoRouter(
     initialLocation: '/',
+    observers: navigatorObservers,
     routes: [
       GoRoute(path: '/', builder: (context, state) => screen),
       // stub 路由，用于验证导航跳转

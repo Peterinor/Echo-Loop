@@ -10,6 +10,7 @@ import '../../models/media_load_result.dart';
 import '../../models/media_playback_state.dart';
 import '../../models/playback_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/sentence_focus_reason.dart';
 import '../../models/sentence_playback_result.dart';
 import '../../models/sense_group_range_playback.dart';
 import '../../models/study_stage.dart';
@@ -404,6 +405,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         sentences: transcriptData.sentences,
         bookmarkedIndices: transcriptData.bookmarkedIndices,
         currentFullIndex: transcriptData.sentences.isEmpty ? null : 0,
+        requestSentenceFocus: transcriptData.sentences.isNotEmpty,
+        sentenceFocusReason: SentenceFocusReason.immediate,
         isTranscriptLoading: false,
       );
       _syncSentenceFocusToPosition();
@@ -548,13 +551,21 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       final bookmarkIndex = _nearestBookmarkIndex(position);
       if (bookmarkIndex != null &&
           bookmarkIndex != state.currentBookmarkIndex) {
-        state = state.copyWith(currentBookmarkIndex: bookmarkIndex);
+        state = state.copyWith(
+          currentBookmarkIndex: bookmarkIndex,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.playback,
+        );
         _autoSaveProgress();
       }
       return;
     }
     if (idx != state.currentFullIndex) {
-      state = state.copyWith(currentFullIndex: idx);
+      state = state.copyWith(
+        currentFullIndex: idx,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.playback,
+      );
       _autoSaveProgress();
     }
   }
@@ -586,13 +597,15 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   /// [_ensureValidIndex] 回退成第一条收藏，造成列表与进度条指向不同句子。
   void _syncSentenceFocusToPosition() {
     final idx = _nearestSentenceIndex(state.position);
-    if (idx >= 0) state = state.copyWith(currentFullIndex: idx);
-    if (state.playlistMode == PlaylistMode.bookmarks) {
-      final bookmarkIndex = _nearestBookmarkIndex(state.position);
-      if (bookmarkIndex != null) {
-        state = state.copyWith(currentBookmarkIndex: bookmarkIndex);
-      }
-    }
+    final bookmarkIndex = state.playlistMode == PlaylistMode.bookmarks
+        ? _nearestBookmarkIndex(state.position)
+        : null;
+    state = state.copyWith(
+      currentFullIndex: idx >= 0 ? idx : null,
+      currentBookmarkIndex: bookmarkIndex,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.immediate,
+    );
     _ensureValidIndex();
   }
 
@@ -710,9 +723,16 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         state = state.copyWith(
           currentBookmarkIndex: selected.index,
           lastPlayedBookmarkIndex: selected.index,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.immediate,
         );
       } else if (idx >= 0) {
-        state = state.copyWith(currentFullIndex: idx, lastPlayedFullIndex: idx);
+        state = state.copyWith(
+          currentFullIndex: idx,
+          lastPlayedFullIndex: idx,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.immediate,
+        );
       }
     }
 
@@ -754,7 +774,12 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   Future<void> selectFullSentence(int index, {bool autoPlay = true}) async {
     if (index < 0 || index >= state.sentences.length) return;
     final wasPlaying = state.isPlaying;
-    state = state.copyWith(currentFullIndex: index, lastPlayedFullIndex: index);
+    state = state.copyWith(
+      currentFullIndex: index,
+      lastPlayedFullIndex: index,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.navigation,
+    );
     await _alignEngineToCurrent();
     if (autoPlay) {
       unawaited(play(resetWholeLoops: !wasPlaying));
@@ -771,6 +796,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     state = state.copyWith(
       currentBookmarkIndex: index,
       lastPlayedBookmarkIndex: index,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.navigation,
     );
     await _alignEngineToCurrent();
     if (autoPlay) {
@@ -824,6 +851,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
           ? currentBookmarkIndex ?? state.currentFullIndex ?? 0
           : null,
       clearCurrentBookmarkIndex: currentBookmarkRemoved,
+      requestSentenceFocus: bookmarksBecameEmpty || currentBookmarkRemoved,
+      sentenceFocusReason: SentenceFocusReason.immediate,
     );
     _ensureValidIndex();
     await _alignEngineToCurrent();
@@ -838,11 +867,15 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       state = state.copyWith(
         currentBookmarkIndex: selected.index,
         lastPlayedBookmarkIndex: selected.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.navigation,
       );
     } else {
       state = state.copyWith(
         currentFullIndex: selected.index,
         lastPlayedFullIndex: selected.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.navigation,
       );
     }
     await _alignEngineToCurrent();
@@ -883,6 +916,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
             sentences: newSentences,
             currentFullIndex: index,
             clearCurrentBookmarkIndex: true,
+            requestSentenceFocus: true,
+            sentenceFocusReason: SentenceFocusReason.immediate,
           );
           await pause();
         } else if (replacementIndex != null &&
@@ -891,6 +926,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
             bookmarkedIndices: newBookmarks,
             sentences: newSentences,
             currentBookmarkIndex: replacementIndex,
+            requestSentenceFocus: true,
+            sentenceFocusReason: SentenceFocusReason.immediate,
           );
         } else {
           state = state.copyWith(
@@ -1228,9 +1265,17 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     }
     final first = playable.first;
     if (state.playlistMode == PlaylistMode.bookmarks) {
-      state = state.copyWith(currentBookmarkIndex: first.index);
+      state = state.copyWith(
+        currentBookmarkIndex: first.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     } else {
-      state = state.copyWith(currentFullIndex: first.index);
+      state = state.copyWith(
+        currentFullIndex: first.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     }
     await _alignEngineToCurrent();
     await play();
@@ -1447,17 +1492,23 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
 
   void _setCurrentFromSentence(Sentence sentence) {
     if (state.playlistMode == PlaylistMode.bookmarks) {
+      final focusChanged = state.currentBookmarkIndex != sentence.index;
       state = state.copyWith(
         currentBookmarkIndex: sentence.index,
         lastPlayedBookmarkIndex: sentence.index,
         position: sentence.startTime,
+        requestSentenceFocus: focusChanged,
+        sentenceFocusReason: focusChanged ? SentenceFocusReason.playback : null,
       );
       return;
     }
+    final focusChanged = state.currentFullIndex != sentence.index;
     state = state.copyWith(
       currentFullIndex: sentence.index,
       lastPlayedFullIndex: sentence.index,
       position: sentence.startTime,
+      requestSentenceFocus: focusChanged,
+      sentenceFocusReason: focusChanged ? SentenceFocusReason.playback : null,
     );
   }
 
@@ -1467,14 +1518,22 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       if (bookmarked.isEmpty) return;
       if (state.currentBookmarkIndex == null ||
           !state.bookmarkedIndices.contains(state.currentBookmarkIndex)) {
-        state = state.copyWith(currentBookmarkIndex: bookmarked.first.index);
+        state = state.copyWith(
+          currentBookmarkIndex: bookmarked.first.index,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.immediate,
+        );
       }
       return;
     }
     if (state.sentences.isEmpty) return;
     final current = state.currentFullIndex;
     if (current == null || current < 0 || current >= state.sentences.length) {
-      state = state.copyWith(currentFullIndex: 0);
+      state = state.copyWith(
+        currentFullIndex: 0,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     }
   }
 

@@ -11,6 +11,7 @@ import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../../models/retell_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/sentence_focus_reason.dart';
 import '../../theme/app_theme.dart';
 import '../guide_flow.dart';
 import 'masked_sentence_tile.dart';
@@ -20,22 +21,22 @@ import 'masked_sentence_tile.dart';
 /// 纯函数，便于单元测试。列表统一使用 [ClampingScrollPhysics]，越界滚动会被逐帧
 /// clamp 到自然边界（详见 [_ParagraphSentenceListCardState.build]），因此边界句的
 /// 贴边交给物理处理，这里只需决定锚点：
-/// - **目标可见**：命中 `scrollTo` 的「可见分支」（不改底层 `anchor`），返回 0.5
-///   让中间句居中；靠边时居中会超界、被 clamp 到自然边缘（末句贴底 / 首句贴顶，
+/// - **目标可见**：命中 `scrollTo` 的「可见分支」（不改底层 `anchor`），返回 0.4
+///   让中间句与首次定位保持一致；靠边时会被 clamp 到自然边缘（末句贴底 / 首句贴顶，
 ///   无留白、无回弹）。
 /// - **目标不可见**（大跳转，命中 else 分支会把底层 `anchor` 设为传入 alignment）：
 ///   返回 0.0，令 `anchor` 维持 0（普通列表语义），目标落到顶部、若为末句则被
 ///   clamp 到底部，均无留白。
 double autoFollowAlignment({required bool targetVisible}) {
-  return targetVisible ? 0.5 : 0.0;
+  return targetVisible ? 0.4 : 0.0;
 }
 
-/// 自动跟随的「居中容差带」半宽（占视口比例）。
+/// 自动跟随的「目标定位容差带」半宽（占视口比例）。
 ///
-/// 目标句的 leading edge 落在 `[0.5 - 容差, 0.5 + 容差]` 内即视为已大致居中。
-const double kAutoFollowCenterTolerance = 0.18;
+/// 目标句的 leading edge 落在 `[0.4 - 容差, 0.4 + 容差]` 内即视为已大致定位。
+const double kAutoFollowCenterTolerance = 0.08;
 
-/// 目标句当前是否已大致居中，居中则无需再滚动。
+/// 目标句当前是否已大致位于 0.4 锚点附近，已定位则无需再滚动。
 ///
 /// 纯函数，便于单元测试。仅用 leading edge 判断：随播放逐句推进，下一句的 leading
 /// edge 会比当前句更靠下；一旦越出容差带就重新居中，避免「当前句逐句下移直到贴底、
@@ -46,7 +47,7 @@ bool isTargetWellCentered({
   required double leadingEdge,
   double tolerance = kAutoFollowCenterTolerance,
 }) {
-  return (leadingEdge - 0.5).abs() <= tolerance;
+  return (leadingEdge - 0.4).abs() <= tolerance;
 }
 
 /// 判断列表中的句子集合或顺序是否真正变化。
@@ -61,7 +62,7 @@ bool _sentenceSequenceChanged(List<Sentence> previous, List<Sentence> next) {
   return false;
 }
 
-/// 初次定位淡入层的 key（供测试断言「居中完成前列表隐藏」）。
+/// 初次定位可见性容器的 key（供测试断言定位完成前列表不可见）。
 @visibleForTesting
 const Key kParagraphListInitialFocusKey = ValueKey(
   'paragraph-list-initial-focus',
@@ -74,6 +75,13 @@ class ParagraphSentenceListCard extends StatefulWidget {
   final Map<int, Set<int>> keywordMap;
   final int playingSentenceIndex;
   final bool autoFocusEnabled;
+  final bool focusActive;
+  final int? focusRequestRevision;
+  final SentenceFocusReason? focusReason;
+  final int focusRestoreRevision;
+
+  /// 是否在定位完成前隐藏列表并在完成后瞬时显示，供需要无初始动画的播放器使用。
+  final bool directInitialPositioning;
   final Duration autoFocusResumeDelay;
 
   /// 已收藏句子索引集合（用于显示只读标记）
@@ -104,6 +112,11 @@ class ParagraphSentenceListCard extends StatefulWidget {
     required this.keywordMap,
     required this.playingSentenceIndex,
     this.autoFocusEnabled = false,
+    this.focusActive = true,
+    this.focusRequestRevision,
+    this.focusReason,
+    this.focusRestoreRevision = 0,
+    this.directInitialPositioning = false,
     this.autoFocusResumeDelay = const Duration(seconds: 2),
     this.bookmarkedSentenceIndices = const {},
     this.onSentenceExplanationTap,
@@ -131,69 +144,159 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       ItemPositionsListener.create();
   Timer? _resumeFocusTimer;
   bool _userSuspendedFocus = false;
+  int _focusRequestGeneration = 0;
 
-  /// 首帧把当前句渲染在顶部的初始锚点 item 索引（保持底层 anchor=0，见 [initState]）。
+  /// 初始定位时当前句在列表中的 item 索引。
   int _initialScrollIndex = 0;
 
-  /// 「初次定位」是否完成。完成前列表不可见，避免用户看到「目标句从顶部滚到中部」
-  /// 的多余移动；完成后淡入（已在中部），观感为「直接显示在中间」。
+  /// 「初次定位」是否完成。完成前列表不可见，避免用户看到定位过程；直接定位模式
+  /// 完成后瞬时显出，其他复用场景沿用原有淡入。
   bool _initialFocusDone = false;
 
   @override
   void initState() {
     super.initState();
-    // 「初次定位」（首次进入 / 切 Tab 重建）的业界标准做法：
-    // ① 用 initialScrollIndex 让首帧就把当前句渲染在顶部（底层 anchor 仍为 0，
-    //    不破坏既有「anchor=0 + ClampingScrollPhysics 硬停」的到头/尾防回弹设计）；
-    // ② 在列表不可见时瞬时滚到居中（[_centerInitialFocus]），完成后淡入。
-    //    用户看不到从顶部到中部的滚动，等同「直接显示在中间」。
+    // 按当前索引初始化，并在列表不可见时完成边界校正。
     final localSentenceIndex = _playingSentenceLocalIndex();
     final shouldCenter = widget.autoFocusEnabled && localSentenceIndex != null;
     if (shouldCenter) {
       _initialScrollIndex = localSentenceIndex * 2;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _centerInitialFocus(localSentenceIndex * 2);
-      });
+      // 保持列表 anchor=0；非零 initialAlignment 在首尾会产生空白，故通过可见 item
+      // 的滚动分支校正后再瞬时显示。
+      if (widget.focusActive) _centerInitialFocus(localSentenceIndex * 2);
     } else {
       // 无需自动居中（如段落复述）：列表直接可见，从顶部开始。
       _initialFocusDone = true;
     }
   }
 
-  /// 在不可见状态下把当前句瞬时滚到视口中部，完成后置 [_initialFocusDone] 触发淡入。
+  /// 在不可见状态下把当前句定位到视口锚点，完成后更新 [_initialFocusDone]。
   ///
-  /// 两阶段（与 [_focusPlayingSentence] 的大跳转路径同源，只是瞬时、无动画、在不可见
-  /// 时完成）：先 [ItemScrollController.jumpTo]（alignment=0）把目标渲染到顶部、底层
-  /// anchor 保持 0（不破坏到头/尾防回弹设计）；下一帧目标已可见，再走 [scrollTo] 的
-  /// 「可见分支」瞬时居中（只移动偏移、不改 anchor，边界句被 [ClampingScrollPhysics]
-  /// 硬停到自然边缘）。不能直接 scrollTo——首帧 itemPositions 可能尚未就绪，会落入
-  /// 「不可见分支」把 anchor 设成 0.5、边界留白且引入回弹。
+  /// 先 [ItemScrollController.jumpTo]（alignment=0）把目标放到顶边并保持普通列表 anchor；
+  /// 下一帧目标已可见，再由 [scrollTo] 的可见分支调整偏移。随心听定位用 1ms 完成校正，
+  /// 且校正期间列表不可见；初次定位与后续自动跟随统一使用 0.4 锚点。首尾边界由滚动
+  /// 范围自然约束。
   void _centerInitialFocus(int targetIndex) {
-    if (!mounted ||
-        !widget.autoFocusEnabled ||
-        !_itemScrollController.isAttached) {
-      if (mounted) setState(() => _initialFocusDone = true);
-      return;
-    }
-    _itemScrollController.jumpTo(index: targetIndex, alignment: 0);
+    final generation = ++_focusRequestGeneration;
+    _hideWhilePositioning();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           !widget.autoFocusEnabled ||
+          !widget.focusActive ||
+          generation != _focusRequestGeneration ||
           !_itemScrollController.isAttached) {
-        if (mounted) setState(() => _initialFocusDone = true);
         return;
       }
-      _itemScrollController
-          .scrollTo(
-            index: targetIndex,
-            // scrollTo 要求 duration > 0，瞬时落位用 1ms 近似（不可见，无观感）。
-            duration: const Duration(milliseconds: 1),
-            curve: Curves.easeInOut,
-            alignment: autoFollowAlignment(targetVisible: true),
-          )
-          .whenComplete(() {
-            if (mounted) setState(() => _initialFocusDone = true);
-          });
+      _itemScrollController.jumpTo(index: targetIndex, alignment: 0);
+      _schedulePositionCorrection(targetIndex, generation);
+    });
+  }
+
+  /// 确保安全跳转后的下一次布局执行 0.4 对齐校正。
+  ///
+  /// post-frame 回调自身不会请求新帧；恢复页面时若没有其他状态变化，单纯注册回调
+  /// 会让定位停在安全顶边位置，因此这里显式安排下一帧。
+  void _schedulePositionCorrection(int targetIndex, int generation) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _correctPositionImmediately(targetIndex, generation);
+    });
+    WidgetsBinding.instance.scheduleFrame();
+  }
+
+  void _hideWhilePositioning() {
+    if (widget.directInitialPositioning && _initialFocusDone) {
+      setState(() => _initialFocusDone = false);
+    }
+  }
+
+  void _correctPositionImmediately(int targetIndex, int generation) {
+    if (!mounted ||
+        !widget.autoFocusEnabled ||
+        !widget.focusActive ||
+        generation != _focusRequestGeneration ||
+        !_itemScrollController.isAttached) {
+      return;
+    }
+    if (widget.directInitialPositioning) {
+      _itemScrollController.jumpTo(
+        index: targetIndex,
+        alignment: autoFollowAlignment(targetVisible: true),
+      );
+      if (mounted && generation == _focusRequestGeneration) {
+        setState(() => _initialFocusDone = true);
+      }
+      return;
+    }
+
+    _itemScrollController
+        .scrollTo(
+          index: targetIndex,
+          duration: const Duration(milliseconds: 1),
+          curve: Curves.easeInOut,
+          alignment: autoFollowAlignment(targetVisible: true),
+        )
+        .whenComplete(() {
+          if (mounted && generation == _focusRequestGeneration) {
+            setState(() => _initialFocusDone = true);
+          }
+        });
+  }
+
+  /// 无动画定位到指定当前句；仅首次定位和页面恢复需要暂时隐藏列表。
+  void _focusImmediately({bool hideWhilePositioning = true}) {
+    if (!widget.autoFocusEnabled || !widget.focusActive) return;
+    final localSentenceIndex = _playingSentenceLocalIndex();
+    if (localSentenceIndex == null) return;
+    final targetIndex = localSentenceIndex * 2;
+    final generation = ++_focusRequestGeneration;
+    if (hideWhilePositioning) _hideWhilePositioning();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !widget.autoFocusEnabled ||
+          !widget.focusActive ||
+          generation != _focusRequestGeneration ||
+          !_itemScrollController.isAttached) {
+        return;
+      }
+      _itemScrollController.jumpTo(index: targetIndex, alignment: 0);
+      _schedulePositionCorrection(targetIndex, generation);
+    });
+  }
+
+  void _focusWithPlaybackAnimation() {
+    if (!widget.autoFocusEnabled ||
+        !widget.focusActive ||
+        _userSuspendedFocus) {
+      return;
+    }
+    final localSentenceIndex = _playingSentenceLocalIndex();
+    if (localSentenceIndex == null) return;
+    final targetIndex = localSentenceIndex * 2;
+    final generation = ++_focusRequestGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !widget.autoFocusEnabled ||
+          !widget.focusActive ||
+          _userSuspendedFocus ||
+          generation != _focusRequestGeneration ||
+          !_itemScrollController.isAttached) {
+        return;
+      }
+      final position = _targetPosition(targetIndex);
+      if (position == null) {
+        // 远距离跳转直接定位，避免 scrollTo 的双列表淡入淡出和整段滚动动画。
+        _focusImmediately(hideWhilePositioning: false);
+        return;
+      }
+      if (isTargetWellCentered(leadingEdge: position.itemLeadingEdge)) {
+        return;
+      }
+      _itemScrollController.scrollTo(
+        index: targetIndex,
+        alignment: autoFollowAlignment(targetVisible: true),
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
     });
   }
 
@@ -208,6 +311,12 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
     );
     final focusReenabled =
         !oldWidget.autoFocusEnabled && widget.autoFocusEnabled;
+    final becameFocusActive = !oldWidget.focusActive && widget.focusActive;
+    final focusRestoreRequested =
+        widget.focusRestoreRevision != oldWidget.focusRestoreRevision;
+    final focusRequestChanged =
+        widget.focusRequestRevision != null &&
+        widget.focusRequestRevision != oldWidget.focusRequestRevision;
 
     if (!widget.autoFocusEnabled) {
       _resumeFocusTimer?.cancel();
@@ -215,14 +324,47 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       return;
     }
 
-    if (focusReenabled) {
+    if (!widget.focusActive) return;
+
+    if (becameFocusActive || focusRestoreRequested) {
       _userSuspendedFocus = false;
-      _focusPlayingSentence();
+      _focusImmediately(hideWhilePositioning: false);
       return;
     }
 
-    if ((playingChanged || paragraphChanged) && !_userSuspendedFocus) {
-      _focusPlayingSentence();
+    if (focusReenabled) {
+      _userSuspendedFocus = false;
+      if (widget.focusRequestRevision != null) {
+        _focusImmediately();
+      } else {
+        _focusPlayingSentence();
+      }
+      return;
+    }
+
+    if (paragraphChanged) {
+      if (widget.focusRequestRevision != null) {
+        _focusImmediately();
+      } else if (!_userSuspendedFocus) {
+        _focusPlayingSentence();
+      }
+      return;
+    }
+
+    if (playingChanged || focusRequestChanged) {
+      if (widget.focusRequestRevision != null &&
+          widget.focusReason == SentenceFocusReason.immediate) {
+        _focusImmediately(hideWhilePositioning: false);
+      } else if (widget.focusRequestRevision != null &&
+          widget.focusReason == SentenceFocusReason.navigation) {
+        _resumeFocusTimer?.cancel();
+        _userSuspendedFocus = false;
+        _focusWithPlaybackAnimation();
+      } else if (!_userSuspendedFocus && widget.focusRequestRevision != null) {
+        _focusWithPlaybackAnimation();
+      } else if (!_userSuspendedFocus) {
+        _focusPlayingSentence();
+      }
     }
   }
 
@@ -241,9 +383,21 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       if (_userSuspendedFocus) {
         _resumeFocusTimer?.cancel();
         _resumeFocusTimer = Timer(widget.autoFocusResumeDelay, () {
-          if (!mounted || !widget.autoFocusEnabled) return;
+          if (!mounted || !widget.autoFocusEnabled || !widget.focusActive) {
+            return;
+          }
           _userSuspendedFocus = false;
-          _focusPlayingSentence();
+          if (widget.focusRequestRevision != null &&
+              widget.focusReason == SentenceFocusReason.immediate) {
+            _focusImmediately(hideWhilePositioning: false);
+          } else if (widget.focusRequestRevision != null &&
+              widget.focusReason == SentenceFocusReason.navigation) {
+            _focusWithPlaybackAnimation();
+          } else if (widget.focusRequestRevision != null) {
+            _focusWithPlaybackAnimation();
+          } else {
+            _focusPlayingSentence();
+          }
         });
       }
       return false;
@@ -258,9 +412,13 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
   ///
   /// 仅用于「播放中逐句推进」的平滑跟随（[didUpdateWidget] / 手动滚动后恢复）。
   /// 「初次定位」（首次进入 / 切 Tab）不走这里，而是由 [initState] /
-  /// [_centerInitialFocus] 在列表不可见时瞬时居中后淡入。
+  /// [_centerInitialFocus] 在列表不可见时完成，再按定位模式淡入或瞬时显出。
   void _focusPlayingSentence() {
-    if (!widget.autoFocusEnabled || _userSuspendedFocus) return;
+    if (!widget.autoFocusEnabled ||
+        !widget.focusActive ||
+        _userSuspendedFocus) {
+      return;
+    }
     final localSentenceIndex = _playingSentenceLocalIndex();
     if (localSentenceIndex == null) return;
     final targetIndex = localSentenceIndex * 2;
@@ -268,6 +426,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted ||
           !widget.autoFocusEnabled ||
+          !widget.focusActive ||
           _userSuspendedFocus ||
           !_itemScrollController.isAttached) {
         return;
@@ -287,7 +446,7 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
         });
         return;
       }
-      // 已大致居中则不动，否则重新居中——边界句滚到自然边缘被 clamp 硬停。
+      // 已大致位于 0.4 锚点附近则不动，否则重新定位——边界句滚到自然边缘被 clamp 硬停。
       if (isTargetWellCentered(leadingEdge: position.itemLeadingEdge)) {
         return;
       }
@@ -333,19 +492,15 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
       // 列表贴边铺满：去左右边距与圆角，读作整块内容区而非浮起卡片。
       margin: EdgeInsets.zero,
       shape: const RoundedRectangleBorder(),
-      // 初次定位完成前列表不可见，居中后淡入——用户看不到从顶部到中部的滚动。
-      child: AnimatedOpacity(
-        key: kParagraphListInitialFocusKey,
-        opacity: _initialFocusDone ? 1 : 0,
-        duration: const Duration(milliseconds: 120),
-        child: NotificationListener<ScrollNotification>(
+      child: _buildInitialFocusVisibility(
+        NotificationListener<ScrollNotification>(
           onNotification: _handleScrollNotification,
           child: ScrollablePositionedList.builder(
             itemScrollController: _itemScrollController,
             itemPositionsListener: _itemPositionsListener,
-            // 初次定位：首帧把当前句渲染在顶部（底层 anchor 仍为 0），随后在不可见
-            // 时瞬时滚到居中（见 [initState] / [_centerInitialFocus]）。
             initialScrollIndex: _initialScrollIndex,
+            // 保持普通列表 anchor，居中校正时边界才会自然贴顶/贴底。
+            initialAlignment: 0,
             // 硬停物理：自动跟随滚到自然边界即停，越界被逐帧 clamp，杜绝到头/尾时
             // 的自动回弹（详见 [autoFollowAlignment]）。
             physics: const ClampingScrollPhysics(),
@@ -399,6 +554,22 @@ class _ParagraphSentenceListCardState extends State<ParagraphSentenceListCard>
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildInitialFocusVisibility(Widget child) {
+    if (widget.directInitialPositioning) {
+      return Opacity(
+        key: kParagraphListInitialFocusKey,
+        opacity: _initialFocusDone ? 1 : 0,
+        child: child,
+      );
+    }
+    return AnimatedOpacity(
+      key: kParagraphListInitialFocusKey,
+      opacity: _initialFocusDone ? 1 : 0,
+      duration: const Duration(milliseconds: 120),
+      child: child,
     );
   }
 }

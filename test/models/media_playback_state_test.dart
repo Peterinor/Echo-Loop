@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
 import 'package:echo_loop/models/media_playback_state.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/models/sentence_focus_reason.dart';
 
 void main() {
   group('MediaPlaybackState', () {
@@ -75,6 +76,32 @@ void main() {
         expect(state.isFirstSentence, isTrue);
         expect(state.isLastSentence, isTrue);
       });
+    });
+
+    test('句子聚焦请求记录原因并递增版本，普通状态更新不递增', () {
+      const initial = MediaPlaybackState();
+      final playback = initial.copyWith(
+        currentFullIndex: 1,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.playback,
+      );
+      final navigation = playback.copyWith(
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.navigation,
+      );
+      final progress = navigation.copyWith(
+        position: const Duration(seconds: 2),
+      );
+
+      expect(playback.sentenceFocusRevision, 1);
+      expect(playback.sentenceFocusReason, SentenceFocusReason.playback);
+      expect(navigation.sentenceFocusRevision, 2);
+      expect(navigation.sentenceFocusReason, SentenceFocusReason.navigation);
+      expect(
+        progress.sentenceFocusRevision,
+        navigation.sentenceFocusRevision,
+      );
+      expect(progress.sentenceFocusReason, navigation.sentenceFocusReason);
     });
   });
 }

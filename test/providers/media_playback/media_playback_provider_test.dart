@@ -11,6 +11,7 @@ import 'package:echo_loop/models/listening_practice_state.dart';
 import 'package:echo_loop/models/media_load_result.dart';
 import 'package:echo_loop/models/playback_settings.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/models/sentence_focus_reason.dart';
 import 'package:echo_loop/models/study_stage.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
@@ -555,6 +556,10 @@ void main() {
     final controller = await loadController();
 
     await controller.seekAbsolute(Duration.zero);
+    expect(
+      container.read(mediaPlaybackProvider).sentenceFocusReason,
+      SentenceFocusReason.immediate,
+    );
     unawaited(controller.play());
     await Future<void>.delayed(Duration.zero);
 
@@ -584,6 +589,7 @@ void main() {
     state = container.read(mediaPlaybackProvider);
     expect(state.position, const Duration(seconds: 58));
     expect(state.currentFullIndex, 1);
+    expect(state.sentenceFocusReason, SentenceFocusReason.playback);
     await controller.pause();
   });
 
@@ -614,6 +620,12 @@ void main() {
     var state = container.read(mediaPlaybackProvider);
     expect(state.position, const Duration(seconds: 60));
     expect(state.currentFullIndex, 1);
+    expect(state.sentenceFocusReason, SentenceFocusReason.navigation);
+
+    await controller.nextSentence();
+    state = container.read(mediaPlaybackProvider);
+    expect(state.currentFullIndex, 2);
+    expect(state.sentenceFocusReason, SentenceFocusReason.navigation);
 
     backend.emitPosition(const Duration(seconds: 61));
     await Future<void>.delayed(Duration.zero);

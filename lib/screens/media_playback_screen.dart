@@ -47,7 +47,7 @@ class MediaPlaybackScreen extends ConsumerStatefulWidget {
 }
 
 class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   /// 单列播放器控制区的紧凑基准高度。
   ///
   /// 双栏复用同一基准，避免宽屏时把视频下方的控制区人为拉高。
@@ -59,9 +59,12 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   late final MediaSleepTimer _sleepTimer;
   late final MediaFullscreenService _fullscreenService;
   late final StreamSubscription<bool> _fullscreenSubscription;
+  ModalRoute<void>? _observedRoute;
   AppLifecycleListener? _lifecycle;
   Duration? _seekPreviewPosition;
   int _seekPreviewToken = 0;
+  int _focusRestoreRevision = 0;
+  bool _routeVisible = true;
   bool _isNavigatingToDetail = false;
 
   @override
@@ -77,6 +80,34 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     });
     _playlistViewController = TabController(length: 2, vsync: this);
     _lifecycle = AppLifecycleListener(onStateChange: _handleLifecycle);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || identical(route, _observedRoute)) return;
+    if (_observedRoute != null) {
+      rootRouteObserver.unsubscribe(this);
+    }
+    _observedRoute = route;
+    rootRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    if (!mounted || !_routeVisible) return;
+    setState(() => _routeVisible = false);
+  }
+
+  @override
+  void didPopNext() {
+    // 返回播放器时要求活动字幕列表按最新当前句立即定位。
+    if (!mounted) return;
+    setState(() {
+      _routeVisible = true;
+      _focusRestoreRevision += 1;
+    });
   }
 
   void _handleLifecycle(AppLifecycleState state) {
@@ -111,6 +142,9 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
 
   @override
   void dispose() {
+    if (_observedRoute != null) {
+      rootRouteObserver.unsubscribe(this);
+    }
     _lifecycle?.dispose();
     unawaited(_fullscreenSubscription.cancel());
     unawaited(_releaseFullscreen());
@@ -454,9 +488,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       );
     }
     return ParagraphSentenceListCard(
-      key: PageStorageKey(
-        'media-sentence-list-${widget.audioItem.id}-${mode.name}',
-      ),
+      key: ValueKey('media-sentence-list-${widget.audioItem.id}-${mode.name}'),
       sentences: sentences,
       displayMode: state.settings.showTranscript
           ? RetellDisplayMode.showAll
@@ -464,6 +496,11 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       keywordMap: const {},
       playingSentenceIndex: playingLocalIndex ?? currentSentenceIndex ?? -1,
       autoFocusEnabled: true,
+      focusActive: _routeVisible && mode == state.playlistMode,
+      focusRequestRevision: state.sentenceFocusRevision,
+      focusReason: state.sentenceFocusReason,
+      focusRestoreRevision: _focusRestoreRevision,
+      directInitialPositioning: true,
       bookmarkedSentenceIndices: state.bookmarkedIndices,
       onSentencePlayFrom: onPlayFrom,
       onSentenceExplanationTap: _handleSentenceDetail,
