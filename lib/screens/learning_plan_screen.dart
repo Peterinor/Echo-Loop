@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 // 学习计划表页面
 //
 // 展示音频的完整学习流程：首次学习（4步）和复习（7步）。
@@ -8,7 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:math' as math;
+import 'package:path/path.dart' as p;
+
 import '../database/enums.dart';
 import '../models/audio_item.dart';
 import '../models/learning_plan.dart';
@@ -36,6 +39,7 @@ import '../providers/new_user_guide_provider.dart';
 import '../providers/settings_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../router/app_router.dart';
+import '../services/app_logger.dart';
 import '../services/subtitle_parser.dart';
 import '../theme/app_theme.dart';
 import '../models/blind_listen_settings.dart';
@@ -71,6 +75,7 @@ import '../providers/learning_session/sentence_playback_engine.dart';
 ///
 /// 使用固定 SVG，避免 `🔁` emoji 在不同平台被系统字体渲染成不一致的蓝色方块。
 const String _refreshIconAsset = 'assets/icon/refresh.svg';
+const _durationDebugLogTag = 'MediaDuration';
 
 /// 统一打开音频或视频盲听任务，避免首次学习与复习入口各自维护媒体分流。
 ///
@@ -539,7 +544,21 @@ class _LearningPlanScreenState extends ConsumerState<LearningPlanScreen> {
       final audioItem = ref
           .read(audioLibraryProvider.notifier)
           .getItemById(widget.audioItemId);
-      if (audioItem == null) return;
+      if (audioItem == null) {
+        AppLogger.log(
+          _durationDebugLogTag,
+          'event=plan_item_missing itemId=${widget.audioItemId}',
+        );
+        return;
+      }
+      AppLogger.log(
+        _durationDebugLogTag,
+        'event=plan_item_loaded trace=${audioItem.id} '
+        'mediaType=${audioItem.mediaType.name} '
+        'extension=${p.extension(audioItem.audioPath ?? '')} '
+        'source=${audioItem.importSourceType?.name ?? 'unknown'} '
+        'durationSeconds=${audioItem.totalDuration}',
+      );
 
       // 始终调用 loadAudio：同一音频时只重新读取字幕，不重新加载音频文件
       _maybeLoadAudio(audioItem);

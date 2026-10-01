@@ -11,7 +11,7 @@ import '../../providers/collection_provider.dart';
 import '../../services/app_logger.dart';
 import '../../services/background_file_download_service.dart';
 import '../../utils/app_data_dir.dart';
-import '../../utils/audio_duration.dart';
+import '../../utils/media_duration.dart';
 import 'audio_finalization_service.dart';
 import 'audio_import_cancel.dart';
 import 'audio_import_models.dart';
@@ -40,7 +40,7 @@ class AudioImportService {
   }) : _dio = dio ?? Dio(),
        _uuid = uuid ?? const Uuid(),
        _resolveDataDir = resolveDataDir ?? getAppDataDirectory,
-       _readDurationSeconds = readDurationSeconds ?? getAudioDurationSeconds,
+       _readDurationSeconds = readDurationSeconds ?? getMediaDurationSeconds,
        _registrationService =
            registrationService ?? AudioRegistrationService(uuid: uuid),
        _finalizationService = AudioFinalizationService(

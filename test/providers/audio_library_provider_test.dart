@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +14,119 @@ import 'package:echo_loop/utils/app_data_dir.dart';
 import '../database/dao_test.dart';
 import '../helpers/mock_providers.dart';
 
+class _BackfillTestAudioLibrary extends AudioLibrary {
+  _BackfillTestAudioLibrary(this.initialState);
+
+  final AudioLibraryState initialState;
+  int updateCount = 0;
+
+  @override
+  AudioLibraryState build() => initialState;
+
+  void replaceItem(AudioItem replacement) {
+    state = state.copyWith(
+      audioItems: [
+        for (final item in state.audioItems)
+          if (item.id == replacement.id) replacement else item,
+      ],
+    );
+  }
+
+  @override
+  Future<void> updateAudioItem(AudioItem updatedItem) async {
+    updateCount++;
+    replaceItem(updatedItem);
+  }
+}
+
 void main() {
+  group('AudioLibrary.backfillDurations', () {
+    test('回填旧视频的缺失时长，并跳过已有时长条目', () async {
+      late _BackfillTestAudioLibrary library;
+      final missing = createTestAudioItem(
+        id: 'missing-video-duration',
+        audioPath: 'videos/lesson.mkv',
+        transcriptPath: null,
+        totalDuration: 0,
+      );
+      final existing = createTestAudioItem(
+        id: 'existing-video-duration',
+        audioPath: 'videos/known.mp4',
+        transcriptPath: null,
+        totalDuration: 46,
+      );
+      final probedPaths = <String>[];
+      final container = ProviderContainer(
+        overrides: [
+          audioLibraryProvider.overrideWith(
+            () => library = _BackfillTestAudioLibrary(
+              AudioLibraryState(audioItems: [missing, existing]),
+            ),
+          ),
+          mediaDurationSecondsReaderProvider.overrideWith(
+            (ref) => (relativePath, {traceId}) async {
+              probedPaths.add(relativePath);
+              return 83;
+            },
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await container.read(audioLibraryProvider.notifier).backfillDurations();
+
+      expect(probedPaths, ['videos/lesson.mkv']);
+      expect(
+        library.state.audioItems
+            .firstWhere((item) => item.id == missing.id)
+            .totalDuration,
+        83,
+      );
+      expect(library.updateCount, 1);
+    });
+
+    test('探测期间路径已变化时不把旧文件时长写到新条目', () async {
+      final probeStarted = Completer<void>();
+      final probeResult = Completer<int>();
+      late _BackfillTestAudioLibrary library;
+      final missing = createTestAudioItem(
+        id: 'replaced-video',
+        audioPath: 'videos/old.mkv',
+        transcriptPath: null,
+        totalDuration: 0,
+      );
+      final container = ProviderContainer(
+        overrides: [
+          audioLibraryProvider.overrideWith(
+            () => library = _BackfillTestAudioLibrary(
+              AudioLibraryState(audioItems: [missing]),
+            ),
+          ),
+          mediaDurationSecondsReaderProvider.overrideWith(
+            (ref) => (relativePath, {traceId}) {
+              probeStarted.complete();
+              return probeResult.future;
+            },
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final backfill = container
+          .read(audioLibraryProvider.notifier)
+          .backfillDurations();
+      await probeStarted.future;
+      library.replaceItem(missing.copyWith(audioPath: 'videos/new.mkv'));
+      probeResult.complete(83);
+      await backfill;
+
+      final current = library.state.audioItems.single;
+      expect(current.audioPath, 'videos/new.mkv');
+      expect(current.totalDuration, 0);
+      expect(library.updateCount, 0);
+    });
+  });
+
   group('AudioLibrary.togglePin', () {
     late ProviderContainer container;
 

@@ -205,6 +205,37 @@ void main() {
   });
 
   group('AudioRegistrationService', () {
+    test('注册 MKV 视频时保存统一媒体探测得到的时长', () async {
+      final container = ProviderContainer(
+        overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
+      );
+      addTearDown(container.dispose);
+      final service = AudioRegistrationService(
+        readDurationSeconds: (_) async => 83,
+      );
+
+      final result = await service.registerSandboxedAudio(
+        input: const SandboxedAudioRegistrationInput(
+          name: 'lesson',
+          relativePath: 'videos/lesson.mkv',
+          importSourceType: AudioImportSourceType.cloudDrive,
+        ),
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        audioLibraryState: container.read(audioLibraryProvider),
+      );
+
+      final item = switch (result) {
+        AudioRegistrationAdded(:final item) => item,
+        AudioRegistrationDuplicate() => fail('Expected new MKV registration'),
+      };
+      expect(item.isVideo, isTrue);
+      expect(item.totalDuration, 83);
+      expect(
+        container.read(audioLibraryProvider).audioItems.single.totalDuration,
+        83,
+      );
+    });
+
     test('本地导入只记录来源类型，不记录设备原始路径', () async {
       final container = ProviderContainer(
         overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],

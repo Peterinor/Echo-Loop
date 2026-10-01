@@ -40,7 +40,7 @@ import '../services/asr/offline_asr_engine.dart';
 import '../services/subtitle_parser.dart';
 import 'asr_download_prompt_dialog.dart';
 import '../theme/app_theme.dart';
-import '../utils/audio_duration.dart';
+import '../utils/media_duration.dart';
 import '../utils/file_size.dart';
 import '../utils/transcript_picker.dart';
 import 'common/anchored_bubble.dart';
@@ -1941,7 +1941,7 @@ class _ManageSubtitlesSheetState extends ConsumerState<ManageSubtitlesSheet> {
         ? audioItem.totalDuration
         : audioItem.audioPath == null
         ? 0
-        : await getAudioDurationSeconds(audioItem.audioPath!);
+        : await getMediaDurationSeconds(audioItem.audioPath!);
     final durationText = durationSeconds > 0
         ? SubtitleParser.formatDuration(Duration(seconds: durationSeconds))
         : l10n.transcriptionAudioUnknown;
