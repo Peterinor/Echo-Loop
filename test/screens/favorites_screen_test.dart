@@ -109,8 +109,7 @@ class _DeferredBookmarkReview extends BookmarkReview {
   BookmarkReviewState build() => const BookmarkReviewState();
 
   @override
-  Future<void> initialize(List<BookmarkWithAudio> bookmarks) =>
-      initialized.future;
+  Future<void> initialize() => initialized.future;
 }
 
 class _ImmediateBookmarkReview extends BookmarkReview {
@@ -118,7 +117,7 @@ class _ImmediateBookmarkReview extends BookmarkReview {
   BookmarkReviewState build() => const BookmarkReviewState();
 
   @override
-  Future<void> initialize(List<BookmarkWithAudio> bookmarks) async {}
+  Future<void> initialize() async {}
 }
 
 /// 创建测试用 Bookmark 数据
