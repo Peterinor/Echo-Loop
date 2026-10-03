@@ -64,10 +64,48 @@ class _TestFavoriteVocabularyLifecycle extends FavoriteVocabularyLifecycle {
       _ref.read(savedSenseGroupDaoProvider).removeSenseGroup(phraseText);
 
   @override
-  Future<void> restoreWordSchedule(String word) async {}
+  Future<void> saveWord({
+    required String word,
+    String? audioItemId,
+    int? sentenceIndex,
+    String? sentenceText,
+    int? sentenceStartMs,
+    int? sentenceEndMs,
+  }) => _ref
+      .read(savedWordDaoProvider)
+      .saveWord(
+        word: word,
+        audioItemId: audioItemId,
+        sentenceIndex: sentenceIndex,
+        sentenceText: sentenceText,
+        sentenceStartMs: sentenceStartMs,
+        sentenceEndMs: sentenceEndMs,
+      );
 
   @override
-  Future<void> restoreSenseGroupSchedule(String phraseText) async {}
+  Future<void> saveSenseGroup({
+    required String phraseText,
+    required String displayText,
+    String? audioItemId,
+    int? sentenceIndex,
+    String? sentenceText,
+    int? sentenceStartMs,
+    int? sentenceEndMs,
+    int? groupStartMs,
+    int? groupEndMs,
+  }) => _ref
+      .read(savedSenseGroupDaoProvider)
+      .saveSenseGroup(
+        phraseText: phraseText,
+        displayText: displayText,
+        audioItemId: audioItemId,
+        sentenceIndex: sentenceIndex,
+        sentenceText: sentenceText,
+        sentenceStartMs: sentenceStartMs,
+        sentenceEndMs: sentenceEndMs,
+        groupStartMs: groupStartMs,
+        groupEndMs: groupEndMs,
+      );
 }
 
 /// 固定收藏单词集合的 fake（绕过 DB）
@@ -293,7 +331,6 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
-
 
   final hostKey = GlobalKey<DictionaryPanelHostState>();
 

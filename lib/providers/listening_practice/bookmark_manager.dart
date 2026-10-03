@@ -1,13 +1,8 @@
-import 'package:drift/drift.dart';
-import 'package:uuid/uuid.dart';
-
-import '../../database/app_database.dart';
 import '../../services/app_logger.dart';
 import '../../database/daos/bookmark_dao.dart';
 import '../../models/sentence.dart';
 
-/// 书签管理器
-/// 负责书签的添加、删除、加载和保存
+/// 书签读取与句子收藏状态转换工具。
 class BookmarkManager {
   /// 规范化文本用于书签比较：转小写并移除首尾标点符号
   /// 用于检测相同文本的书签，忽略大小写和首尾标点差异
@@ -34,44 +29,6 @@ class BookmarkManager {
     } catch (e) {
       AppLogger.log('Bookmark', '✗ 加载书签失败: $e');
       return {};
-    }
-  }
-
-  /// 保存单个书签到 Drift 数据库
-  static Future<void> addBookmarkToDb(
-    String audioId,
-    Sentence sentence, {
-    required BookmarkDao dao,
-  }) async {
-    try {
-      final now = DateTime.now();
-      await dao.addBookmark(
-        BookmarksCompanion(
-          audioItemId: Value(audioId),
-          memorySubjectId: Value(const Uuid().v4()),
-          sentenceIndex: Value(sentence.index),
-          sentenceText: Value(sentence.text),
-          startTime: Value(sentence.startTime.inMilliseconds / 1000.0),
-          endTime: Value(sentence.endTime.inMilliseconds / 1000.0),
-          createdAt: Value(now),
-          updatedAt: Value(now),
-        ),
-      );
-    } catch (e) {
-      AppLogger.log('Bookmark', '✗ 添加书签失败: $e');
-    }
-  }
-
-  /// 从 Drift 数据库移除书签
-  static Future<void> removeBookmarksFromDb(
-    String audioId,
-    Set<int> indices, {
-    required BookmarkDao dao,
-  }) async {
-    try {
-      await dao.removeBookmarks(audioId, indices);
-    } catch (e) {
-      AppLogger.log('Bookmark', '✗ 移除书签失败: $e');
     }
   }
 

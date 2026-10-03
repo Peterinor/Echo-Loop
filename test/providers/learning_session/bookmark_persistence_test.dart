@@ -2,10 +2,13 @@
 // 验证精听模式中标记难句后，书签能正确持久化到数据库，且下次进入时能正确恢复。
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echo_loop/database/app_database.dart';
+import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/providers/favorite_sentence_lifecycle_provider.dart';
 import 'package:echo_loop/providers/listening_practice/bookmark_manager.dart';
 
 /// 创建内存数据库用于测试
@@ -37,10 +40,16 @@ List<Sentence> _createTestSentences({
 
 void main() {
   late AppDatabase db;
+  late ProviderContainer container;
+  late FavoriteSentenceLifecycle sentenceLifecycle;
   const audioId = 'audio-test';
 
   setUp(() async {
     db = _createTestDb();
+    container = ProviderContainer(
+      overrides: [appDatabaseProvider.overrideWithValue(db)],
+    );
+    sentenceLifecycle = container.read(favoriteSentenceLifecycleProvider);
     final now = DateTime.now();
     await db.audioItemDao.upsert(
       AudioItemsCompanion(
@@ -54,17 +63,14 @@ void main() {
   });
 
   tearDown(() async {
+    container.dispose();
     await db.close();
   });
 
-  group('BookmarkManager 书签增删持久化', () {
-    test('addBookmarkToDb 正确保存到数据库', () async {
+  group('收藏句生命周期持久化', () {
+    test('保存收藏句后可读取收藏索引', () async {
       final sentences = _createTestSentences();
-      await BookmarkManager.addBookmarkToDb(
-        audioId,
-        sentences[2],
-        dao: db.bookmarkDao,
-      );
+      await sentenceLifecycle.save(audioId, sentences[2]);
 
       final indices = await BookmarkManager.loadBookmarks(
         audioId,
@@ -73,22 +79,15 @@ void main() {
       expect(indices, {2});
     });
 
-    test('removeBookmarksFromDb 正确移除指定书签', () async {
+    test('删除收藏句后只移除指定索引', () async {
       final sentences = _createTestSentences();
       // 先添加 3 个书签
       for (final i in [0, 2, 4]) {
-        await BookmarkManager.addBookmarkToDb(
-          audioId,
-          sentences[i],
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.save(audioId, sentences[i]);
       }
 
       // 移除 index 0 和 4
-      await BookmarkManager.removeBookmarksFromDb(audioId, {
-        0,
-        4,
-      }, dao: db.bookmarkDao);
+      await sentenceLifecycle.remove(audioId, {0, 4});
 
       final indices = await BookmarkManager.loadBookmarks(
         audioId,
@@ -104,11 +103,7 @@ void main() {
 
       // 模拟初始状态：句子 1、3 已有书签
       for (final i in [1, 3]) {
-        await BookmarkManager.addBookmarkToDb(
-          audioId,
-          sentences[i],
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.save(audioId, sentences[i]);
       }
 
       // 模拟用户操作后的 difficultSentences = {1, 2, 4}
@@ -130,11 +125,7 @@ void main() {
       expect(added, {2, 4});
 
       for (final index in added) {
-        await BookmarkManager.addBookmarkToDb(
-          audioId,
-          sentences[index],
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.save(audioId, sentences[index]);
       }
 
       final removedPositions = initialBookmarks.difference(difficultSentences);
@@ -145,11 +136,7 @@ void main() {
           for (final pos in removedPositions)
             if (pos < sentences.length) sentences[pos].index,
         };
-        await BookmarkManager.removeBookmarksFromDb(
-          audioId,
-          removedSentenceIndices,
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.remove(audioId, removedSentenceIndices);
       }
 
       // 验证最终数据库状态
@@ -189,7 +176,7 @@ void main() {
 
       // 预存已有书签（sentence.index 5 和 15）
       for (final s in sentences.where((s) => s.isBookmarked)) {
-        await BookmarkManager.addBookmarkToDb(audioId, s, dao: db.bookmarkDao);
+        await sentenceLifecycle.save(audioId, s);
       }
 
       // 初始书签用位置索引: position 0 (index=5), position 2 (index=15)
@@ -206,11 +193,7 @@ void main() {
       // 新增: position 1
       final added = difficultSentences.difference(initialBookmarks);
       for (final index in added) {
-        await BookmarkManager.addBookmarkToDb(
-          audioId,
-          sentences[index],
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.save(audioId, sentences[index]);
       }
 
       // 移除: position 0 → sentence.index = 5
@@ -223,11 +206,7 @@ void main() {
       };
       expect(removedSentenceIndices, {5});
 
-      await BookmarkManager.removeBookmarksFromDb(
-        audioId,
-        removedSentenceIndices,
-        dao: db.bookmarkDao,
-      );
+      await sentenceLifecycle.remove(audioId, removedSentenceIndices);
 
       // 验证：应保留 index 10 和 15（position 1 和 2）
       final finalIndices = await BookmarkManager.loadBookmarks(
@@ -262,11 +241,7 @@ void main() {
       // 1. 模拟精听中标记 position 1 和 3 为难句
       final difficultSentences = <int>{1, 3};
       for (final pos in difficultSentences) {
-        await BookmarkManager.addBookmarkToDb(
-          audioId,
-          sentences[pos],
-          dao: db.bookmarkDao,
-        );
+        await sentenceLifecycle.save(audioId, sentences[pos]);
       }
 
       // 2. 模拟退出后重新加载书签
