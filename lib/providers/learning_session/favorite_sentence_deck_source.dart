@@ -30,7 +30,13 @@ final class FavoriteSentenceDeckSource
   final DateTime Function()? _now;
 
   @override
-  Future<List<ScheduledFlashcard<BookmarkSentence>>> load() =>
+  Future<List<ScheduledFlashcard<BookmarkSentence>>> load() => _source().load();
+
+  /// 切换复习顺序时只读取已有调度快照，避免恢复已取消的收藏。
+  Future<List<ScheduledFlashcard<BookmarkSentence>>> loadForReordering() =>
+      _source().loadForReordering();
+
+  FavoriteReviewDeckSource<BookmarkSentence> _source() =>
       FavoriteReviewDeckSource<BookmarkSentence>(
         items: [
           for (final item in _bookmarks)
@@ -47,7 +53,7 @@ final class FavoriteSentenceDeckSource
         scheduler: _scheduler,
         settings: _settings,
         now: _now,
-      ).load();
+      );
 
   bool _isValid(BookmarkWithAudio item) =>
       item.bookmark.endTime > item.bookmark.startTime &&

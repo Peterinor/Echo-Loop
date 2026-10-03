@@ -28,6 +28,7 @@ import '../favorite_sentence_lifecycle_provider.dart';
 import '../../features/usage/usage_event.dart';
 import '../../features/usage/usage_providers.dart';
 import '../../models/bookmark_sentence.dart';
+import '../../models/favorite_review_settings.dart';
 import '../../models/study_stage.dart';
 import '../../services/app_logger.dart';
 import '../../services/study_session_timer.dart';
@@ -119,6 +120,8 @@ class BookmarkReview extends _$BookmarkReview {
   late final AppLifecycleListener _lifecycleListener;
   StudySessionTimer? _studySessionTimer;
   ScheduledFlashcardController<BookmarkSentence>? _controller;
+  List<BookmarkWithAudio>? _sessionBookmarks;
+  int _orderGeneration = 0;
   ReviewSessionSummary _summary = const ReviewSessionSummary();
   Future<void>? _disposeSessionInFlight;
 
@@ -130,6 +133,11 @@ class BookmarkReview extends _$BookmarkReview {
 
   @override
   BookmarkReviewState build() {
+    ref.listen(favoriteReviewSettingsProvider, (previous, next) {
+      if (previous != null && previous.order != next.order) {
+        unawaited(_applyReviewOrder(next));
+      }
+    });
     final audioEngine = ref.read(audioEngineProvider.notifier);
     final foregroundEngine = ref.read(foregroundAudioEngineProvider.notifier);
     final shortAudioPlayer = ref.read(shortAudioPlayerProvider);
@@ -167,6 +175,8 @@ class BookmarkReview extends _$BookmarkReview {
     unawaited(ref.read(shortAudioPlayerProvider).stop());
 
     _controller?.dispose();
+    _sessionBookmarks = List<BookmarkWithAudio>.unmodifiable(bookmarks);
+    _orderGeneration++;
     final scheduler = ref.read(memorySchedulerProvider);
     final controller = ScheduledFlashcardController<BookmarkSentence>(
       deckSource: FavoriteSentenceDeckSource(
@@ -203,6 +213,51 @@ class BookmarkReview extends _$BookmarkReview {
     ref.read(analyticsServiceProvider).track(Events.bookmarkReviewStart, {
       EventParams.totalSentencesCount: state.initialTotal,
     });
+  }
+
+  /// 设置面板切换顺序后，只重新排列当前会话尚未处理的句子。
+  Future<void> _applyReviewOrder(FavoriteReviewSettings settings) async {
+    final bookmarks = _sessionBookmarks;
+    final controller = _controller;
+    if (bookmarks == null || controller == null) return;
+    final generation = ++_orderGeneration;
+    AppLogger.log(
+      'FavoriteSentenceReview',
+      'reorder.load.start order=${settings.order} '
+          'sourceCount=${bookmarks.length} generation=$generation',
+    );
+    try {
+      final scheduler = ref.read(memorySchedulerProvider);
+      final orderedDeck = await FavoriteSentenceDeckSource(
+        bookmarks: bookmarks,
+        scheduler: scheduler,
+        settings: settings,
+      ).loadForReordering();
+      if (generation != _orderGeneration ||
+          !identical(_controller, controller)) {
+        AppLogger.log(
+          'FavoriteSentenceReview',
+          'reorder.load.discarded generation=$generation '
+              'activeGeneration=$_orderGeneration',
+        );
+        return;
+      }
+      AppLogger.log(
+        'FavoriteSentenceReview',
+        'reorder.load.success order=${settings.order} '
+            'deckCount=${orderedDeck.length} '
+            'first=${orderedDeck.isEmpty ? 'none' : orderedDeck.first.subject.subjectId}',
+      );
+      if (controller.reorderPending(orderedDeck)) {
+        state = _stateFromController(controller);
+      }
+    } catch (error) {
+      AppLogger.log(
+        'FavoriteSentenceReview',
+        'reorder.load.error order=${settings.order} '
+            'generation=$generation error=$error',
+      );
+    }
   }
 
   /// 仅在共享偏好开启时自动播放正面；手动重播不受该偏好影响。
@@ -323,11 +378,9 @@ class BookmarkReview extends _$BookmarkReview {
         state.face != BookmarkReviewFace.back) {
       return;
     }
-    await controller.submitRating(rating);
+    final submitted = await controller.submitRating(rating);
     if (!identical(_controller, controller)) return;
-    final phase = controller.state.phase;
-    if (phase == ScheduledFlashcardPhase.prompt ||
-        phase == ScheduledFlashcardPhase.completed) {
+    if (submitted) {
       _summary = _summary.recordRating(
         subjectId: card.memorySubjectId,
         rating: rating,
@@ -343,7 +396,18 @@ class BookmarkReview extends _$BookmarkReview {
         'FavoriteSentenceReview',
         'rating submission failed error=${controller.state.error}',
       );
-      state = state.copyWith(isSubmittingRating: false);
+      if (!identical(controller.state.current?.content, card)) {
+        state = _stateFromController(
+          controller,
+          completionSummary: _completionSummaryIfFinished(controller),
+        );
+      } else {
+        state = state.copyWith(
+          isSubmittingRating: false,
+          preview: controller.state.preview,
+          clearPreview: controller.state.preview == null,
+        );
+      }
     }
   }
 
@@ -407,6 +471,8 @@ class BookmarkReview extends _$BookmarkReview {
   }
 
   Future<void> _disposeSessionImpl() async {
+    _orderGeneration++;
+    _sessionBookmarks = null;
     try {
       await interruptPlayback();
     } catch (error, stackTrace) {

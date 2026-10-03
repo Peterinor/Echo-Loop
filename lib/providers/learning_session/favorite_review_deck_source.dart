@@ -40,11 +40,26 @@ final class FavoriteReviewDeckSource<T> implements FlashcardDeckSource<T> {
   final DateTime Function() _now;
 
   @override
-  Future<List<ScheduledFlashcard<T>>> load() async {
+  Future<List<ScheduledFlashcard<T>>> load() => _load(prepareSchedules: true);
+
+  /// 仅读取既有 active 快照，用于设置变更时更新当前队列顺序。
+  Future<List<ScheduledFlashcard<T>>> loadForReordering() =>
+      _load(prepareSchedules: false);
+
+  Future<List<ScheduledFlashcard<T>>> _load({
+    required bool prepareSchedules,
+  }) async {
     final now = _now().toUtc();
     final schedules = <MemorySubjectRef, MemorySchedule>{};
     for (final item in _items) {
       final existing = await _scheduler.getSchedule(item.subject);
+      if (!prepareSchedules) {
+        if (existing != null &&
+            existing.status == MemoryScheduleStatus.active) {
+          schedules[item.subject] = existing;
+        }
+        continue;
+      }
       // 兼容旧调用方或测试直接写入收藏表的情况；正常新增路径会提前建立快照。
       final schedule = existing == null
           ? await _scheduler.ensureSchedule(
@@ -66,7 +81,9 @@ final class FavoriteReviewDeckSource<T> implements FlashcardDeckSource<T> {
       schedules[item.subject] = schedule;
     }
     final due = _items.where((item) {
-      final dueAt = schedules[item.subject]!.dueAt;
+      final schedule = schedules[item.subject];
+      if (schedule == null) return false;
+      final dueAt = schedule.dueAt;
       return !dueAt.isAfter(now);
     }).toList();
     _sortDue(due, schedules, now);

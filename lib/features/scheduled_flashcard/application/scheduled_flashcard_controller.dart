@@ -42,6 +42,7 @@ final class ScheduledFlashcardController<T> {
   int _generation = 0;
   DateTime? _promptedAt;
   _PendingRatingSubmission? _pendingRatingSubmission;
+  List<ScheduledFlashcard<T>>? _deferredOrder;
   bool _disposed = false;
 
   ScheduledFlashcardSessionState<T> get state => _engine.state;
@@ -70,6 +71,61 @@ final class ScheduledFlashcardController<T> {
       _engine.setError(error);
       _notify();
     }
+  }
+
+  /// 按新顺序重排待处理卡片，并返回当前卡是否因此发生变化。
+  bool reorderPending(List<ScheduledFlashcard<T>> orderedDeck) {
+    if (_disposed) {
+      _log('reorder.ignored reason=disposed orderCount=${orderedDeck.length}');
+      return false;
+    }
+    if (state.phase == ScheduledFlashcardPhase.submittingRating ||
+        _pendingRatingSubmission != null) {
+      final replaced = _deferredOrder != null;
+      _deferredOrder = List<ScheduledFlashcard<T>>.unmodifiable(orderedDeck);
+      _log(
+        'reorder.deferred current=${_subjectId(state.current)} '
+        'phase=${state.phase} orderCount=${orderedDeck.length} '
+        'first=${_subjectId(orderedDeck.isEmpty ? null : orderedDeck.first)} '
+        'pendingOperationId=${_pendingRatingSubmission?.operationId ?? 'none'} '
+        'replacedPrevious=$replaced',
+      );
+      return false;
+    }
+    final currentBefore = _subjectId(state.current);
+    final currentChanged = _applyOrder(orderedDeck);
+    _log(
+      'reorder.applied orderCount=${orderedDeck.length} '
+      'requestedFirst=${_subjectId(orderedDeck.isEmpty ? null : orderedDeck.first)} '
+      'currentBefore=$currentBefore currentAfter=${_subjectId(state.current)} '
+      'currentChanged=$currentChanged generation=$_generation',
+    );
+    _notify();
+    return currentChanged;
+  }
+
+  /// 应用提交期间暂存的顺序；只在提交结果已明确时调用。
+  void _applyDeferredOrder() {
+    final orderedDeck = _deferredOrder;
+    _deferredOrder = null;
+    if (orderedDeck == null) return;
+    final currentBefore = _subjectId(state.current);
+    final currentChanged = _applyOrder(orderedDeck);
+    _log(
+      'reorder.deferred_applied orderCount=${orderedDeck.length} '
+      'requestedFirst=${_subjectId(orderedDeck.isEmpty ? null : orderedDeck.first)} '
+      'currentBefore=$currentBefore currentAfter=${_subjectId(state.current)} '
+      'currentChanged=$currentChanged generation=$_generation',
+    );
+  }
+
+  bool _applyOrder(List<ScheduledFlashcard<T>> orderedDeck) {
+    final currentChanged = _engine.reorderPending(orderedDeck);
+    if (!currentChanged) return false;
+    _generation++;
+    _pendingRatingSubmission = null;
+    _promptedAt = _clock.now().toUtc();
+    return true;
   }
 
   void revealAnswer() {
@@ -116,11 +172,28 @@ final class ScheduledFlashcardController<T> {
     }
   }
 
-  Future<void> submitRating(MemoryRating rating) async {
+  /// 提交评分，并在持久化成功时返回 `true`。
+  Future<bool> submitRating(MemoryRating rating) async {
     final card = state.current;
-    if (card == null || state.phase != ScheduledFlashcardPhase.answer) return;
+    if (card == null) {
+      _log('submit.ignored reason=no_current_card phase=${state.phase}');
+      return false;
+    }
+    if (state.phase != ScheduledFlashcardPhase.answer) {
+      _log(
+        'submit.ignored reason=wrong_phase card=${card.subject.subjectId} '
+        'phase=${state.phase}',
+      );
+      return false;
+    }
     final preview = state.preview;
-    if (preview == null) return;
+    if (preview == null) {
+      _log(
+        'submit.ignored reason=missing_preview '
+        'card=${card.subject.subjectId} phase=${state.phase}',
+      );
+      return false;
+    }
     var pending = _pendingRatingSubmission;
     if (pending != null && pending.rating != rating) {
       // 改选评分是新的用户动作，不能复用旧动作的幂等快照。
@@ -131,6 +204,7 @@ final class ScheduledFlashcardController<T> {
       );
       pending = null;
     }
+    final isRetry = pending != null;
     _engine.beginSubmitting(rating);
     _notify();
     final generation = _generation;
@@ -152,6 +226,7 @@ final class ScheduledFlashcardController<T> {
       'submit.start card=${card.subject.subjectId} rating=$rating '
       'revision=${card.scheduleRevision} '
       'operationId=${pendingSubmission.operationId} generation=$generation '
+      'retry=$isRetry '
       'reviewedAt=${pendingSubmission.preview.reviewedAt.toIso8601String()} '
       'dueAt=${pendingSubmission.preview.dueAt.toIso8601String()} '
       'intervalMs=${pendingSubmission.preview.interval.inMilliseconds} '
@@ -168,9 +243,12 @@ final class ScheduledFlashcardController<T> {
       );
       if (!_valid(generation) || state.current?.subject != card.subject) {
         _log(
-          'submit.discarded card=${card.subject.subjectId} operationId=${pendingSubmission.operationId}',
+          'submit.discarded card=${card.subject.subjectId} '
+          'operationId=${pendingSubmission.operationId} generation=$generation '
+          'activeGeneration=$_generation disposed=$_disposed '
+          'current=${_subjectId(state.current)}',
         );
-        return;
+        return false;
       }
       _pendingRatingSubmission = null;
       _engine.completeRating(
@@ -179,6 +257,7 @@ final class ScheduledFlashcardController<T> {
         dueAt: result.schedule.dueAt,
         now: _clock.now().toUtc(),
       );
+      _applyDeferredOrder();
       _log(
         'submit.success card=${card.subject.subjectId} '
         'rating=$rating operationId=${pendingSubmission.operationId} '
@@ -188,34 +267,50 @@ final class ScheduledFlashcardController<T> {
         'wasIdempotentReplay=${result.wasIdempotentReplay}',
       );
       _notify();
+      return true;
     } catch (error) {
-      if (!_valid(generation)) return;
+      if (!_valid(generation)) {
+        _log(
+          'submit.discarded_error card=${card.subject.subjectId} '
+          'operationId=${pendingSubmission.operationId} generation=$generation '
+          'activeGeneration=$_generation disposed=$_disposed error=$error',
+        );
+        return false;
+      }
       if (error is MemoryScheduleConflictException) {
         _log(
           'submit.conflict card=${card.subject.subjectId} '
           'operationId=${pendingSubmission.operationId}',
         );
+        // 乐观锁明确拒绝了该动作，不再用旧幂等快照重试。
+        _pendingRatingSubmission = null;
         await _reloadAfterConflict(card, generation);
-        return;
+        _applyDeferredOrder();
+        _notify();
+        return false;
       }
       if (error is MemoryOperationIdConflictException ||
           error is MemoryIdempotencyReplayStaleException) {
         // 此 ID 已被历史事件确定性拒绝；下次用户主动评分必须创建新动作。
         _pendingRatingSubmission = null;
         _engine.returnToAnswer(error);
+        _applyDeferredOrder();
         _log(
           'submit.operation_id_rejected card=${card.subject.subjectId} '
           'operationId=${pendingSubmission.operationId} error=$error',
         );
         _notify();
-        return;
+        return false;
       }
       _engine.returnToAnswer(error);
       _log(
         'submit.error card=${card.subject.subjectId} '
-        'operationId=${pendingSubmission.operationId} error=$error',
+        'operationId=${pendingSubmission.operationId} outcome=unknown '
+        'snapshotRetained=${identical(_pendingRatingSubmission, pendingSubmission)} '
+        'deferredOrder=${_deferredOrder != null} error=$error',
       );
       _notify();
+      return false;
     }
   }
 
@@ -233,6 +328,7 @@ final class ScheduledFlashcardController<T> {
     _log('dispose generation=$_generation');
     _disposed = true;
     _generation++;
+    _deferredOrder = null;
     _listeners.clear();
   }
 
@@ -240,18 +336,44 @@ final class ScheduledFlashcardController<T> {
     ScheduledFlashcard<T> card,
     int generation,
   ) async {
+    _log(
+      'submit.conflict_reload.start card=${card.subject.subjectId} '
+      'generation=$generation',
+    );
     try {
       final revision = await _ratingPort.reloadRevision(card.subject);
-      if (!_valid(generation) || state.current?.subject != card.subject) return;
+      if (!_valid(generation) || state.current?.subject != card.subject) {
+        _log(
+          'submit.conflict_reload.discarded card=${card.subject.subjectId} '
+          'generation=$generation activeGeneration=$_generation '
+          'current=${_subjectId(state.current)} disposed=$_disposed',
+        );
+        return;
+      }
       _pendingRatingSubmission = null;
       _engine.replaceCurrentRevision(revision);
+      _log(
+        'submit.conflict_reload.success card=${card.subject.subjectId} '
+        'revision=$revision',
+      );
       _engine.returnToAnswer(
         const MemoryScheduleConflictException('评分已刷新，请重新确认。'),
       );
       _notify();
       await preview();
     } catch (error) {
-      if (!_valid(generation)) return;
+      if (!_valid(generation)) {
+        _log(
+          'submit.conflict_reload.discarded_error '
+          'card=${card.subject.subjectId} generation=$generation '
+          'activeGeneration=$_generation disposed=$_disposed error=$error',
+        );
+        return;
+      }
+      _log(
+        'submit.conflict_reload.error card=${card.subject.subjectId} '
+        'generation=$generation error=$error',
+      );
       _engine.returnToAnswer(error);
       _notify();
     }
@@ -293,6 +415,9 @@ final class ScheduledFlashcardController<T> {
   String _previewSummary(MemoryRatingPreview preview) =>
       'dueAt=${preview.dueAt.toIso8601String()},'
       'intervalMs=${preview.interval.inMilliseconds}';
+
+  String _subjectId(ScheduledFlashcard<T>? card) =>
+      card?.subject.subjectId ?? 'none';
 
   bool _valid(int generation) => !_disposed && generation == _generation;
   static void _ignoreLog(String message) {}

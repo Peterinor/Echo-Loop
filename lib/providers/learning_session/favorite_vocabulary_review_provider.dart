@@ -24,6 +24,7 @@ import '../../features/scheduled_flashcard/application/scheduled_flashcard_contr
 import '../../features/scheduled_flashcard/domain/scheduled_flashcard.dart';
 import '../../features/scheduled_flashcard/domain/review_session_summary.dart';
 import '../../models/flashcard_item.dart';
+import '../../models/favorite_review_settings.dart';
 import '../../models/study_stage.dart';
 import '../../services/app_logger.dart';
 import '../../services/pronunciation/local_audio_clip_player.dart';
@@ -122,6 +123,9 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
   late final AppLifecycleListener _lifecycleListener;
   StudySessionTimer? _studySessionTimer;
   ScheduledFlashcardController<FlashcardItem>? _controller;
+  List<SavedWord>? _sessionWords;
+  List<SavedSenseGroup>? _sessionPhrases;
+  int _orderGeneration = 0;
   ReviewSessionSummary _summary = const ReviewSessionSummary();
   Future<void>? _disposeSessionInFlight;
 
@@ -133,6 +137,11 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
 
   @override
   FavoriteVocabularyReviewState build() {
+    ref.listen(favoriteReviewSettingsProvider, (previous, next) {
+      if (previous != null && previous.order != next.order) {
+        unawaited(_applyReviewOrder(next));
+      }
+    });
     final playback = ref.read(textPlaybackProvider.notifier);
     _lifecycleListener = AppLifecycleListener(
       onStateChange: (value) {
@@ -165,6 +174,9 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
     unawaited(ref.read(textPlaybackProvider.notifier).stop());
 
     _controller?.dispose();
+    _sessionWords = List<SavedWord>.unmodifiable(words);
+    _sessionPhrases = List<SavedSenseGroup>.unmodifiable(phrases);
+    _orderGeneration++;
     final scheduler = ref.read(memorySchedulerProvider);
     final controller = ScheduledFlashcardController<FlashcardItem>(
       deckSource: FavoriteVocabularyDeckSource(
@@ -199,6 +211,54 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
     );
     _studySessionTimer = timer;
     timer.start();
+  }
+
+  /// 设置面板切换顺序后，只重新排列当前会话尚未处理的词汇与意群。
+  Future<void> _applyReviewOrder(FavoriteReviewSettings settings) async {
+    final words = _sessionWords;
+    final phrases = _sessionPhrases;
+    final controller = _controller;
+    if (words == null || phrases == null || controller == null) return;
+    final generation = ++_orderGeneration;
+    AppLogger.log(
+      'FavoriteVocabularyReview',
+      'reorder.load.start order=${settings.order} '
+          'wordCount=${words.length} phraseCount=${phrases.length} '
+          'generation=$generation',
+    );
+    try {
+      final scheduler = ref.read(memorySchedulerProvider);
+      final orderedDeck = await FavoriteVocabularyDeckSource(
+        words: words,
+        phrases: phrases,
+        scheduler: scheduler,
+        settings: settings,
+      ).loadForReordering();
+      if (generation != _orderGeneration ||
+          !identical(_controller, controller)) {
+        AppLogger.log(
+          'FavoriteVocabularyReview',
+          'reorder.load.discarded generation=$generation '
+              'activeGeneration=$_orderGeneration',
+        );
+        return;
+      }
+      AppLogger.log(
+        'FavoriteVocabularyReview',
+        'reorder.load.success order=${settings.order} '
+            'deckCount=${orderedDeck.length} '
+            'first=${orderedDeck.isEmpty ? 'none' : orderedDeck.first.subject.subjectId}',
+      );
+      if (controller.reorderPending(orderedDeck)) {
+        state = _stateFromController(controller);
+      }
+    } catch (error) {
+      AppLogger.log(
+        'FavoriteVocabularyReview',
+        'reorder.load.error order=${settings.order} '
+            'generation=$generation error=$error',
+      );
+    }
   }
 
   /// 仅在共享偏好开启时自动播放正面；手动重播不受该偏好影响。
@@ -416,11 +476,9 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
         state.face != FavoriteVocabularyReviewFace.back) {
       return;
     }
-    await controller.submitRating(rating);
+    final submitted = await controller.submitRating(rating);
     if (!identical(_controller, controller)) return;
-    final phase = controller.state.phase;
-    if (phase == ScheduledFlashcardPhase.prompt ||
-        phase == ScheduledFlashcardPhase.completed) {
+    if (submitted) {
       final subjectId = card.memorySubjectId;
       if (subjectId != null) {
         _summary = _summary.recordRating(subjectId: subjectId, rating: rating);
@@ -436,7 +494,18 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
         'FavoriteVocabularyReview',
         'rating submission failed error=${controller.state.error}',
       );
-      state = state.copyWith(isSubmittingRating: false);
+      if (!identical(controller.state.current?.content, card)) {
+        state = _stateFromController(
+          controller,
+          completionSummary: _completionSummaryIfFinished(controller),
+        );
+      } else {
+        state = state.copyWith(
+          isSubmittingRating: false,
+          preview: controller.state.preview,
+          clearPreview: controller.state.preview == null,
+        );
+      }
     }
   }
 
@@ -511,6 +580,9 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
   }
 
   Future<void> _disposeSessionImpl() async {
+    _orderGeneration++;
+    _sessionWords = null;
+    _sessionPhrases = null;
     try {
       await interruptPlayback();
     } catch (error, stackTrace) {

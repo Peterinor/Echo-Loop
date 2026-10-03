@@ -272,6 +272,48 @@ void main() {
     expect(state.currentCard?.sentence.text, 'Sentence 1');
   });
 
+  test(
+    'changing order during review selects the new first unreviewed card',
+    () async {
+      final scope = _testScope(_TestBookmarkDao());
+      final container = scope.container;
+      addTearDown(() async {
+        await _disposeBookmarkContainer(container);
+        await scope.database.close();
+      });
+      final notifier = container.read(bookmarkReviewProvider.notifier);
+      await notifier.initialize([_bookmark(3), _bookmark(2), _bookmark(1)]);
+      expect(
+        container.read(bookmarkReviewProvider).currentCard?.sentence.index,
+        3,
+      );
+
+      final reordered = Completer<void>();
+      final subscription = container.listen(bookmarkReviewProvider, (_, next) {
+        if (next.currentCard?.sentence.index == 1 && !reordered.isCompleted) {
+          reordered.complete();
+        }
+      });
+      addTearDown(subscription.close);
+
+      await container
+          .read(favoriteReviewSettingsProvider.notifier)
+          .update(
+            const FavoriteReviewSettings(
+              autoPlayFront: false,
+              autoPlayBack: false,
+              order: FavoriteReviewOrder.dueAt,
+            ),
+          );
+      await reordered.future.timeout(const Duration(seconds: 3));
+
+      final state = container.read(bookmarkReviewProvider);
+      expect(state.currentCard?.sentence.index, 1);
+      expect(state.reviewedCount, 0);
+      expect(state.remainingCount, 3);
+    },
+  );
+
   test('reveal stops playback and exposes placeholder back', () async {
     final scope = _testScope(_TestBookmarkDao());
     final container = scope.container;

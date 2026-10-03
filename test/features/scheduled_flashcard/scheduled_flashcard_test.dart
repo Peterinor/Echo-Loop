@@ -53,6 +53,28 @@ void main() {
     expect(engine.state.phase, ScheduledFlashcardPhase.completed);
   });
 
+  test('reordering immediately selects the first unreviewed card', () {
+    final first = card('one');
+    final second = card('two');
+    final third = card('three');
+    final engine = ScheduledFlashcardEngine<String>();
+    engine.setDeck(<ScheduledFlashcard<String>>[first, second, third], now);
+    engine.revealAnswer();
+
+    engine.reorderPending(<ScheduledFlashcard<String>>[third, second, first]);
+
+    expect(engine.state.current, same(third));
+    expect(engine.state.phase, ScheduledFlashcardPhase.prompt);
+    expect(engine.state.answerRevealed, isFalse);
+    expect(engine.state.initialTotal, 3);
+    expect(engine.state.remainingCount, 3);
+    expect(engine.state.reviewedCount, 0);
+
+    engine.removeCurrent(now);
+    expect(engine.state.current, same(second));
+    expect(engine.state.remainingCount, 2);
+  });
+
   group('removeCurrent', () {
     final first = card('one');
     final second = card('two');
@@ -282,6 +304,59 @@ void main() {
   );
 
   test(
+    'reordering waits for a rating retry after an uncertain submission',
+    () async {
+      final first = card('one');
+      final second = card('two');
+      final third = card('three');
+      final port = _GatedRatingPort();
+      final controller = ScheduledFlashcardController<String>(
+        deckSource: _FakeDeckSource(<ScheduledFlashcard<String>>[
+          first,
+          second,
+          third,
+        ]),
+        ratingPort: port,
+        operationIdGenerator: _FixedIds(),
+      );
+
+      await controller.load();
+      controller.revealAnswer();
+      await controller.preview();
+      final firstSubmission = controller.submitRating(MemoryRating.good);
+      await port.firstSubmitStarted.future;
+
+      expect(
+        controller.reorderPending(<ScheduledFlashcard<String>>[
+          third,
+          second,
+          first,
+        ]),
+        isFalse,
+      );
+      expect(controller.state.current, same(first));
+      port.firstSubmit.completeError(StateError('submit response lost'));
+      expect(await firstSubmission, isFalse);
+      expect(controller.state.current, same(first));
+      expect(controller.state.phase, ScheduledFlashcardPhase.answer);
+
+      controller.reorderPending(<ScheduledFlashcard<String>>[
+        third,
+        second,
+        first,
+      ]);
+      expect(controller.state.current, same(first));
+      expect(await controller.submitRating(MemoryRating.good), isTrue);
+
+      expect(port.operationIds, <String>['op-1', 'op-1']);
+      expect(controller.state.current, same(third));
+      expect(controller.state.reviewedCount, 1);
+      expect(controller.state.remainingCount, 2);
+      controller.dispose();
+    },
+  );
+
+  test(
     'a different rating after a failed submission creates a new action',
     () async {
       var currentTime = now;
@@ -480,6 +555,37 @@ final class _RecordingRatingPort extends _FakeRatingPort {
     if (failFirstSubmit && _submitAttempts == 1) {
       operationIds.add(operationId);
       return Future<MemoryReviewResult>.error(StateError('submit failed'));
+    }
+    return super.submit(
+      subject: subject,
+      rating: rating,
+      preview: preview,
+      expectedRevision: expectedRevision,
+      responseTime: responseTime,
+      operationId: operationId,
+    );
+  }
+}
+
+final class _GatedRatingPort extends _FakeRatingPort {
+  final firstSubmitStarted = Completer<void>();
+  final firstSubmit = Completer<MemoryReviewResult>();
+  var _submitAttempts = 0;
+
+  @override
+  Future<MemoryReviewResult> submit({
+    required MemorySubjectRef subject,
+    required MemoryRating rating,
+    required MemoryRatingPreview preview,
+    required int expectedRevision,
+    required Duration responseTime,
+    required String operationId,
+  }) {
+    _submitAttempts++;
+    if (_submitAttempts == 1) {
+      operationIds.add(operationId);
+      firstSubmitStarted.complete();
+      return firstSubmit.future;
     }
     return super.submit(
       subject: subject,

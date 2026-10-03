@@ -54,6 +54,7 @@ final class ScheduledFlashcardEngine<T> {
       );
 
   static const Duration retryWindow = Duration(minutes: 2);
+  static const int _loggedCardLimit = 5;
 
   late ScheduledFlashcardSessionState<T> _state;
   final Queue<ScheduledFlashcard<T>> _pending = Queue<ScheduledFlashcard<T>>();
@@ -71,6 +72,66 @@ final class ScheduledFlashcardEngine<T> {
     _log('set_deck input=${_ids(deck)}');
     _setNext(now: now.toUtc(), initialTotal: deck.length);
   }
+
+  /// 按新队列顺序重排尚未处理的卡片；新首卡变化时切回正面。
+  bool reorderPending(List<ScheduledFlashcard<T>> orderedDeck) {
+    if (_state.phase == ScheduledFlashcardPhase.completed ||
+        _pending.length < 2) {
+      return false;
+    }
+    final current = _state.current;
+    final pending = _pending.toList(growable: false);
+    final currentIsPending =
+        current != null &&
+        pending.isNotEmpty &&
+        identical(pending.first, current);
+    final order = {
+      for (var index = 0; index < orderedDeck.length; index++)
+        _subjectKey(orderedDeck[index]): index,
+    };
+    final remaining = pending.toList();
+    final originalOrder = {
+      for (var index = 0; index < remaining.length; index++)
+        _subjectKey(remaining[index]): index,
+    };
+    remaining.sort((left, right) {
+      final leftOrder = order[_subjectKey(left)];
+      final rightOrder = order[_subjectKey(right)];
+      if (leftOrder == null && rightOrder == null) {
+        return (originalOrder[_subjectKey(left)] ?? 0).compareTo(
+          originalOrder[_subjectKey(right)] ?? 0,
+        );
+      }
+      if (leftOrder == null) return 1;
+      if (rightOrder == null) return -1;
+      final orderComparison = leftOrder.compareTo(rightOrder);
+      return orderComparison != 0
+          ? orderComparison
+          : (originalOrder[_subjectKey(left)] ?? 0).compareTo(
+              originalOrder[_subjectKey(right)] ?? 0,
+            );
+    });
+    final nextCurrent = currentIsPending ? remaining.first : current;
+    final currentChanged = currentIsPending && !identical(current, nextCurrent);
+    _pending
+      ..clear()
+      ..addAll(remaining);
+    _log('reorder_pending ordered=${_ids(_pending)}');
+    _state = currentChanged
+        ? _copy(
+            phase: ScheduledFlashcardPhase.prompt,
+            answerRevealed: false,
+            current: nextCurrent ?? _state.current,
+            clearPreview: true,
+            rating: null,
+            clearError: true,
+          )
+        : _copy();
+    return currentChanged;
+  }
+
+  String _subjectKey(ScheduledFlashcard<T> card) =>
+      '${card.subject.namespace}:${card.subject.subjectId}';
 
   /// 从队列中移除当前卡片，不提交评分、不计入 reviewedCount。
   ///
@@ -159,6 +220,7 @@ final class ScheduledFlashcardEngine<T> {
     MemoryRatingPreviewSet? preview,
     bool clearPreview = false,
     MemoryRating? rating,
+    ScheduledFlashcard<T>? current,
     Object? error,
     bool clearError = false,
   }) {
@@ -170,7 +232,7 @@ final class ScheduledFlashcardEngine<T> {
       reviewedCount: _state.reviewedCount,
       initialTotal: _state.initialTotal,
       remainingCount: _state.remainingCount,
-      current: _state.current,
+      current: current ?? _state.current,
       error: clearError ? null : error ?? _state.error,
     );
   }
@@ -234,16 +296,23 @@ final class ScheduledFlashcardEngine<T> {
       'pending=${_ids(_pending)} retry=${_retryIds()} '
       'remaining=${_pending.length + _retries.length}';
 
-  String _retryIds() => _retries
-      .toList()
-      .map(
-        (entry) =>
-            '${_id(entry.card)}@${entry.card.dueAt.toIso8601String()}#${entry.sequence}',
-      )
-      .join(',');
+  String _retryIds() {
+    final entries = _retries.toList();
+    final preview = entries
+        .take(_loggedCardLimit)
+        .map(
+          (entry) =>
+              '${_id(entry.card)}@${entry.card.dueAt.toIso8601String()}#${entry.sequence}',
+        )
+        .join(',');
+    return 'count=${entries.length} first=[$preview]';
+  }
 
-  String _ids(Iterable<ScheduledFlashcard<T>> cards) =>
-      cards.map(_id).join(',');
+  String _ids(Iterable<ScheduledFlashcard<T>> cards) {
+    final count = cards.length;
+    final preview = cards.take(_loggedCardLimit).map(_id).join(',');
+    return 'count=$count first=[$preview]';
+  }
 
   String _id(ScheduledFlashcard<T> card) =>
       '${card.subject.namespace}:${card.subject.subjectId}';

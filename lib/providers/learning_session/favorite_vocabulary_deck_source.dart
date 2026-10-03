@@ -31,7 +31,13 @@ final class FavoriteVocabularyDeckSource
   final DateTime Function()? _now;
 
   @override
-  Future<List<ScheduledFlashcard<FlashcardItem>>> load() =>
+  Future<List<ScheduledFlashcard<FlashcardItem>>> load() => _source().load();
+
+  /// 切换复习顺序时只读取已有调度快照，避免恢复已取消的收藏。
+  Future<List<ScheduledFlashcard<FlashcardItem>>> loadForReordering() =>
+      _source().loadForReordering();
+
+  FavoriteReviewDeckSource<FlashcardItem> _source() =>
       FavoriteReviewDeckSource<FlashcardItem>(
         items: [
           for (final item in _items)
@@ -48,7 +54,7 @@ final class FavoriteVocabularyDeckSource
         scheduler: _scheduler,
         settings: _settings,
         now: _now,
-      ).load();
+      );
 
   List<FlashcardItem> get _items => [
     for (final word in _words) FlashcardWordItem(savedWord: word),

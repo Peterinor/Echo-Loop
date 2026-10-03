@@ -10,6 +10,7 @@ import 'package:echo_loop/features/memory_scheduler/application/memory_scheduler
 import 'package:echo_loop/features/memory_scheduler/config/memory_profiles.dart';
 import 'package:echo_loop/features/memory_scheduler/data/drift_memory_schedule_repository.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_rating.dart';
+import 'package:echo_loop/features/memory_scheduler/domain/memory_schedule.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_scheduler_commands.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_namespaces.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_subject_ref.dart';
@@ -139,6 +140,37 @@ void main() {
 
     // 两张都是新卡，dueAt 相同（都等于 now），退化为按 subjectId 排序。
     expect(due.map((c) => c.subject.subjectId), ['also-new', 'earlier']);
+  });
+
+  test('切换顺序读取队列时不会恢复已归档收藏', () async {
+    final subject = MemorySubjectRef(
+      namespace: kSavedSentenceNamespace,
+      subjectId: 'archived-subject',
+    );
+    final schedule = await scheduler.ensureSchedule(
+      EnsureMemoryScheduleCommand(
+        subject: subject,
+        profile: kFsrsDefaultProfileRef,
+        occurredAt: now,
+      ),
+    );
+    await scheduler.archive(
+      ArchiveMemoryScheduleCommand(
+        subject: subject,
+        archivedAt: now,
+        expectedRevision: schedule.revision,
+      ),
+    );
+
+    final due = await source([
+      _bookmark('archived-subject', 1),
+    ]).loadForReordering();
+
+    expect(due, isEmpty);
+    expect(
+      (await scheduler.getSchedule(subject))?.status,
+      MemoryScheduleStatus.archived,
+    );
   });
 
   test('无每日目标时重复查询返回所有到期新卡', () async {
