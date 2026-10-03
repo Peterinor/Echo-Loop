@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:dio/dio.dart';
+import 'package:drift/native.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -773,6 +774,8 @@ void main() {
     final cacheDao = _MockCacheDao();
     final savedSenseGroupDao = _MockSavedSenseGroupDao();
     final audioItemDao = _MockAudioItemDao();
+    final database = AppDatabase(NativeDatabase.memory());
+    addTearDown(database.close);
     final savedTexts = StreamController<Set<String>>.broadcast();
     addTearDown(savedTexts.close);
     when(() => cacheDao.getByHash(any(), any())).thenAnswer((_) async => null);
@@ -827,6 +830,7 @@ void main() {
       senseGroupRangePlayback: _NoopSenseGroupRangePlayback(),
       audioItemId: 'audio-1',
       extraOverrides: [
+        appDatabaseProvider.overrideWithValue(database),
         audioItemDaoProvider.overrideWithValue(audioItemDao),
         dictionaryOverride(),
         remoteFeatureEnabledProvider(
