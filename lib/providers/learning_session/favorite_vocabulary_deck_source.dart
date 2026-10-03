@@ -2,74 +2,71 @@
 library;
 
 import '../../features/memory_scheduler/application/memory_scheduler.dart';
-import '../../features/memory_scheduler/domain/memory_subject_ref.dart';
+import '../../features/memory_scheduler/data/memory_schedule_mapper.dart';
 import '../../features/scheduled_flashcard/domain/scheduled_flashcard.dart';
 import '../../models/favorite_review_settings.dart';
 import '../../models/flashcard_item.dart';
 import '../../database/app_database.dart';
+import '../../database/daos/favorite_review_dao.dart';
 import 'favorite_review_deck_source.dart';
 
 /// 把单词和意群转换为共享收藏复习队列的输入项。
 final class FavoriteVocabularyDeckSource
     implements FlashcardDeckSource<FlashcardItem> {
   FavoriteVocabularyDeckSource({
-    required List<SavedWord> words,
-    required List<SavedSenseGroup> phrases,
+    required FavoriteReviewDao favoriteReviewDao,
     required MemoryScheduler scheduler,
     required FavoriteReviewSettings settings,
     DateTime Function()? now,
-  }) : _words = words,
-       _phrases = phrases,
+  }) : _favoriteReviewDao = favoriteReviewDao,
        _scheduler = scheduler,
        _settings = settings,
        _now = now;
 
-  final List<SavedWord> _words;
-  final List<SavedSenseGroup> _phrases;
+  final FavoriteReviewDao _favoriteReviewDao;
   final MemoryScheduler _scheduler;
   final FavoriteReviewSettings _settings;
   final DateTime Function()? _now;
+  final MemoryScheduleMapper _scheduleMapper = MemoryScheduleMapper();
 
   @override
-  Future<List<ScheduledFlashcard<FlashcardItem>>> load() => _source().load();
+  Future<List<ScheduledFlashcard<FlashcardItem>>> load() async =>
+      (await _source()).load();
 
-  /// 切换复习顺序时只读取已有调度快照，避免恢复已取消的收藏。
-  Future<List<ScheduledFlashcard<FlashcardItem>>> loadForReordering() =>
-      _source().loadForReordering();
+  /// 切换顺序时重新查询到期队列，但不恢复或写入任何调度状态。
+  Future<List<ScheduledFlashcard<FlashcardItem>>> loadForReordering() async =>
+      (await _source()).loadForReordering();
 
-  FavoriteReviewDeckSource<FlashcardItem> _source() =>
-      FavoriteReviewDeckSource<FlashcardItem>(
-        items: [
-          for (final item in _items)
-            if (_isValid(item))
-              FavoriteReviewDeckItem(
-                content: item,
-                subject: MemorySubjectRef(
-                  namespace: item.namespace,
-                  subjectId: _subjectId(item),
-                ),
-                createdAt: item.createdAt,
-              ),
-        ],
-        scheduler: _scheduler,
-        settings: _settings,
-        now: _now,
+  Future<FavoriteReviewDeckSource<FlashcardItem>> _source() async {
+    final now = (_now ?? DateTime.now)().toUtc();
+    final rows = await _favoriteReviewDao.getDueVocabulary(now);
+    final items = <FavoriteReviewDeckItem<FlashcardItem>>[];
+    for (final row in rows) {
+      final schedule = _scheduleMapper.scheduleFromRow(row.schedule);
+      final word = row.word;
+      final senseGroup = row.senseGroup;
+      final content = switch ((word, senseGroup)) {
+        (final SavedWord word, null) => FlashcardWordItem(savedWord: word),
+        (null, final SavedSenseGroup group) => FlashcardPhraseItem(
+          savedPhrase: group,
+        ),
+        _ => null,
+      };
+      if (content == null) continue;
+      items.add(
+        FavoriteReviewDeckItem(
+          content: content,
+          subject: schedule.subject,
+          createdAt: content.createdAt,
+          schedule: schedule,
+        ),
       );
-
-  List<FlashcardItem> get _items => [
-    for (final word in _words) FlashcardWordItem(savedWord: word),
-    for (final phrase in _phrases) FlashcardPhraseItem(savedPhrase: phrase),
-  ];
-
-  bool _isValid(FlashcardItem item) =>
-      item.displayText.trim().isNotEmpty &&
-      (item.memorySubjectId?.isNotEmpty ?? false);
-
-  String _subjectId(FlashcardItem item) {
-    final value = item.memorySubjectId;
-    if (value == null || value.isEmpty) {
-      throw StateError('收藏词汇缺少 memorySubjectId');
     }
-    return value;
+    return FavoriteReviewDeckSource<FlashcardItem>(
+      items: items,
+      scheduler: _scheduler,
+      settings: _settings,
+      now: () => now,
+    );
   }
 }

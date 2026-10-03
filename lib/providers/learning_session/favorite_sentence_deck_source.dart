@@ -1,10 +1,9 @@
 /// 收藏句复习的内容适配器。
 library;
 
-import '../../database/daos/bookmark_dao.dart';
+import '../../database/daos/favorite_review_dao.dart';
 import '../../features/memory_scheduler/application/memory_scheduler.dart';
-import '../../features/memory_scheduler/domain/memory_namespaces.dart';
-import '../../features/memory_scheduler/domain/memory_subject_ref.dart';
+import '../../features/memory_scheduler/data/memory_schedule_mapper.dart';
 import '../../features/scheduled_flashcard/domain/scheduled_flashcard.dart';
 import '../../models/bookmark_sentence.dart';
 import '../../models/favorite_review_settings.dart';
@@ -15,75 +14,68 @@ import 'favorite_review_deck_source.dart';
 final class FavoriteSentenceDeckSource
     implements FlashcardDeckSource<BookmarkSentence> {
   FavoriteSentenceDeckSource({
-    required List<BookmarkWithAudio> bookmarks,
+    required FavoriteReviewDao favoriteReviewDao,
     required MemoryScheduler scheduler,
     required FavoriteReviewSettings settings,
     DateTime Function()? now,
-  }) : _bookmarks = bookmarks,
+  }) : _favoriteReviewDao = favoriteReviewDao,
        _scheduler = scheduler,
        _settings = settings,
        _now = now;
 
-  final List<BookmarkWithAudio> _bookmarks;
+  final FavoriteReviewDao _favoriteReviewDao;
   final MemoryScheduler _scheduler;
   final FavoriteReviewSettings _settings;
   final DateTime Function()? _now;
+  final MemoryScheduleMapper _scheduleMapper = MemoryScheduleMapper();
 
   @override
-  Future<List<ScheduledFlashcard<BookmarkSentence>>> load() => _source().load();
+  Future<List<ScheduledFlashcard<BookmarkSentence>>> load() async =>
+      (await _source()).load();
 
-  /// 切换复习顺序时只读取已有调度快照，避免恢复已取消的收藏。
-  Future<List<ScheduledFlashcard<BookmarkSentence>>> loadForReordering() =>
-      _source().loadForReordering();
+  /// 切换顺序时重新查询到期队列，但不恢复或写入任何调度状态。
+  Future<List<ScheduledFlashcard<BookmarkSentence>>>
+  loadForReordering() async => (await _source()).loadForReordering();
 
-  FavoriteReviewDeckSource<BookmarkSentence> _source() =>
-      FavoriteReviewDeckSource<BookmarkSentence>(
-        items: [
-          for (final item in _bookmarks)
-            if (_isValid(item))
-              FavoriteReviewDeckItem(
-                content: _toCard(item, _subjectId(item)),
-                subject: MemorySubjectRef(
-                  namespace: kSavedSentenceNamespace,
-                  subjectId: _subjectId(item),
-                ),
-                createdAt: item.bookmark.createdAt,
-              ),
-        ],
-        scheduler: _scheduler,
-        settings: _settings,
-        now: _now,
+  Future<FavoriteReviewDeckSource<BookmarkSentence>> _source() async {
+    final now = (_now ?? DateTime.now)().toUtc();
+    final rows = await _favoriteReviewDao.getDueSentences(now);
+    final items = <FavoriteReviewDeckItem<BookmarkSentence>>[];
+    for (final row in rows) {
+      final schedule = _scheduleMapper.scheduleFromRow(row.schedule);
+      items.add(
+        FavoriteReviewDeckItem(
+          content: _toCard(row),
+          subject: schedule.subject,
+          createdAt: row.bookmark.createdAt,
+          schedule: schedule,
+        ),
       );
-
-  bool _isValid(BookmarkWithAudio item) =>
-      item.bookmark.endTime > item.bookmark.startTime &&
-      item.bookmark.sentenceText.trim().isNotEmpty &&
-      (item.bookmark.memorySubjectId?.isNotEmpty ?? false);
-
-  String _subjectId(BookmarkWithAudio item) {
-    final value = item.bookmark.memorySubjectId;
-    if (value == null || value.isEmpty) {
-      throw StateError('收藏句缺少 memorySubjectId');
     }
-    return value;
+    return FavoriteReviewDeckSource<BookmarkSentence>(
+      items: items,
+      scheduler: _scheduler,
+      settings: _settings,
+      now: () => now,
+    );
   }
 
-  BookmarkSentence _toCard(BookmarkWithAudio item, String subjectId) =>
-      BookmarkSentence(
-        sentence: Sentence(
-          index: item.bookmark.sentenceIndex,
-          text: item.bookmark.sentenceText,
-          startTime: Duration(
-            milliseconds: (item.bookmark.startTime * 1000).round(),
-          ),
-          endTime: Duration(
-            milliseconds: (item.bookmark.endTime * 1000).round(),
-          ),
-          isBookmarked: true,
+  BookmarkSentence _toCard(DueFavoriteSentenceRow item) {
+    final subjectId = item.schedule.subjectId;
+    return BookmarkSentence(
+      sentence: Sentence(
+        index: item.bookmark.sentenceIndex,
+        text: item.bookmark.sentenceText,
+        startTime: Duration(
+          milliseconds: (item.bookmark.startTime * 1000).round(),
         ),
-        audioItemId: item.bookmark.audioItemId,
-        audioName: item.audioName,
-        originalSentenceIndex: item.bookmark.sentenceIndex,
-        memorySubjectId: subjectId,
-      );
+        endTime: Duration(milliseconds: (item.bookmark.endTime * 1000).round()),
+        isBookmarked: true,
+      ),
+      audioItemId: item.bookmark.audioItemId,
+      audioName: item.audioName,
+      originalSentenceIndex: item.bookmark.sentenceIndex,
+      memorySubjectId: subjectId,
+    );
+  }
 }

@@ -15,7 +15,6 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../database/app_database.dart';
 import '../../database/providers.dart';
 import '../../features/memory_scheduler/domain/memory_rating.dart';
 import '../../features/memory_scheduler/domain/memory_scheduler_results.dart';
@@ -123,8 +122,7 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
   late final AppLifecycleListener _lifecycleListener;
   StudySessionTimer? _studySessionTimer;
   ScheduledFlashcardController<FlashcardItem>? _controller;
-  List<SavedWord>? _sessionWords;
-  List<SavedSenseGroup>? _sessionPhrases;
+  bool _hasSession = false;
   int _orderGeneration = 0;
   ReviewSessionSummary _summary = const ReviewSessionSummary();
   Future<void>? _disposeSessionInFlight;
@@ -163,10 +161,7 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
   }
 
   /// 建立只含 FSRS 到期收藏词汇（单词 + 意群）的本次复习快照。
-  Future<void> initialize(
-    List<SavedWord> words,
-    List<SavedSenseGroup> phrases,
-  ) async {
+  Future<void> initialize() async {
     await _studySessionTimer?.dispose();
     _studySessionTimer = null;
     _summary = const ReviewSessionSummary();
@@ -174,14 +169,12 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
     unawaited(ref.read(textPlaybackProvider.notifier).stop());
 
     _controller?.dispose();
-    _sessionWords = List<SavedWord>.unmodifiable(words);
-    _sessionPhrases = List<SavedSenseGroup>.unmodifiable(phrases);
+    _hasSession = true;
     _orderGeneration++;
     final scheduler = ref.read(memorySchedulerProvider);
     final controller = ScheduledFlashcardController<FlashcardItem>(
       deckSource: FavoriteVocabularyDeckSource(
-        words: words,
-        phrases: phrases,
+        favoriteReviewDao: ref.read(favoriteReviewDaoProvider),
         scheduler: scheduler,
         settings: ref.read(favoriteReviewSettingsProvider),
       ),
@@ -190,6 +183,10 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
       logger: (message) => AppLogger.log('FavoriteVocabularyReview', message),
     );
     _controller = controller;
+    AppLogger.log(
+      'FavoriteVocabularyReview',
+      'load.start source=memory_schedules providerGeneration=$_generation',
+    );
     await controller.load();
     if (!identical(_controller, controller)) return;
     final completionSummary =
@@ -215,22 +212,19 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
 
   /// 设置面板切换顺序后，只重新排列当前会话尚未处理的词汇与意群。
   Future<void> _applyReviewOrder(FavoriteReviewSettings settings) async {
-    final words = _sessionWords;
-    final phrases = _sessionPhrases;
     final controller = _controller;
-    if (words == null || phrases == null || controller == null) return;
+    if (!_hasSession || controller == null) return;
     final generation = ++_orderGeneration;
     AppLogger.log(
       'FavoriteVocabularyReview',
       'reorder.load.start order=${settings.order} '
-          'wordCount=${words.length} phraseCount=${phrases.length} '
-          'generation=$generation',
+          'source=memory_schedules generation=$generation',
     );
     try {
       final scheduler = ref.read(memorySchedulerProvider);
+      final loadStopwatch = Stopwatch()..start();
       final orderedDeck = await FavoriteVocabularyDeckSource(
-        words: words,
-        phrases: phrases,
+        favoriteReviewDao: ref.read(favoriteReviewDaoProvider),
         scheduler: scheduler,
         settings: settings,
       ).loadForReordering();
@@ -247,6 +241,7 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
         'FavoriteVocabularyReview',
         'reorder.load.success order=${settings.order} '
             'deckCount=${orderedDeck.length} '
+            'elapsedMs=${loadStopwatch.elapsedMilliseconds} '
             'first=${orderedDeck.isEmpty ? 'none' : orderedDeck.first.subject.subjectId}',
       );
       if (controller.reorderPending(orderedDeck)) {
@@ -581,8 +576,7 @@ class FavoriteVocabularyReview extends _$FavoriteVocabularyReview {
 
   Future<void> _disposeSessionImpl() async {
     _orderGeneration++;
-    _sessionWords = null;
-    _sessionPhrases = null;
+    _hasSession = false;
     try {
       await interruptPlayback();
     } catch (error, stackTrace) {

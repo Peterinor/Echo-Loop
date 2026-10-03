@@ -58,15 +58,59 @@ void main() {
 
   tearDown(() => database.close());
 
-  FavoriteSentenceDeckSource source(
-    List<BookmarkWithAudio> bookmarks, {
+  FavoriteSentenceDeckSource source({
     FavoriteReviewSettings settings = const FavoriteReviewSettings(),
   }) => FavoriteSentenceDeckSource(
-    bookmarks: bookmarks,
+    favoriteReviewDao: database.favoriteReviewDao,
     scheduler: scheduler,
     settings: settings,
     now: () => now,
   );
+
+  Future<void> persistBookmarks(List<BookmarkWithAudio> bookmarks) async {
+    await database.audioItemDao.upsert(
+      AudioItemsCompanion.insert(
+        id: 'audio-1',
+        name: 'Material',
+        addedDate: now,
+        updatedAt: now,
+      ),
+    );
+    for (final item in bookmarks) {
+      final bookmark = item.bookmark;
+      await database
+          .into(database.bookmarks)
+          .insertOnConflictUpdate(
+            BookmarksCompanion.insert(
+              memorySubjectId: Value(bookmark.memorySubjectId),
+              audioItemId: bookmark.audioItemId,
+              sentenceIndex: bookmark.sentenceIndex,
+              sentenceText: bookmark.sentenceText,
+              startTime: bookmark.startTime,
+              endTime: bookmark.endTime,
+              createdAt: bookmark.createdAt,
+              updatedAt: bookmark.updatedAt,
+              deletedAt: Value(bookmark.deletedAt),
+            ),
+          );
+      final subjectId = bookmark.memorySubjectId;
+      if (subjectId != null && subjectId.trim().isNotEmpty) {
+        final subject = MemorySubjectRef(
+          namespace: kSavedSentenceNamespace,
+          subjectId: subjectId,
+        );
+        if (await scheduler.getSchedule(subject) == null) {
+          await scheduler.ensureSchedule(
+            EnsureMemoryScheduleCommand(
+              subject: subject,
+              profile: kFsrsDefaultProfileRef,
+              occurredAt: now,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   /// 让某个 subject 拥有一个到期时间在未来的既有 schedule（模拟已复习过、尚未到期）。
   Future<void> pushDueIntoFuture(String subjectId) async {
@@ -103,10 +147,11 @@ void main() {
 
   test('新卡立即到期，未到期的既有卡片被过滤', () async {
     await pushDueIntoFuture('future-subject');
-    final due = await source([
+    await persistBookmarks([
       _bookmark('future-subject', 1),
       _bookmark('new-subject', 2),
-    ]).load();
+    ]);
+    final due = await source().load();
 
     expect(due, hasLength(1));
     expect(due.single.subject.subjectId, 'new-subject');
@@ -121,20 +166,21 @@ void main() {
       3,
     ).bookmark.copyWith(memorySubjectId: const Value(null));
 
-    final due = await source([
+    await persistBookmarks([
       BookmarkWithAudio(bookmark: zeroDuration, audioName: 'Material'),
       BookmarkWithAudio(bookmark: emptyText, audioName: 'Material'),
       BookmarkWithAudio(bookmark: noSubject, audioName: 'Material'),
       _bookmark('d', 4),
-    ]).load();
+    ]);
+    final due = await source().load();
 
     expect(due, hasLength(1));
     expect(due.single.subject.subjectId, 'd');
   });
 
   test('dueAt 排序：dueAt 相同时按 subjectId 稳定排序', () async {
+    await persistBookmarks([_bookmark('earlier', 1), _bookmark('also-new', 2)]);
     final due = await source(
-      [_bookmark('earlier', 1), _bookmark('also-new', 2)],
       settings: const FavoriteReviewSettings(order: FavoriteReviewOrder.dueAt),
     ).load();
 
@@ -162,9 +208,8 @@ void main() {
       ),
     );
 
-    final due = await source([
-      _bookmark('archived-subject', 1),
-    ]).loadForReordering();
+    await persistBookmarks([_bookmark('archived-subject', 1)]);
+    final due = await source().loadForReordering();
 
     expect(due, isEmpty);
     expect(
@@ -176,11 +221,12 @@ void main() {
   test('无每日目标时重复查询返回所有到期新卡', () async {
     final settings = const FavoriteReviewSettings();
     final bookmarks = [_bookmark('first', 1), _bookmark('second', 2)];
+    await persistBookmarks(bookmarks);
 
-    final firstLoad = await source(bookmarks, settings: settings).load();
+    final firstLoad = await source(settings: settings).load();
     expect(firstLoad, hasLength(2));
 
-    final secondLoad = await source(bookmarks, settings: settings).load();
+    final secondLoad = await source(settings: settings).load();
     expect(secondLoad, hasLength(2));
   });
 
@@ -190,8 +236,8 @@ void main() {
       _bookmark('r2', 2),
       _bookmark('r3', 3),
     ];
+    await persistBookmarks(bookmarks);
     final due = await source(
-      bookmarks,
       settings: const FavoriteReviewSettings(order: FavoriteReviewOrder.random),
     ).load();
     expect(due.map((c) => c.subject.subjectId).toSet(), {'r1', 'r2', 'r3'});

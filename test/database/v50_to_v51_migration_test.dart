@@ -13,7 +13,7 @@ const _state =
     '{"cardId":0,"state":1,"step":0,"stability":null,"difficulty":null,"due":"2026-08-24T01:00:00.000Z","lastReview":null}';
 
 void main() {
-  test('v50→v51 回填收藏且升级后不再重复扫描', () async {
+  test('v50 升级回填收藏且后续启动不再重复扫描', () async {
     final dir = Directory.systemTemp.createTempSync('fluency_v50_to_v51_');
     addTearDown(() {
       if (dir.existsSync()) dir.deleteSync(recursive: true);

@@ -15024,6 +15024,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final MemoryScheduleDao memoryScheduleDao = MemoryScheduleDao(
     this as AppDatabase,
   );
+  late final FavoriteReviewDao favoriteReviewDao = FavoriteReviewDao(
+    this as AppDatabase,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();

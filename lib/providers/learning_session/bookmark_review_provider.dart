@@ -15,7 +15,6 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../analytics/analytics_providers.dart';
 import '../../analytics/models/event_names.dart';
-import '../../database/daos/bookmark_dao.dart';
 import '../../database/providers.dart';
 import '../../features/memory_scheduler/domain/memory_rating.dart';
 import '../../features/memory_scheduler/domain/memory_scheduler_results.dart';
@@ -120,7 +119,7 @@ class BookmarkReview extends _$BookmarkReview {
   late final AppLifecycleListener _lifecycleListener;
   StudySessionTimer? _studySessionTimer;
   ScheduledFlashcardController<BookmarkSentence>? _controller;
-  List<BookmarkWithAudio>? _sessionBookmarks;
+  bool _hasSession = false;
   int _orderGeneration = 0;
   ReviewSessionSummary _summary = const ReviewSessionSummary();
   Future<void>? _disposeSessionInFlight;
@@ -165,7 +164,7 @@ class BookmarkReview extends _$BookmarkReview {
   }
 
   /// 建立只含 FSRS 到期收藏句的本次复习快照。
-  Future<void> initialize(List<BookmarkWithAudio> bookmarks) async {
+  Future<void> initialize() async {
     await _studySessionTimer?.dispose();
     _studySessionTimer = null;
     _summary = const ReviewSessionSummary();
@@ -175,12 +174,12 @@ class BookmarkReview extends _$BookmarkReview {
     unawaited(ref.read(shortAudioPlayerProvider).stop());
 
     _controller?.dispose();
-    _sessionBookmarks = List<BookmarkWithAudio>.unmodifiable(bookmarks);
+    _hasSession = true;
     _orderGeneration++;
     final scheduler = ref.read(memorySchedulerProvider);
     final controller = ScheduledFlashcardController<BookmarkSentence>(
       deckSource: FavoriteSentenceDeckSource(
-        bookmarks: bookmarks,
+        favoriteReviewDao: ref.read(favoriteReviewDaoProvider),
         scheduler: scheduler,
         settings: ref.read(favoriteReviewSettingsProvider),
       ),
@@ -189,6 +188,10 @@ class BookmarkReview extends _$BookmarkReview {
       logger: (message) => AppLogger.log('FavoriteSentenceReview', message),
     );
     _controller = controller;
+    AppLogger.log(
+      'FavoriteSentenceReview',
+      'load.start source=memory_schedules providerGeneration=$_generation',
+    );
     await controller.load();
     if (!identical(_controller, controller)) return;
     final completionSummary =
@@ -217,19 +220,19 @@ class BookmarkReview extends _$BookmarkReview {
 
   /// 设置面板切换顺序后，只重新排列当前会话尚未处理的句子。
   Future<void> _applyReviewOrder(FavoriteReviewSettings settings) async {
-    final bookmarks = _sessionBookmarks;
     final controller = _controller;
-    if (bookmarks == null || controller == null) return;
+    if (!_hasSession || controller == null) return;
     final generation = ++_orderGeneration;
     AppLogger.log(
       'FavoriteSentenceReview',
       'reorder.load.start order=${settings.order} '
-          'sourceCount=${bookmarks.length} generation=$generation',
+          'source=memory_schedules generation=$generation',
     );
     try {
       final scheduler = ref.read(memorySchedulerProvider);
+      final loadStopwatch = Stopwatch()..start();
       final orderedDeck = await FavoriteSentenceDeckSource(
-        bookmarks: bookmarks,
+        favoriteReviewDao: ref.read(favoriteReviewDaoProvider),
         scheduler: scheduler,
         settings: settings,
       ).loadForReordering();
@@ -246,6 +249,7 @@ class BookmarkReview extends _$BookmarkReview {
         'FavoriteSentenceReview',
         'reorder.load.success order=${settings.order} '
             'deckCount=${orderedDeck.length} '
+            'elapsedMs=${loadStopwatch.elapsedMilliseconds} '
             'first=${orderedDeck.isEmpty ? 'none' : orderedDeck.first.subject.subjectId}',
       );
       if (controller.reorderPending(orderedDeck)) {
@@ -472,7 +476,7 @@ class BookmarkReview extends _$BookmarkReview {
 
   Future<void> _disposeSessionImpl() async {
     _orderGeneration++;
-    _sessionBookmarks = null;
+    _hasSession = false;
     try {
       await interruptPlayback();
     } catch (error, stackTrace) {

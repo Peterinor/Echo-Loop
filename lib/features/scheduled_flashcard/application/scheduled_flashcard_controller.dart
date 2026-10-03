@@ -51,6 +51,7 @@ final class ScheduledFlashcardController<T> {
 
   Future<void> load() async {
     final generation = ++_generation;
+    final stopwatch = Stopwatch()..start();
     _log('load.start generation=$generation');
     _engine.setError(StateError('loading'));
     _notify();
@@ -61,13 +62,19 @@ final class ScheduledFlashcardController<T> {
         return;
       }
       _engine.setDeck(deck, _clock.now().toUtc());
-      _log('load.success generation=$generation cards=${deck.length}');
+      _log(
+        'load.success generation=$generation cards=${deck.length} '
+        'elapsedMs=${stopwatch.elapsedMilliseconds}',
+      );
       _promptedAt = _clock.now().toUtc();
       _pendingRatingSubmission = null;
       _notify();
     } catch (error) {
       if (!_valid(generation)) return;
-      _log('load.error generation=$generation error=$error');
+      _log(
+        'load.error generation=$generation '
+        'elapsedMs=${stopwatch.elapsedMilliseconds} error=$error',
+      );
       _engine.setError(error);
       _notify();
     }

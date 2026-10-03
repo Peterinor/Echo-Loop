@@ -1,5 +1,6 @@
 import 'package:clock/clock.dart';
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:echo_loop/database/app_database.dart' hide MemorySchedule;
 import 'package:echo_loop/features/memory_scheduler/adapters/fsrs/fsrs_memory_model_adapter.dart';
 import 'package:echo_loop/features/memory_scheduler/application/default_memory_scheduler.dart';
@@ -71,16 +72,78 @@ void main() {
   tearDown(() => database.close());
 
   FavoriteVocabularyDeckSource source({
-    List<SavedWord> words = const [],
-    List<SavedSenseGroup> phrases = const [],
     FavoriteReviewSettings settings = const FavoriteReviewSettings(),
   }) => FavoriteVocabularyDeckSource(
-    words: words,
-    phrases: phrases,
+    favoriteReviewDao: database.favoriteReviewDao,
     scheduler: scheduler,
     settings: settings,
     now: () => now,
   );
+
+  Future<void> persistFavorites({
+    List<SavedWord> words = const [],
+    List<SavedSenseGroup> phrases = const [],
+  }) async {
+    for (final word in words) {
+      await database
+          .into(database.savedWords)
+          .insert(
+            SavedWordsCompanion.insert(
+              word: word.word,
+              memorySubjectId: Value(word.memorySubjectId),
+              createdAt: word.createdAt,
+              updatedAt: word.updatedAt,
+              deletedAt: Value(word.deletedAt),
+            ),
+          );
+      final subjectId = word.memorySubjectId;
+      if (subjectId != null && subjectId.trim().isNotEmpty) {
+        final subject = MemorySubjectRef(
+          namespace: kSavedWordOrPhraseNamespace,
+          subjectId: subjectId,
+        );
+        if (await scheduler.getSchedule(subject) == null) {
+          await scheduler.ensureSchedule(
+            EnsureMemoryScheduleCommand(
+              subject: subject,
+              profile: kFsrsDefaultProfileRef,
+              occurredAt: now,
+            ),
+          );
+        }
+      }
+    }
+    for (final phrase in phrases) {
+      await database
+          .into(database.savedSenseGroups)
+          .insert(
+            SavedSenseGroupsCompanion.insert(
+              phraseText: phrase.phraseText,
+              memorySubjectId: Value(phrase.memorySubjectId),
+              displayText: phrase.displayText,
+              createdAt: phrase.createdAt,
+              updatedAt: phrase.updatedAt,
+              deletedAt: Value(phrase.deletedAt),
+            ),
+          );
+      final subjectId = phrase.memorySubjectId;
+      if (subjectId != null && subjectId.trim().isNotEmpty) {
+        final subject = MemorySubjectRef(
+          namespace: kSavedSenseGroupNamespace,
+          subjectId: subjectId,
+        );
+        if (await scheduler.getSchedule(subject) == null) {
+          await scheduler.ensureSchedule(
+            EnsureMemoryScheduleCommand(
+              subject: subject,
+              profile: kFsrsDefaultProfileRef,
+              occurredAt: now,
+            ),
+          );
+        }
+      }
+    }
+  }
 
   /// 让某个 subject 拥有一个到期时间在未来的既有 schedule。
   Future<void> pushDueIntoFuture(String namespace, String subjectId) async {
@@ -117,9 +180,10 @@ void main() {
 
   test('新卡立即到期，未到期的既有单词被过滤', () async {
     await pushDueIntoFuture(kSavedWordOrPhraseNamespace, 'future-word');
-    final due = await source(
+    await persistFavorites(
       words: [_word('future-word', 'apple'), _word('new-word', 'banana')],
-    ).load();
+    );
+    final due = await source().load();
 
     expect(due, hasLength(1));
     expect(due.single.subject.subjectId, 'new-word');
@@ -127,10 +191,11 @@ void main() {
   });
 
   test('单词和意群合并进同一个队列', () async {
-    final due = await source(
+    await persistFavorites(
       words: [_word('w1', 'apple')],
       phrases: [_phrase('p1', 'give up')],
-    ).load();
+    );
+    final due = await source().load();
 
     expect(due.map((c) => c.subject.namespace).toSet(), {
       kSavedWordOrPhraseNamespace,
@@ -140,7 +205,7 @@ void main() {
   });
 
   test('过滤非法项：空文本、缺失 memorySubjectId', () async {
-    final due = await source(
+    await persistFavorites(
       words: [
         _word('has-subject', 'valid'),
         SavedWord(
@@ -155,16 +220,19 @@ void main() {
         ),
       ],
       phrases: [_phrase('blank-text', '   ')],
-    ).load();
+    );
+    final due = await source().load();
 
     expect(due, hasLength(1));
     expect(due.single.subject.subjectId, 'has-subject');
   });
 
   test('dueAt 排序：dueAt 相同时按 namespace:subjectId 稳定排序', () async {
-    final due = await source(
+    await persistFavorites(
       words: [_word('earlier', 'a')],
       phrases: [_phrase('also-new', 'b')],
+    );
+    final due = await source(
       settings: const FavoriteReviewSettings(order: FavoriteReviewOrder.dueAt),
     ).load();
 
@@ -173,28 +241,41 @@ void main() {
     expect(due.map((c) => c.subject.subjectId), ['also-new', 'earlier']);
   });
 
+  test('automatic 排序：收藏时间相同时使用稳定主体顺序', () async {
+    await persistFavorites(
+      words: [_word('z-last', 'z'), _word('a-first', 'a')],
+    );
+
+    final due = await source().load();
+
+    expect(due.map((card) => card.subject.subjectId), ['a-first', 'z-last']);
+  });
+
   test('无每日目标时返回所有到期单词和意群', () async {
     const settings = FavoriteReviewSettings();
     final words = [_word('first', 'a')];
     final phrases = [_phrase('second', 'b')];
+    await persistFavorites(words: words, phrases: phrases);
 
-    final firstLoad = await source(
-      words: words,
-      phrases: phrases,
-      settings: settings,
-    ).load();
+    final firstLoad = await source(settings: settings).load();
     expect(firstLoad, hasLength(2));
 
-    final secondLoad = await source(
-      words: words,
-      phrases: phrases,
-      settings: settings,
-    ).load();
+    final secondLoad = await source(settings: settings).load();
     expect(secondLoad, hasLength(2));
   });
 
   test('通用 deck 返回所有到期内容', () async {
     const settings = FavoriteReviewSettings();
+    final schedule = await scheduler.ensureSchedule(
+      EnsureMemoryScheduleCommand(
+        subject: MemorySubjectRef(
+          namespace: kSavedSentenceNamespace,
+          subjectId: 'sentence-1',
+        ),
+        profile: kFsrsDefaultProfileRef,
+        occurredAt: now,
+      ),
+    );
     final sentenceDeck = FavoriteReviewDeckSource<String>(
       items: [
         FavoriteReviewDeckItem(
@@ -204,6 +285,7 @@ void main() {
             subjectId: 'sentence-1',
           ),
           createdAt: now,
+          schedule: schedule,
         ),
       ],
       scheduler: scheduler,
@@ -212,17 +294,17 @@ void main() {
     );
 
     expect(await sentenceDeck.load(), hasLength(1));
-    final vocabulary = await source(
-      words: [_word('word-1', 'apple')],
-      settings: settings,
-    ).load();
+    await persistFavorites(words: [_word('word-1', 'apple')]);
+    final vocabulary = await source(settings: settings).load();
     expect(vocabulary, hasLength(1));
   });
 
   test('随机排序不丢卡也不重复', () async {
-    final due = await source(
+    await persistFavorites(
       words: [_word('r1', 'a'), _word('r2', 'b')],
       phrases: [_phrase('r3', 'c')],
+    );
+    final due = await source(
       settings: const FavoriteReviewSettings(order: FavoriteReviewOrder.random),
     ).load();
     expect(due.map((c) => c.subject.subjectId).toSet(), {'r1', 'r2', 'r3'});

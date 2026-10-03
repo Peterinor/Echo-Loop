@@ -50,6 +50,7 @@ import 'daos/daily_stage_study_record_dao.dart';
 import 'daos/study_statistics_dao.dart';
 import 'daos/tts_cache_dao.dart';
 import 'daos/memory_schedule_dao.dart';
+import 'daos/favorite_review_dao.dart';
 
 part 'app_database.g.dart';
 
@@ -97,13 +98,14 @@ part 'app_database.g.dart';
     StudyStatisticsDao,
     TtsCacheDao,
     MemoryScheduleDao,
+    FavoriteReviewDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   /// 当前 schema 版本（静态访问，用于导入前版本检查）
-  static const currentSchemaVersion = 57;
+  static const currentSchemaVersion = 58;
 
   @override
   int get schemaVersion => currentSchemaVersion;
@@ -863,10 +865,10 @@ class AppDatabase extends _$AppDatabase {
             await _clearUnstartedV1FirstLearnProgress();
           }
         }
-        // v50→v51：通用记忆调度首次接入收藏业务时，v48 只建表未回填
-        // 既有收藏。本迁移把历史收藏与调度快照收敛一次；成功升级后 SQLite
-        // user_version 自动写为 51，后续冷启动不再全量扫描收藏数据。
-        if (from < 51) {
+        // v58：补齐 v51-v57 期间可能缺少主体 ID 或活动调度快照的收藏。
+        // 此后复习队列从 memory_schedules 直接联表读取，因此升级前统一收敛一次。
+        if (from < 58) {
+          await _createFavoriteReviewIndexes();
           await _migrateLegacyFavoriteMemorySchedules();
         }
       },
@@ -875,9 +877,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// 一次性收敛旧收藏与 FSRS 调度快照的生命周期。
   ///
-  /// 必须在 schema v51 升级事务内执行：任一数据异常都会使 Drift 回滚升级，
+  /// 必须在 schema v58 升级事务内执行：任一数据异常都会使 Drift 回滚升级，
   /// 避免把部分完成的回填标记为成功。运行期收藏入口已负责后续新增、恢复和
-  /// 取消收藏的调度生命周期，这里只处理 v50 及更早数据库的历史遗留数据。
+  /// 取消收藏的调度生命周期，这里只处理升级前的历史遗留数据。
   Future<void> _migrateLegacyFavoriteMemorySchedules() async {
     final migratedAt = DateTime.now().toUtc();
     final state = FsrsMemoryModelAdapter().createInitialState(
@@ -1045,7 +1047,7 @@ class AppDatabase extends _$AppDatabase {
 
     AppLogger.log(
       'DB.migrate',
-      'v50→v51 favorite schedules: created=$created restored=$restored archived=$archived',
+      'v58 favorite schedules: created=$created restored=$restored archived=$archived',
     );
   }
 
@@ -1500,6 +1502,26 @@ class AppDatabase extends _$AppDatabase {
     ''');
 
     await _createMemorySchedulerIndexes();
+    await _createFavoriteReviewIndexes();
+  }
+
+  /// 为从到期调度反查收藏主体建立轻量部分索引。
+  Future<void> _createFavoriteReviewIndexes() async {
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_bookmarks_active_memory_subject
+      ON bookmarks(memory_subject_id)
+      WHERE deleted_at IS NULL AND memory_subject_id IS NOT NULL
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_saved_words_active_memory_subject
+      ON saved_words(memory_subject_id)
+      WHERE deleted_at IS NULL AND memory_subject_id IS NOT NULL
+    ''');
+    await customStatement('''
+      CREATE INDEX IF NOT EXISTS idx_saved_sense_groups_active_memory_subject
+      ON saved_sense_groups(memory_subject_id)
+      WHERE deleted_at IS NULL AND memory_subject_id IS NOT NULL
+    ''');
   }
 
   /// 创建记忆调度快照和事件的查询索引。

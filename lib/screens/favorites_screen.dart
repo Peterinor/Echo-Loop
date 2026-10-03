@@ -588,7 +588,7 @@ class _FloatingSentenceReviewButton extends ConsumerWidget {
         debugPrint(
           '[PERF] bookmark review read providers: ${sw.elapsedMilliseconds}ms',
         );
-        await provider.initialize(allBookmarks);
+        await provider.initialize();
         debugPrint(
           '[PERF] bookmark review initialize: ${sw.elapsedMilliseconds}ms',
         );
@@ -642,9 +642,7 @@ class _FloatingFlashcardButton extends ConsumerWidget {
               UsageEvent.flashcardButtonTapped,
               analyticsParams: {EventParams.totalCards: totalCount},
             );
-        await ref
-            .read(favoriteVocabularyReviewProvider.notifier)
-            .initialize(words, phrases);
+        await ref.read(favoriteVocabularyReviewProvider.notifier).initialize();
         if (!context.mounted) return;
         await context.push<void>(AppRoutes.favoriteVocabularyReview);
         if (context.mounted) {
