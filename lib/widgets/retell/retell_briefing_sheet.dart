@@ -9,10 +9,12 @@ import '../../database/enums.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/retell_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/study_stage.dart';
 import '../../models/stage_settings_overrides.dart' show BriefingPauseChoice;
 import '../../providers/new_user_guide_provider.dart';
 import '../../utils/retell_duration_estimator.dart';
 import '../common/paragraph_selection_sheet.dart';
+import '../study/study_stage_visuals.dart';
 
 /// 根据学习阶段计算段落复述的默认目标段落时长（秒）
 ///
@@ -80,9 +82,11 @@ Future<void> showRetellBriefingSheet({
   VoidCallback? onSkip,
 }) {
   final l10n = AppLocalizations.of(context)!;
+  final visual = studyStageVisual(StudyStage.retell, l10n);
   return showParagraphSelectionSheet(
     context: context,
-    icon: Icons.chat,
+    icon: visual.icon,
+    iconColor: visual.iconColor,
     title: l10n.retellBriefingTitle,
     subtitle: l10n.retellBriefingSubtitle,
     sentences: sentences,

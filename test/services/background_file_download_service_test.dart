@@ -15,6 +15,11 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
   TaskStatusCallback? _statusCallback;
   String? configuredNotificationGroup;
   TaskNotification? runningNotification;
+  TaskNotification? completeNotification;
+  TaskNotification? errorNotification;
+  TaskNotification? taskRunningNotification;
+  TaskNotification? taskCompleteNotification;
+  TaskNotification? taskErrorNotification;
   bool notificationProgressBar = false;
   dynamic configuredGlobalConfig;
   final enqueuedFileNames = <String>[];
@@ -45,6 +50,27 @@ class _FakeFileDownloader extends Mock implements FileDownloader {
   }) {
     configuredNotificationGroup = group;
     runningNotification = running;
+    completeNotification = complete;
+    errorNotification = error;
+    notificationProgressBar = progressBar;
+    return this;
+  }
+
+  @override
+  FileDownloader configureNotificationForTask(
+    Task task, {
+    TaskNotification? running,
+    TaskNotification? complete,
+    TaskNotification? error,
+    TaskNotification? paused,
+    TaskNotification? canceled,
+    bool progressBar = false,
+    bool tapOpensFile = false,
+    String groupNotificationId = '',
+  }) {
+    taskRunningNotification = running;
+    taskCompleteNotification = complete;
+    taskErrorNotification = error;
     notificationProgressBar = progressBar;
     return this;
   }
@@ -97,6 +123,8 @@ class _FakeMacOSSystemDownloadClient implements MacOSSystemDownloadClient {
   Uri? uri;
   String? savePath;
   String? displayName;
+  String? completeNotificationTitle;
+  String? failedNotificationTitle;
   Map<String, String>? headers;
 
   @override
@@ -104,6 +132,8 @@ class _FakeMacOSSystemDownloadClient implements MacOSSystemDownloadClient {
     required Uri uri,
     required String savePath,
     required String displayName,
+    required String completeNotificationTitle,
+    required String failedNotificationTitle,
     required Map<String, String> headers,
     required BackgroundFileDownloadProgress? onProgress,
     required CancelToken? cancelToken,
@@ -111,6 +141,8 @@ class _FakeMacOSSystemDownloadClient implements MacOSSystemDownloadClient {
     this.uri = uri;
     this.savePath = savePath;
     this.displayName = displayName;
+    this.completeNotificationTitle = completeNotificationTitle;
+    this.failedNotificationTitle = failedNotificationTitle;
     this.headers = headers;
     onProgress?.call(6, 12);
     return const BackgroundDownloadResult(
@@ -337,6 +369,37 @@ void main() {
     },
   );
 
+  test('configures localized notifications on each background task', () async {
+    final downloader = _FakeFileDownloader(
+      TaskFileSystemException('simulated failure'),
+    );
+    final runner = PluginBackgroundDownloadRunner(
+      resolveDataDir: () async => dataDir,
+      downloader: downloader,
+      resolveNotificationLabels: () async =>
+          const BackgroundFileDownloadNotificationLabels(
+            running: '正在下载',
+            complete: '下载完成',
+            failed: '下载失败',
+          ),
+    );
+
+    await runner.enqueue(
+      uri: Uri.parse('https://example.com/audio.mp3'),
+      savePath: '${dataDir.path}/audio.mp3',
+      displayName: '听力素材',
+      headers: const <String, String>{},
+      onProgress: null,
+      cancelToken: null,
+    );
+
+    expect(downloader.taskRunningNotification?.title, '正在下载');
+    expect(downloader.taskRunningNotification?.body, '{displayName}');
+    expect(downloader.taskCompleteNotification?.title, '下载完成');
+    expect(downloader.taskErrorNotification?.title, '下载失败');
+    expect(downloader.notificationProgressBar, isTrue);
+  });
+
   test(
     'does not classify a wrapped SocketException as a storage failure',
     () async {
@@ -450,6 +513,12 @@ void main() {
       final runner = MacOSSystemDownloadRunner(
         resolveDataDir: () async => dataDir,
         client: client,
+        resolveNotificationLabels: () async =>
+            const BackgroundFileDownloadNotificationLabels(
+              running: '正在下载',
+              complete: '下载完成',
+              failed: '下载失败',
+            ),
       );
       final progress = <(int, int?)>[];
 
@@ -466,6 +535,8 @@ void main() {
       expect(client.uri, Uri.parse('https://cdn.example.com/audio.mp3'));
       expect(client.savePath, p.join(dataDir.path, 'audio.mp3'));
       expect(client.displayName, 'Audio lesson.mp3');
+      expect(client.completeNotificationTitle, '下载完成');
+      expect(client.failedNotificationTitle, '下载失败');
       expect(client.headers, const <String, String>{
         'Authorization': 'Bearer test',
       });

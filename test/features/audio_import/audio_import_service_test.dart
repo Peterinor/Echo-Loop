@@ -28,6 +28,7 @@ class _FakeDownloadRunner implements BackgroundDownloadRunner {
   final BackgroundDownloadResult result;
   final int? totalBytes;
   Uri? lastUri;
+  String? lastDisplayName;
 
   @override
   Future<BackgroundDownloadResult> enqueue({
@@ -39,6 +40,7 @@ class _FakeDownloadRunner implements BackgroundDownloadRunner {
     required CancelToken? cancelToken,
   }) async {
     lastUri = uri;
+    lastDisplayName = displayName;
     onProgress?.call(totalBytes == null ? 0 : bytes.length, totalBytes);
     if (result.status == BackgroundDownloadStatus.complete) {
       await File(savePath).parent.create(recursive: true);
@@ -204,6 +206,37 @@ void main() {
   });
 
   group('AudioRegistrationService', () {
+    test('注册 MKV 视频时保存统一媒体探测得到的时长', () async {
+      final container = ProviderContainer(
+        overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
+      );
+      addTearDown(container.dispose);
+      final service = AudioRegistrationService(
+        readDurationSeconds: (_) async => 83,
+      );
+
+      final result = await service.registerSandboxedAudio(
+        input: const SandboxedAudioRegistrationInput(
+          name: 'lesson',
+          relativePath: 'videos/lesson.mkv',
+          importSourceType: AudioImportSourceType.cloudDrive,
+        ),
+        audioLibrary: container.read(audioLibraryProvider.notifier),
+        audioLibraryState: container.read(audioLibraryProvider),
+      );
+
+      final item = switch (result) {
+        AudioRegistrationAdded(:final item) => item,
+        AudioRegistrationDuplicate() => fail('Expected new MKV registration'),
+      };
+      expect(item.isVideo, isTrue);
+      expect(item.totalDuration, 83);
+      expect(
+        container.read(audioLibraryProvider).audioItems.single.totalDuration,
+        83,
+      );
+    });
+
     test('本地导入只记录来源类型，不记录设备原始路径', () async {
       final container = ProviderContainer(
         overrides: [audioLibraryProvider.overrideWith(_FakeAudioLibrary.new)],
@@ -574,12 +607,14 @@ void main() {
     });
 
     test('HEAD 大小与落盘大小不一致时仍接受平台报告完成的下载', () async {
+      final runner = _FakeDownloadRunner(
+        bytes: const <int>[1, 2, 3, 4],
+        totalBytes: 8,
+      );
       final service = AudioImportService(
         dio: dio,
         resolveDataDir: () async => tmpDir,
-        backgroundDownloader: _backgroundDownloader(
-          _FakeDownloadRunner(bytes: const <int>[1, 2, 3, 4], totalBytes: 8),
-        ),
+        backgroundDownloader: _backgroundDownloader(runner),
         // 导入不再转码：仅对原始 .mp3 计算指纹。
         computeSha256: (path) async {
           expect(path, endsWith('.mp3'));
@@ -604,6 +639,7 @@ void main() {
       );
 
       expect(item.name, 'lesson');
+      expect(runner.lastDisplayName, item.name);
       // 保留原始格式与扩展名，audioSha256 == originalAudioSha256。
       expect(item.audioPath, p.join('audios', 'imported', 'sha-original.mp3'));
       expect(item.totalDuration, 42);
@@ -756,12 +792,11 @@ void main() {
     });
 
     test('Podcast 单集下载成功后保留原始音频', () async {
+      final runner = _FakeDownloadRunner(bytes: const <int>[5, 6, 7, 8]);
       final service = AudioImportService(
         dio: dio,
         resolveDataDir: () async => tmpDir,
-        backgroundDownloader: _backgroundDownloader(
-          _FakeDownloadRunner(bytes: const <int>[5, 6, 7, 8]),
-        ),
+        backgroundDownloader: _backgroundDownloader(runner),
         computeSha256: (path) async {
           expect(path, endsWith('.mp3'));
           return 'sha-episode';
@@ -774,10 +809,15 @@ void main() {
 
       final result = await service.downloadEpisodeToSandbox(
         url: 'https://example.com/episode.mp3',
+        displayName: 'Episode 1: Welcome',
         enclosureType: 'audio/mpeg',
       );
 
-      expect(result.relativePath, p.join('audios', 'imported', 'sha-episode.mp3'));
+      expect(runner.lastDisplayName, 'Episode 1: Welcome');
+      expect(
+        result.relativePath,
+        p.join('audios', 'imported', 'sha-episode.mp3'),
+      );
       expect(result.durationSeconds, 61);
       expect(result.audioSha256, 'sha-episode');
       expect(result.originalAudioSha256, 'sha-episode');
@@ -801,10 +841,14 @@ void main() {
 
       final result = await service.downloadEpisodeToSandbox(
         url: 'https://example.com/episode.mp3',
+        displayName: 'Episode 1',
         enclosureType: 'audio/mpeg',
       );
 
-      expect(result.relativePath, p.join('audios', 'imported', 'sha-episode.mp3'));
+      expect(
+        result.relativePath,
+        p.join('audios', 'imported', 'sha-episode.mp3'),
+      );
       expect(await existingFile.readAsBytes(), [9, 9, 9]);
       expect(await _tmpAudioImportFiles(tmpDir), isEmpty);
     });
@@ -822,6 +866,7 @@ void main() {
       await service.downloadEpisodeToSandbox(
         url:
             'http://open.live.bbc.co.uk/mediaselector/6/redir/version/2.0/mediaset/audio-nondrm-download-rss-low/proto/http/vpid/p0n4bjcm.mp3',
+        displayName: 'BBC episode title',
         enclosureType: 'audio/mpeg',
       );
 
@@ -847,10 +892,12 @@ void main() {
         url:
             'https://anchor.fm/s/show/podcast/play/123/'
             'https%3A%2F%2Fcdn.example.com%2Fepisode.mp3',
+        displayName: 'Anchor episode title',
         enclosureType: 'audio/mpeg',
       );
 
       expect(runner.lastUri, Uri.parse('https://cdn.example.com/episode.mp3'));
+      expect(runner.lastDisplayName, 'Anchor episode title');
     });
   });
 }

@@ -1218,7 +1218,7 @@ void main() {
       expect(player.lastPostEvaluationScore, 0.77);
     });
 
-    testWidgets('点击句子进入详情前会进入 waiting for user', (tester) async {
+    testWidgets('点击左侧讲解按钮进入详情前会进入 waiting for user', (tester) async {
       final testParagraphs = createTestParagraphs();
       final initialState = RetellPlayerState(
         currentParagraphIndex: 0,
@@ -1244,18 +1244,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 点击第一个 MaskedSentenceTile 的 InkWell（中心 = 文本区 → 触发 onDetailTap）
-      final firstTile = find.byType(MaskedSentenceTile).first;
-      await tester.tap(firstTile);
+      await tester.tap(
+        find.byKey(
+          const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-0'),
+        ),
+      );
       await tester.pump();
 
       expect(trackingPlayer.waitingCalls, 1);
       expect(trackingPlayer.lastStopImmediately, true);
-      // 点文本区不触发 seek
+      // 讲解入口不触发播放 seek
       expect(trackingPlayer.seekCalls, 0);
     });
 
-    testWidgets('点击句子编号区调用 seekToSentence（不进入讲解页）', (tester) async {
+    testWidgets('点击句子正文调用 seekToSentence（不进入讲解页）', (tester) async {
       final testParagraphs = createTestParagraphs();
       final initialState = RetellPlayerState(
         currentParagraphIndex: 0,
@@ -1281,8 +1283,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 第 2 句（非播放句）的编号显示数字 "2"
-      await tester.tap(find.text('2'));
+      // 点击第 2 句正文，从该句继续播放。
+      await tester.tap(
+        find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
+      );
       await tester.pump();
 
       expect(trackingPlayer.seekCalls, 1);

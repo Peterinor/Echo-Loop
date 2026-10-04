@@ -65,3 +65,11 @@ StudyStageVisual studyStageVisual(StudyStage stage, AppLocalizations l10n) =>
         name: l10n.freePlay,
       ),
     };
+
+/// 返回复习中的「全文复述」任务卡片和入口弹窗共用展示定义。
+StudyStageVisual studyRetellSummaryVisual(AppLocalizations l10n) =>
+    StudyStageVisual(
+      icon: Icons.summarize,
+      iconColor: Colors.cyan,
+      name: l10n.stepFullTextRetelling,
+    );

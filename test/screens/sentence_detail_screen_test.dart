@@ -94,6 +94,7 @@ void main() {
     );
     await tester.pump();
 
+    expect(find.byKey(const ValueKey('media-visual-surface')), findsNothing);
     final annotation = tester.widget<SentenceExplanationView>(
       find.byType(SentenceExplanationView),
     );

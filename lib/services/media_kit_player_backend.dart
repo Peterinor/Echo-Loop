@@ -11,8 +11,11 @@ import 'media_kit_debug_initializer.dart';
 import 'media_player_backend.dart';
 
 /// media_kit 播放后端。只负责原生播放器适配，不承载业务播放流程。
+///
+/// [player] 可注入测试播放器，验证视频组件配置时不加载原生 media_kit 库。
 class MediaKitPlayerBackend implements MediaPlayerBackend {
-  MediaKitPlayerBackend() : _player = _createPlayer() {
+  MediaKitPlayerBackend({Player? player})
+    : _player = player ?? _createPlayer() {
     _controller = VideoController(_player);
   }
 
@@ -173,6 +176,8 @@ class MediaKitPlayerBackend implements MediaPlayerBackend {
     return Video(
       controller: _controller,
       controls: NoVideoControls,
+      // 视频随心听的音轨需要在锁屏后继续播放；media_kit_video 默认会在后台暂停 Player。
+      pauseUponEnteringBackgroundMode: false,
       fit: BoxFit.contain,
       subtitleViewConfiguration: SubtitleViewConfiguration(
         style: TextStyle(

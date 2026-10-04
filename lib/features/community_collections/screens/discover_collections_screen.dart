@@ -11,9 +11,8 @@ import '../../../providers/collection_provider.dart';
 import '../../../router/app_router.dart';
 import '../models/community_collection_models.dart';
 import '../models/community_collection_paging.dart';
+import '../community_collection_routes.dart';
 import '../data/trigger_community_catalog_refresh.dart';
-import '../data/trigger_community_sync.dart';
-import '../../podcast/data/trigger_podcast_catalog_refresh.dart';
 import '../providers/community_enrollment_provider.dart';
 import '../providers/discover_community_collections_provider.dart';
 import '../widgets/community_collection_card.dart';
@@ -38,6 +37,17 @@ class _DiscoverCommunityCollectionsScreenState
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Provider 保持存活，列表页再次入栈时主动更新缓存目录。
+      if (ref.read(discoverCommunityCollectionsProvider).valueOrNull != null) {
+        unawaited(
+          ref
+              .read(discoverCommunityCollectionsProvider.notifier)
+              .refresh(force: true),
+        );
+      }
+    });
   }
 
   @override
@@ -98,7 +108,7 @@ class _DiscoverCommunityCollectionsScreenState
     }
     if (items.isEmpty) {
       return RefreshIndicator(
-        onRefresh: _forceRefresh,
+        onRefresh: _forceRefreshCatalog,
         child: ListView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -114,7 +124,7 @@ class _DiscoverCommunityCollectionsScreenState
       );
     }
     return RefreshIndicator(
-      onRefresh: _forceRefresh,
+      onRefresh: _forceRefreshCatalog,
       child: ListView.builder(
         controller: _scrollController,
         itemCount:
@@ -137,7 +147,9 @@ class _DiscoverCommunityCollectionsScreenState
             item: item,
             enrolled: enrolledRemoteIds.contains(item.id),
             enrolling: _enrolling.contains(item.id),
-            onOpenDetail: () => context.push('/discover/${item.id}'),
+            onOpenDetail: () => context.push(
+              CommunityCollectionRoutes.discoverCollection(item.id),
+            ),
             onEnroll: () => _enroll(item),
           );
         },
@@ -145,13 +157,9 @@ class _DiscoverCommunityCollectionsScreenState
     );
   }
 
-  /// 手动刷新同时强制更新公开列表和已订阅合集；后台生命周期刷新不走这里。
-  Future<void> _forceRefresh() async {
-    await Future.wait([
-      triggerCommunityCatalogRefresh(ref, force: true),
-      triggerCommunitySync(ref, force: true),
-      triggerPodcastCatalogRefresh(ref, force: true),
-    ]);
+  /// 强制刷新公开合集目录；发现页浏览不触发已订阅内容同步。
+  Future<void> _forceRefreshCatalog() {
+    return triggerCommunityCatalogRefresh(ref, force: true);
   }
 
   Future<void> _enroll(PublicCollectionCatalogEntry item) async {

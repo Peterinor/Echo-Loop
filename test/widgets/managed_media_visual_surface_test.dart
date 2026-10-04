@@ -8,6 +8,10 @@ import 'package:flutter_test/flutter_test.dart';
 import '../helpers/test_app.dart';
 
 void main() {
+  Finder findBlackCanvas() => find.byWidgetPredicate(
+    (widget) => widget is ColoredBox && widget.color == Colors.black,
+  );
+
   Widget buildSubject({
     required Object loadKey,
     required Future<MediaLoadResult> Function() load,
@@ -111,10 +115,42 @@ void main() {
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.text('Loading video…'), findsNothing);
+    expect(findBlackCanvas(), findsNothing);
 
     completer.complete(MediaLoadResult.ready);
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('ready-child')), findsOneWidget);
+  });
+
+  testWidgets('音频启动失败后可重试且不显示视频画布', (tester) async {
+    var loadCalls = 0;
+
+    await tester.pumpWidget(
+      buildSubject(
+        loadKey: 'audio-1',
+        load: () async {
+          loadCalls += 1;
+          return loadCalls == 1
+              ? MediaLoadResult.failure
+              : MediaLoadResult.ready;
+        },
+        cancel: () async {},
+        showVideoLoading: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Failed to load video'), findsNothing);
+    expect(findBlackCanvas(), findsNothing);
+
+    await tester.tap(find.text('Retry'));
+    await tester.pumpAndSettle();
+
+    expect(loadCalls, 2);
+    expect(find.byKey(const ValueKey('ready-child')), findsOneWidget);
+    expect(findBlackCanvas(), findsNothing);
   });
 
   testWidgets('极大系统字号下加载提示保持在视频画布内', (tester) async {

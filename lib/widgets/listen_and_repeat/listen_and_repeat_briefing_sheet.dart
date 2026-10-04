@@ -11,11 +11,13 @@ import '../common/setting_labeled_row.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/intensive_listen_settings.dart';
 import '../../models/intensive_listen_prefs.dart' show ListenAndRepeatScope;
+import '../../models/study_stage.dart';
 import '../../models/stage_settings_overrides.dart' show BriefingPauseChoice;
 import '../../theme/app_theme.dart';
 import '../../utils/playback_speed.dart';
 import '../common/briefing_action_row.dart';
 import '../common/learning_briefing_sheet_content.dart';
+import '../study/study_stage_visuals.dart';
 
 /// 显示跟读简报底部弹窗
 ///
@@ -173,6 +175,7 @@ class _ListenAndRepeatBriefingSheetState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
+    final visual = studyStageVisual(StudyStage.listenAndRepeat, l10n);
 
     return LearningBriefingSheetContent(
       child: Column(
@@ -189,11 +192,11 @@ class _ListenAndRepeatBriefingSheetState
           ),
           const SizedBox(height: AppSpacing.l),
 
-          // 图标
+          // 与学习任务列表共用阶段图标和颜色。
           Icon(
-            Icons.record_voice_over,
+            visual.icon,
             size: 56,
-            color: theme.colorScheme.primary,
+            color: visual.iconColor ?? theme.colorScheme.primary,
           ),
           const SizedBox(height: AppSpacing.m),
 

@@ -178,6 +178,11 @@ class FakeMediaPlayerBackend implements MediaPlayerBackend {
     positionController.add(position);
   }
 
+  /// 更新 backend 的实时位置但不发送位置流，用于模拟 UI 位置事件尚未到达的瞬间。
+  void setPositionWithoutEvent(Duration position) {
+    _position = position;
+  }
+
   void emitPlaying(bool playing) {
     _playing = playing;
     playingController.add(playing);

@@ -1,6 +1,6 @@
 /// Podcast Repository
 ///
-/// 负责：创建 podcast 合集、刷新 Feed（10 分钟节流 + inflight 合并）、
+/// 负责：创建 podcast 合集、刷新 Feed（60 分钟节流 + inflight 合并）、
 /// guid 去重入库。不触发字幕 API，由用户手动触发。
 library;
 
@@ -25,8 +25,8 @@ import 'podcast_url_resolver.dart';
 
 part 'podcast_repository.g.dart';
 
-/// 10 分钟节流阈值
-const _refreshThrottleMinutes = 10;
+/// 已订阅播客 Feed 的 60 分钟节流阈值。
+const _refreshThrottleMinutes = 60;
 
 /// 重复订阅同一播客时抛出，携带已有合集名供 UI 提示。
 class PodcastAlreadySubscribedException implements Exception {
@@ -126,7 +126,7 @@ class PodcastRepository {
 
   /// 刷新 podcast 合集的 Feed，写入新 episode。
   ///
-  /// [force] = true 跳过 10 分钟节流。
+  /// [force] = true 跳过 60 分钟节流。
   /// 同一合集若已有进行中的刷新，直接返回同一个 Future（inflight 合并）。
   Future<void> refresh(String collectionId, {bool force = false}) {
     final collections = _ref.read(collectionListProvider).rawCollections;

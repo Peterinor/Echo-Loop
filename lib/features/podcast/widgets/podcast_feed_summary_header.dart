@@ -1,7 +1,7 @@
 /// Podcast feed 摘要头部。
 ///
-/// 搜索预览页和已订阅 Podcast 合集详情页共用同一套紧凑展示：左侧封面，
-/// 右侧最多 4 行简介，并把「更多」内联放在最后一行末尾。
+/// 搜索预览页和已订阅 Podcast 合集详情页共用紧凑展示；可按场景隐藏封面，
+/// 简介最多 4 行，并把「更多」内联放在最后一行末尾。
 library;
 
 import 'package:flutter/material.dart';
@@ -14,6 +14,7 @@ class PodcastFeedSummaryHeader extends StatelessWidget {
   final String? description;
   final String moreLabel;
   final VoidCallback onTap;
+  final bool showCover;
   final EdgeInsetsGeometry padding;
   final double coverSize;
 
@@ -23,6 +24,7 @@ class PodcastFeedSummaryHeader extends StatelessWidget {
     required this.description,
     required this.moreLabel,
     required this.onTap,
+    this.showCover = true,
     this.padding = const EdgeInsets.fromLTRB(
       AppSpacing.m,
       AppSpacing.m,
@@ -43,8 +45,10 @@ class PodcastFeedSummaryHeader extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              PodcastCover(imageUrl: imageUrl, size: coverSize),
-              const SizedBox(width: AppSpacing.m),
+              if (showCover) ...[
+                PodcastCover(imageUrl: imageUrl, size: coverSize),
+                const SizedBox(width: AppSpacing.m),
+              ],
               Expanded(
                 child: _InlineMoreDescription(
                   description: description,

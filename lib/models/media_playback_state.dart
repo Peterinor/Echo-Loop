@@ -2,10 +2,11 @@ import 'audio_item.dart';
 import 'listening_practice_state.dart';
 import 'playback_settings.dart';
 import 'sentence.dart';
+import 'sentence_focus_reason.dart';
 
 /// media_kit 随心听页面的业务状态。
 ///
-/// 该状态面向未来音频/视频共用的媒体播放器；当前仅由带画面轨的媒体入口使用。
+/// 音频和视频随心听共用此状态；只有视频媒体会使用画面轨相关字段。
 class MediaPlaybackState {
   const MediaPlaybackState({
     this.audioItem,
@@ -14,6 +15,8 @@ class MediaPlaybackState {
     this.currentBookmarkIndex,
     this.lastPlayedFullIndex,
     this.lastPlayedBookmarkIndex,
+    this.sentenceFocusRevision = 0,
+    this.sentenceFocusReason = SentenceFocusReason.immediate,
     this.fullSettings = const PlaybackSettings(),
     this.bookmarkSettings = kDefaultBookmarkPlaybackSettings,
     this.playlistMode = PlaylistMode.full,
@@ -39,6 +42,12 @@ class MediaPlaybackState {
   final int? currentBookmarkIndex;
   final int? lastPlayedFullIndex;
   final int? lastPlayedBookmarkIndex;
+
+  /// 当前句聚焦请求版本，用于触发同一句上的显式重新定位。
+  final int sentenceFocusRevision;
+
+  /// 当前句变化来源，决定字幕列表是否播放跟随动画。
+  final SentenceFocusReason sentenceFocusReason;
   final PlaybackSettings fullSettings;
   final PlaybackSettings bookmarkSettings;
   final PlaylistMode playlistMode;
@@ -107,6 +116,8 @@ class MediaPlaybackState {
     bool clearLastPlayedFullIndex = false,
     int? lastPlayedBookmarkIndex,
     bool clearLastPlayedBookmarkIndex = false,
+    bool requestSentenceFocus = false,
+    SentenceFocusReason? sentenceFocusReason,
     PlaybackSettings? fullSettings,
     PlaybackSettings? bookmarkSettings,
     PlaybackSettings? settings,
@@ -156,6 +167,10 @@ class MediaPlaybackState {
       lastPlayedBookmarkIndex: clearLastPlayedBookmarkIndex
           ? null
           : lastPlayedBookmarkIndex ?? this.lastPlayedBookmarkIndex,
+      sentenceFocusRevision: requestSentenceFocus
+          ? sentenceFocusRevision + 1
+          : sentenceFocusRevision,
+      sentenceFocusReason: sentenceFocusReason ?? this.sentenceFocusReason,
       fullSettings: nextFullSettings,
       bookmarkSettings: nextBookmarkSettings,
       playlistMode: nextPlaylistMode,

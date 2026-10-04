@@ -12,7 +12,7 @@ import '../database/providers.dart';
 import '../models/audio_item.dart';
 import '../services/app_logger.dart';
 import '../utils/audio_content_check.dart';
-import '../utils/audio_duration.dart';
+import '../utils/media_duration.dart';
 import '../utils/transcript_stats.dart';
 import 'collection_provider.dart';
 import 'learning_progress_provider.dart';
@@ -20,6 +20,12 @@ import 'favorite_sentence_lifecycle_provider.dart';
 import 'tag_provider.dart';
 
 part 'audio_library_provider.g.dart';
+
+const _durationDebugLogTag = 'MediaDuration';
+
+final mediaDurationSecondsReaderProvider = Provider<MediaDurationSecondsReader>(
+  (ref) => getMediaDurationSeconds,
+);
 
 class AudioLibraryState {
   final List<AudioItem> audioItems;
@@ -507,17 +513,74 @@ class AudioLibrary extends _$AudioLibrary {
     }
   }
 
-  /// 补填缺失时长 — 对已就绪且 totalDuration == 0 的音频逐个提取并持久化
+  /// 补填缺失时长 — 对已就绪且 totalDuration == 0 的音视频素材逐个提取并持久化
   Future<void> backfillDurations() async {
     final missing = state.audioItems
         .where((item) => item.totalDuration == 0 && item.isAudioReady)
         .toList();
+    final videoCount = missing.where((item) => item.isVideo).length;
+    AppLogger.log(
+      _durationDebugLogTag,
+      'event=backfill_begin candidates=${missing.length} videos=$videoCount',
+    );
+    var videosWithDuration = 0;
+    final readDuration = ref.read(mediaDurationSecondsReaderProvider);
     for (final item in missing) {
-      final seconds = await getAudioDurationSeconds(item.audioPath!);
+      final isVideo = item.isVideo;
+      final relativePath = item.audioPath;
+      if (relativePath == null) continue;
+      if (isVideo) {
+        AppLogger.log(
+          _durationDebugLogTag,
+          'event=backfill_probe_begin trace=${item.id}',
+        );
+      }
+      final seconds = await readDuration(
+        relativePath,
+        traceId: isVideo ? item.id : null,
+      );
       if (seconds > 0) {
-        updateAudioItem(item.copyWith(totalDuration: seconds));
+        final latest = getItemById(item.id);
+        if (latest == null ||
+            latest.totalDuration != 0 ||
+            latest.audioPath != relativePath) {
+          if (isVideo) {
+            AppLogger.log(
+              _durationDebugLogTag,
+              'event=backfill_update_skipped trace=${item.id} '
+              'reason=item_changed',
+            );
+          }
+          continue;
+        }
+        try {
+          await updateAudioItem(latest.copyWith(totalDuration: seconds));
+          if (isVideo) {
+            videosWithDuration++;
+            AppLogger.log(
+              _durationDebugLogTag,
+              'event=backfill_update_complete trace=${item.id} seconds=$seconds',
+            );
+          }
+        } on Object catch (error) {
+          AppLogger.log(
+            _durationDebugLogTag,
+            'event=backfill_update_failed trace=${item.id} '
+            'errorType=${error.runtimeType}',
+          );
+        }
+      } else if (isVideo) {
+        AppLogger.log(
+          _durationDebugLogTag,
+          'event=backfill_result trace=${item.id} outcome=zero',
+        );
       }
     }
+    AppLogger.log(
+      _durationDebugLogTag,
+      'event=backfill_complete candidates=${missing.length} videos=$videoCount '
+      'videosWithDuration=$videosWithDuration',
+    );
   }
 
   /// 全量 backfill 字幕内容 — 把旧行的 SRT 文件读入 transcript_srt 列。

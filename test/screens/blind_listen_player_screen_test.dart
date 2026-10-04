@@ -417,9 +417,9 @@ void main() {
     });
 
     // 盲听页面不再支持点词查词（已移除 onWordTap）
-    // 点编号→seekToSentence 的链路由 Provider 单测 + Widget 单测 + 复述 Screen 单测 共同覆盖：
+    // 点正文→seekToSentence 的链路由 Provider 单测 + Widget 单测 + 复述 Screen 单测 共同覆盖：
     // - Provider 单测验证 seekToSentence 行为
-    // - Widget 单测（masked_sentence_tile_test）验证 tile 编号区→onPlayFromTap 分发
+    // - Widget 单测（masked_sentence_tile_test）验证 tile 正文→onPlayFromTap 分发
     // - 复述 Screen 单测验证 onPlayFromTap → player.seekToSentence 的接线
     // 盲听 Screen 接入是同款代码（_handleSentencePlayFrom + onSentencePlayFrom 透传），不重复测。
 

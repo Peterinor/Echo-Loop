@@ -43,18 +43,16 @@ class SavedWordList extends _$SavedWordList {
     int? sentenceStartMs,
     int? sentenceEndMs,
   }) async {
-    final dao = ref.read(savedWordDaoProvider);
-    await dao.saveWord(
-      word: word,
-      audioItemId: audioItemId,
-      sentenceIndex: sentenceIndex,
-      sentenceText: sentenceText,
-      sentenceStartMs: sentenceStartMs,
-      sentenceEndMs: sentenceEndMs,
-    );
     await ref
         .read(favoriteVocabularyLifecycleProvider)
-        .restoreWordSchedule(word);
+        .saveWord(
+          word: word,
+          audioItemId: audioItemId,
+          sentenceIndex: sentenceIndex,
+          sentenceText: sentenceText,
+          sentenceStartMs: sentenceStartMs,
+          sentenceEndMs: sentenceEndMs,
+        );
 
     // 埋点：收藏单词
     ref

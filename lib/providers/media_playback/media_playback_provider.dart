@@ -10,6 +10,7 @@ import '../../models/media_load_result.dart';
 import '../../models/media_playback_state.dart';
 import '../../models/playback_settings.dart';
 import '../../models/sentence.dart';
+import '../../models/sentence_focus_reason.dart';
 import '../../models/sentence_playback_result.dart';
 import '../../models/sense_group_range_playback.dart';
 import '../../models/study_stage.dart';
@@ -30,8 +31,8 @@ final mediaPlaybackProvider =
 
 /// media_kit 随心听控制器。
 ///
-/// 当前用于带画面轨的媒体页面。实现刻意独立于现有音频随心听 controller，便于先在
-/// media_kit + audio_service 链路上收敛正确性，后续再决定音频迁移边界。
+/// 音频与视频随心听共用此控制器，由 [MediaEngine] 统一驱动播放；其他学习任务继续
+/// 使用 ListeningPractice 和 AudioEngine。
 class MediaPlayback extends Notifier<MediaPlaybackState> {
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<bool>? _playingSub;
@@ -41,6 +42,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   int _playbackGen = 0;
   int _playbackSessionId = -1;
   bool _activeSentenceDrivenPlayback = false;
+  bool _isInPlaybackInterval = false;
+  int? _playbackIntervalGeneration;
 
   /// 连续整篇播放的统计游标；它只记录本次播放会话已经跨过的句尾。
   Duration? _lastGaplessStatsPosition;
@@ -70,7 +73,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     return engine;
   }
 
-  /// 建立视频随心听页面级学习会话；页面退出前播放器状态不会结束该会话。
+  /// 建立媒体随心听页面级学习会话；页面退出前播放器状态不会结束该会话。
   int beginStudyPage() {
     final generation = ++_studyPageGeneration;
     _activeStudyPageGeneration = generation;
@@ -92,7 +95,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     return generation;
   }
 
-  /// 标记视频随心听页面上的用户活动。
+  /// 标记媒体随心听页面上的用户活动。
   void markStudyActivity() {
     _studySessionTimer?.markActivity();
   }
@@ -204,6 +207,33 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     _setStudyPlaybackActive(true);
   }
 
+  /// 自动续播间隔内维持逻辑播放态，避免 backend 暂停时切成播放按钮。
+  void _beginPlaybackInterval(int generation) {
+    if (generation != _playbackGen) return;
+    _isInPlaybackInterval = true;
+    _playbackIntervalGeneration = generation;
+    _setPlaying(true);
+    _engine.setLogicalPlaying(true);
+    _engine.setProgressFrozen(true);
+  }
+
+  /// 用户暂停、播放结束或页面释放时清除自动续播覆盖态。
+  void _clearPlaybackInterval() {
+    if (!_isInPlaybackInterval) return;
+    _isInPlaybackInterval = false;
+    _playbackIntervalGeneration = null;
+    _engineCache?.setProgressFrozen(false);
+    _engineCache?.setLogicalPlaying(null);
+  }
+
+  /// 新一遍真正起播后交还锁屏状态给 backend。
+  void _onPlaybackStarted() {
+    if (!_isInPlaybackInterval || _playbackIntervalGeneration != _playbackGen) {
+      return;
+    }
+    _clearPlaybackInterval();
+  }
+
   /// 记录连续播放位置前进期间自然结束的字幕句子。
   ///
   /// 计时器独立负责听力时长；这里仅复用句子统计入口写入听到的词数和唯一词形。
@@ -239,12 +269,14 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
 
   /// 将播放器置为停止态；学习页面会话由页面退出时统一结束。
   Future<void> _stopPlaying() async {
+    _clearPlaybackInterval();
     state = state.copyWith(isPlaying: false);
     _setStudyPlaybackActive(false);
   }
 
   /// 普通暂停只暂停输入计时，保留页面学习会话供用户继续思考。
   Future<void> _pausePlaying() async {
+    _clearPlaybackInterval();
     state = state.copyWith(isPlaying: false);
     _setStudyPlaybackActive(false);
   }
@@ -262,6 +294,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     ref.onDispose(() {
       _loadGeneration++;
       _playbackGen++;
+      _clearPlaybackInterval();
       unawaited(_positionSub?.cancel());
       unawaited(_playingSub?.cancel());
       unawaited(_landscapeVideoSub?.cancel());
@@ -270,6 +303,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       unawaited(_endActiveStudyPage());
       unawaited(_senseGroupRangePlayback?.cancel());
       engine?.setTransportHandlers(onPlay: null, onPause: null);
+      engine?.setSkipHandlers();
+      engine?.setSeekHandlers();
       unawaited(engine?.releaseForOwnerDispose());
     });
     return const MediaPlaybackState();
@@ -304,6 +339,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     bool isCurrentGeneration() => generation == _loadGeneration && !_released;
 
     _released = false;
+    _clearPlaybackInterval();
     _loadReady = false;
     _positionUpdatesEnabled = false;
     _playbackGen++;
@@ -369,6 +405,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         sentences: transcriptData.sentences,
         bookmarkedIndices: transcriptData.bookmarkedIndices,
         currentFullIndex: transcriptData.sentences.isEmpty ? null : 0,
+        requestSentenceFocus: transcriptData.sentences.isNotEmpty,
+        sentenceFocusReason: SentenceFocusReason.immediate,
         isTranscriptLoading: false,
       );
       _syncSentenceFocusToPosition();
@@ -384,10 +422,29 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       }
 
       _engine.setTransportHandlers(onPlay: play, onPause: pause);
+      if (state.hasSentences) {
+        _engine.setSeekHandlers();
+        _engine.setSkipHandlers(
+          onPrevious: previousSentence,
+          onNext: nextSentence,
+        );
+      } else {
+        _engine.setSkipHandlers();
+        _engine.setSeekHandlers(
+          onRewind: () => seekRelative(const Duration(seconds: -10)),
+          onFastForward: () => seekRelative(const Duration(seconds: 10)),
+        );
+      }
       _positionSub = _engine.positionStream.listen(_onPositionChanged);
       _playingSub = _engine.playingStream.listen((playing) {
         // 底层状态只校准 UI。计时器由 Provider 的显式播放/暂停入口控制，避免
         // 区间起播时 backend 的瞬时 false 让计时器被错误切断。
+        if (playing) _onPlaybackStarted();
+        if (!playing &&
+            _isInPlaybackInterval &&
+            _playbackIntervalGeneration == _playbackGen) {
+          return;
+        }
         if (state.isPlaying != playing) {
           state = state.copyWith(isPlaying: playing);
         }
@@ -494,13 +551,21 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       final bookmarkIndex = _nearestBookmarkIndex(position);
       if (bookmarkIndex != null &&
           bookmarkIndex != state.currentBookmarkIndex) {
-        state = state.copyWith(currentBookmarkIndex: bookmarkIndex);
+        state = state.copyWith(
+          currentBookmarkIndex: bookmarkIndex,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.playback,
+        );
         _autoSaveProgress();
       }
       return;
     }
     if (idx != state.currentFullIndex) {
-      state = state.copyWith(currentFullIndex: idx);
+      state = state.copyWith(
+        currentFullIndex: idx,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.playback,
+      );
       _autoSaveProgress();
     }
   }
@@ -532,13 +597,15 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   /// [_ensureValidIndex] 回退成第一条收藏，造成列表与进度条指向不同句子。
   void _syncSentenceFocusToPosition() {
     final idx = _nearestSentenceIndex(state.position);
-    if (idx >= 0) state = state.copyWith(currentFullIndex: idx);
-    if (state.playlistMode == PlaylistMode.bookmarks) {
-      final bookmarkIndex = _nearestBookmarkIndex(state.position);
-      if (bookmarkIndex != null) {
-        state = state.copyWith(currentBookmarkIndex: bookmarkIndex);
-      }
-    }
+    final bookmarkIndex = state.playlistMode == PlaylistMode.bookmarks
+        ? _nearestBookmarkIndex(state.position)
+        : null;
+    state = state.copyWith(
+      currentFullIndex: idx >= 0 ? idx : null,
+      currentBookmarkIndex: bookmarkIndex,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.immediate,
+    );
     _ensureValidIndex();
   }
 
@@ -598,6 +665,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     );
     _recordGaplessStatsThrough(_engine.currentPosition);
     _playbackGen++;
+    _clearPlaybackInterval();
     _activeSentenceDrivenPlayback = false;
     _awaitingReplayFromStart = false;
     _pauseAfterPosition = null;
@@ -632,6 +700,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     if (duration != null && target > duration) target = duration;
     final wasPlaying = state.isPlaying;
     _playbackGen++;
+    _clearPlaybackInterval();
     _activeSentenceDrivenPlayback = false;
     _awaitingReplayFromStart = false;
     _pauseAfterPosition = null;
@@ -654,9 +723,16 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         state = state.copyWith(
           currentBookmarkIndex: selected.index,
           lastPlayedBookmarkIndex: selected.index,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.navigation,
         );
       } else if (idx >= 0) {
-        state = state.copyWith(currentFullIndex: idx, lastPlayedFullIndex: idx);
+        state = state.copyWith(
+          currentFullIndex: idx,
+          lastPlayedFullIndex: idx,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.navigation,
+        );
       }
     }
 
@@ -698,9 +774,29 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   Future<void> selectFullSentence(int index, {bool autoPlay = true}) async {
     if (index < 0 || index >= state.sentences.length) return;
     final wasPlaying = state.isPlaying;
-    state = state.copyWith(currentFullIndex: index, lastPlayedFullIndex: index);
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection begin source=full from=${state.currentFullIndex} '
+          'to=$index autoPlay=$autoPlay wasPlaying=$wasPlaying',
+    );
+    state = state.copyWith(
+      currentFullIndex: index,
+      lastPlayedFullIndex: index,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.navigation,
+    );
     await _alignEngineToCurrent();
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection aligned source=full index=$index '
+          'position=${state.position.inMilliseconds}ms autoPlay=$autoPlay',
+    );
     if (autoPlay) {
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence selection requests playback source=full index=$index '
+            'resetWholeLoops=${!wasPlaying}',
+      );
       unawaited(play(resetWholeLoops: !wasPlaying));
     }
   }
@@ -712,12 +808,30 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     if (index < 0 || index >= state.sentences.length) return;
     if (!state.bookmarkedIndices.contains(index)) return;
     final wasPlaying = state.isPlaying;
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection begin source=bookmarks '
+          'from=${state.currentBookmarkIndex} to=$index '
+          'autoPlay=$autoPlay wasPlaying=$wasPlaying',
+    );
     state = state.copyWith(
       currentBookmarkIndex: index,
       lastPlayedBookmarkIndex: index,
+      requestSentenceFocus: true,
+      sentenceFocusReason: SentenceFocusReason.navigation,
     );
     await _alignEngineToCurrent();
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence selection aligned source=bookmarks index=$index '
+          'position=${state.position.inMilliseconds}ms autoPlay=$autoPlay',
+    );
     if (autoPlay) {
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence selection requests playback source=bookmarks index=$index '
+            'resetWholeLoops=${!wasPlaying}',
+      );
       unawaited(play(resetWholeLoops: !wasPlaying));
     }
   }
@@ -768,6 +882,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
           ? currentBookmarkIndex ?? state.currentFullIndex ?? 0
           : null,
       clearCurrentBookmarkIndex: currentBookmarkRemoved,
+      requestSentenceFocus: bookmarksBecameEmpty || currentBookmarkRemoved,
+      sentenceFocusReason: SentenceFocusReason.immediate,
     );
     _ensureValidIndex();
     await _alignEngineToCurrent();
@@ -782,11 +898,15 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       state = state.copyWith(
         currentBookmarkIndex: selected.index,
         lastPlayedBookmarkIndex: selected.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.navigation,
       );
     } else {
       state = state.copyWith(
         currentFullIndex: selected.index,
         lastPlayedFullIndex: selected.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.navigation,
       );
     }
     await _alignEngineToCurrent();
@@ -827,6 +947,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
             sentences: newSentences,
             currentFullIndex: index,
             clearCurrentBookmarkIndex: true,
+            requestSentenceFocus: true,
+            sentenceFocusReason: SentenceFocusReason.immediate,
           );
           await pause();
         } else if (replacementIndex != null &&
@@ -835,6 +957,8 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
             bookmarkedIndices: newBookmarks,
             sentences: newSentences,
             currentBookmarkIndex: replacementIndex,
+            requestSentenceFocus: true,
+            sentenceFocusReason: SentenceFocusReason.immediate,
           );
         } else {
           state = state.copyWith(
@@ -997,22 +1121,32 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
   Future<void>? _releaseInFlight;
 
   Future<void> releaseFromScreen({int? studyPageGeneration}) async {
-    if (studyPageGeneration != null) {
-      final ended = await endStudyPage(studyPageGeneration);
-      if (!ended) return;
-    } else {
-      await _endActiveStudyPage();
+    if (studyPageGeneration != null &&
+        _activeStudyPageGeneration != studyPageGeneration) {
+      return;
     }
-    await _releaseMedia(saveProgress: _loadReady);
+    await _releaseMedia(
+      saveProgress: _loadReady,
+      shouldEndStudyPage: true,
+      studyPageGeneration: studyPageGeneration,
+    );
   }
 
-  Future<void> _releaseMedia({required bool saveProgress}) async {
+  Future<void> _releaseMedia({
+    required bool saveProgress,
+    bool shouldEndStudyPage = false,
+    int? studyPageGeneration,
+  }) async {
     final existing = _releaseInFlight;
     if (existing != null) {
       await existing;
       return;
     }
-    final release = _releaseFromScreen(saveProgress: saveProgress);
+    final release = _releaseFromScreen(
+      saveProgress: saveProgress,
+      shouldEndStudyPage: shouldEndStudyPage,
+      studyPageGeneration: studyPageGeneration,
+    );
     _releaseInFlight = release;
     try {
       await release;
@@ -1023,34 +1157,80 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     }
   }
 
-  /// 统一释放页面拥有的媒体资源；加载取消与正常退出仅在断点保存上不同。
-  Future<void> _releaseFromScreen({required bool saveProgress}) async {
-    final engineBeforeRelease = _engineCache;
-    if (engineBeforeRelease != null) {
-      _recordGaplessStatsThrough(engineBeforeRelease.currentPosition);
+  /// 统一释放页面拥有的媒体资源；页面退出还会先暂停并结束学习计时。
+  Future<void> _releaseFromScreen({
+    required bool saveProgress,
+    required bool shouldEndStudyPage,
+    int? studyPageGeneration,
+  }) async {
+    if (studyPageGeneration != null &&
+        _activeStudyPageGeneration != studyPageGeneration) {
+      return;
+    }
+    final engine = _engineCache;
+    final preserveStartCheckpoint = _awaitingReplayFromStart;
+    Object? releaseError;
+    // 先使待续播协程失效，避免等待 backend 暂停期间旧间隔到期并重新起播。
+    _playbackGen++;
+    _clearPlaybackInterval();
+    engine?.setTransportHandlers(onPlay: null, onPause: null);
+    engine?.setSkipHandlers();
+    engine?.setSeekHandlers();
+    try {
+      await engine?.pause();
+    } catch (error) {
+      releaseError = error;
+      AppLogger.log('MediaPlayback', 'release pause failed: $error');
+    }
+    await _pausePlaying();
+    if (studyPageGeneration != null &&
+        _activeStudyPageGeneration != studyPageGeneration) {
+      // 页面代际已变化时，仅恢复新页面仍在使用的锁屏命令，不执行旧页面解绑。
+      if (_loadReady) {
+        engine?.setTransportHandlers(onPlay: play, onPause: pause);
+        if (state.hasSentences) {
+          engine?.setSkipHandlers(
+            onPrevious: previousSentence,
+            onNext: nextSentence,
+          );
+        } else {
+          engine?.setSeekHandlers(
+            onRewind: () => seekRelative(const Duration(seconds: -10)),
+            onFastForward: () => seekRelative(const Duration(seconds: 10)),
+          );
+        }
+      }
+      return;
     }
     _loadGeneration++;
     _released = true;
     _loadReady = false;
     _loadedResourceGeneration = null;
     _positionUpdatesEnabled = false;
-    _playbackGen++;
+    _activeSentenceDrivenPlayback = false;
     _pauseAfterPosition = null;
-    Object? releaseError;
+    if (engine != null) _recordGaplessStatsThrough(engine.currentPosition);
+    // 暂停完成后读取 backend 实时位置，避免 position stream 尚未刷新时使用
+    // 落后的界面状态覆盖更精确的断点。
+    final checkpointPosition = engine?.currentPosition ?? state.position;
+    if (shouldEndStudyPage) {
+      if (studyPageGeneration != null) {
+        await endStudyPage(studyPageGeneration);
+      } else {
+        await _endActiveStudyPage();
+      }
+    }
     try {
       await _senseGroupRangePlayback?.cancel();
       _senseGroupRangePlayback = null;
-      final engine = _engineCache;
-      engine?.setTransportHandlers(onPlay: null, onPause: null);
       await _positionSub?.cancel();
       await _playingSub?.cancel();
       await _landscapeVideoSub?.cancel();
       await _videoAspectRatioSub?.cancel();
     } catch (error) {
-      releaseError = error;
+      releaseError ??= error;
       AppLogger.log('MediaPlayback', 'release subscriptions failed: $error');
     }
-    final engine = _engineCache;
     // 自然完成后 UI 可继续停在终点展示完成态，但持久化断点必须保持为开头；
     // 否则退出页面会用 state.position 的终点值覆盖刚写入的 0:00。持久化失败
     // 不能阻止 engine detach，否则页面 owner 已销毁而 native Player 仍在工作。
@@ -1058,7 +1238,9 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       try {
         await saveCurrentPlaybackState(
           silent: true,
-          position: _awaitingReplayFromStart ? Duration.zero : null,
+          position: preserveStartCheckpoint
+              ? Duration.zero
+              : checkpointPosition,
         );
       } catch (error) {
         releaseError ??= error;
@@ -1114,9 +1296,17 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     }
     final first = playable.first;
     if (state.playlistMode == PlaylistMode.bookmarks) {
-      state = state.copyWith(currentBookmarkIndex: first.index);
+      state = state.copyWith(
+        currentBookmarkIndex: first.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     } else {
-      state = state.copyWith(currentFullIndex: first.index);
+      state = state.copyWith(
+        currentFullIndex: first.index,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     }
     await _alignEngineToCurrent();
     await play();
@@ -1129,6 +1319,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     bool resetWholeLoops = false,
   }) async {
     final gen = ++_playbackGen;
+    _clearPlaybackInterval();
     final wasSentenceDriven = _activeSentenceDrivenPlayback;
     _activeSentenceDrivenPlayback = false;
     _awaitingReplayFromStart = false;
@@ -1183,7 +1374,7 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
         return;
       }
       _autoSaveProgress();
-      await _delay(settings.wholeInterval);
+      await _delay(settings.wholeInterval, playbackGeneration: gen);
       await _engine.seek(Duration.zero);
       _resetGaplessStatsPosition(_engine.currentPosition);
       state = state.copyWith(position: Duration.zero);
@@ -1236,12 +1427,27 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
     required bool resetSentenceRepeats,
   }) {
     final gen = ++_playbackGen;
+    _clearPlaybackInterval();
     _activeSentenceDrivenPlayback = true;
     _awaitingReplayFromStart = false;
     _playbackSessionId = _engine.newSession();
     state = state.copyWith(
       wholeLoopsDone: resetWholeLoops ? 0 : state.wholeLoopsDone,
       sentenceRepeatsDone: resetSentenceRepeats ? 0 : state.sentenceRepeatsDone,
+    );
+    final position = _currentPos;
+    final playable = _playable;
+    final currentSentence =
+        position != null && position >= 0 && position < playable.length
+        ? playable[position]
+        : null;
+    AppLogger.log(
+      'MediaPlayback',
+      'sentence playback start item=${state.audioItem?.id} '
+          'sentence=${currentSentence?.index} '
+          'range=${currentSentence?.startTime.inMilliseconds}-'
+          '${currentSentence?.endTime.inMilliseconds}ms '
+          'generation=$gen session=$_playbackSessionId',
     );
     _setPlaying(true);
     unawaited(_playSentenceDriven(gen));
@@ -1257,11 +1463,34 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       }
       final sentence = playable[pos];
       _setCurrentFromSentence(sentence);
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence range dispatch begin item=${state.audioItem?.id} '
+            'sentence=${sentence.index} '
+            'range=${sentence.startTime.inMilliseconds}-'
+            '${sentence.endTime.inMilliseconds}ms generation=$gen '
+            'session=$_playbackSessionId',
+      );
       final result = await _engine.playRange(
         sentence.startTime,
         sentence.endTime,
         speed: state.settings.playbackSpeed,
+        onRangeReady: () => AppLogger.log(
+          'MediaPlayback',
+          'sentence backend play begin item=${state.audioItem?.id} '
+              'sentence=${sentence.index} '
+              'range=${sentence.startTime.inMilliseconds}-'
+              '${sentence.endTime.inMilliseconds}ms generation=$gen '
+              'session=$_playbackSessionId',
+        ),
         sessionId: _playbackSessionId,
+      );
+      AppLogger.log(
+        'MediaPlayback',
+        'sentence range dispatch end item=${state.audioItem?.id} '
+            'sentence=${sentence.index} result=$result '
+            'generationCurrent=${gen == _playbackGen} '
+            'session=$_playbackSessionId',
       );
       if (gen != _playbackGen || result != SentencePlaybackResult.completed) {
         return;
@@ -1299,10 +1528,10 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
           return;
         case ReplayCurrent(:final pauseBefore):
           _autoSaveProgress();
-          await _delay(pauseBefore);
+          await _delay(pauseBefore, playbackGeneration: gen);
         case GoToPosition(:final position, :final pauseBefore):
           final loopedWhole = pos >= playable.length - 1 && position == 0;
-          await _delay(pauseBefore);
+          await _delay(pauseBefore, playbackGeneration: gen);
           pos = position;
           state = state.copyWith(
             sentenceRepeatsDone: 0,
@@ -1331,17 +1560,23 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
 
   void _setCurrentFromSentence(Sentence sentence) {
     if (state.playlistMode == PlaylistMode.bookmarks) {
+      final focusChanged = state.currentBookmarkIndex != sentence.index;
       state = state.copyWith(
         currentBookmarkIndex: sentence.index,
         lastPlayedBookmarkIndex: sentence.index,
         position: sentence.startTime,
+        requestSentenceFocus: focusChanged,
+        sentenceFocusReason: focusChanged ? SentenceFocusReason.playback : null,
       );
       return;
     }
+    final focusChanged = state.currentFullIndex != sentence.index;
     state = state.copyWith(
       currentFullIndex: sentence.index,
       lastPlayedFullIndex: sentence.index,
       position: sentence.startTime,
+      requestSentenceFocus: focusChanged,
+      sentenceFocusReason: focusChanged ? SentenceFocusReason.playback : null,
     );
   }
 
@@ -1351,19 +1586,33 @@ class MediaPlayback extends Notifier<MediaPlaybackState> {
       if (bookmarked.isEmpty) return;
       if (state.currentBookmarkIndex == null ||
           !state.bookmarkedIndices.contains(state.currentBookmarkIndex)) {
-        state = state.copyWith(currentBookmarkIndex: bookmarked.first.index);
+        state = state.copyWith(
+          currentBookmarkIndex: bookmarked.first.index,
+          requestSentenceFocus: true,
+          sentenceFocusReason: SentenceFocusReason.immediate,
+        );
       }
       return;
     }
     if (state.sentences.isEmpty) return;
     final current = state.currentFullIndex;
     if (current == null || current < 0 || current >= state.sentences.length) {
-      state = state.copyWith(currentFullIndex: 0);
+      state = state.copyWith(
+        currentFullIndex: 0,
+        requestSentenceFocus: true,
+        sentenceFocusReason: SentenceFocusReason.immediate,
+      );
     }
   }
 
-  Future<void> _delay(Duration duration) async {
-    if (duration <= Duration.zero) return;
+  Future<void> _delay(
+    Duration duration, {
+    required int playbackGeneration,
+  }) async {
+    if (duration <= Duration.zero || playbackGeneration != _playbackGen) {
+      return;
+    }
+    _beginPlaybackInterval(playbackGeneration);
     await Future.delayed(duration);
   }
 

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import 'package:audio_service/audio_service.dart' hide PlaybackState;
 import 'package:drift/drift.dart' show Value;
 import 'package:echo_loop/database/app_database.dart' hide AudioItem;
@@ -8,11 +10,15 @@ import 'package:echo_loop/database/daos/playback_state_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/listening_practice_state.dart';
+import 'package:echo_loop/models/playback_settings.dart';
+import 'package:echo_loop/models/sentence_focus_reason.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/l10n/app_localizations.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
 import 'package:echo_loop/providers/media_engine/media_engine_provider.dart';
 import 'package:echo_loop/providers/media_playback/media_playback_provider.dart';
 import 'package:echo_loop/providers/favorite_sentence_lifecycle_provider.dart';
+import 'package:echo_loop/router/app_router.dart' show rootRouteObserver;
 import 'package:echo_loop/providers/sentence_ai_provider.dart';
 import 'package:echo_loop/screens/media_playback_screen.dart';
 import 'package:echo_loop/services/media_session_router.dart';
@@ -30,7 +36,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:echo_loop/services/app_logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../helpers/mock_providers.dart';
 import '../helpers/shared/fake_media_player_backend.dart';
@@ -47,6 +55,7 @@ void main() {
   late MediaSessionRouter router;
   late Directory appDir;
   late File mediaFile;
+  late File audioFile;
   late AudioItem item;
   late FakeAudioItemDao audioItemDao;
 
@@ -69,10 +78,16 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     appDir = await Directory.systemTemp.createTemp('echo-loop-video-screen-');
     appDataDirectoryOverride = appDir;
+    // 模拟启动期已准备的真实封面，避免后台写入与 Windows 临时目录清理竞争。
+    await File(
+      'assets/icon/app-icon-1024.png',
+    ).copy(p.join(appDir.path, 'now_playing_artwork.png'));
     backend = FakeMediaPlayerBackend();
     router = MediaSessionRouter(defaultHandler: BaseAudioHandler());
-    mediaFile = File('${appDir.path}/echo-loop-video-screen.mp4');
+    mediaFile = File(p.join(appDir.path, 'echo-loop-video-screen.mp4'));
     await mediaFile.writeAsBytes(const [0, 1, 2]);
+    audioFile = File(p.join(appDir.path, 'echo-loop-audio-screen.mp3'));
+    await audioFile.writeAsBytes(const [0, 1, 2]);
     audioItemDao = FakeAudioItemDao()
       ..transcriptSrtStore['video-screen'] =
           '1\n00:00:01,000 --> 00:00:03,000\nFirst sentence.\n';
@@ -168,25 +183,72 @@ void main() {
     });
   }
 
-  Future<void> pumpMediaReady(WidgetTester tester) async {
+  Future<void> pumpMediaReady(
+    WidgetTester tester, {
+    bool requireVideoView = true,
+    bool waitForPlaybackReady = true,
+  }) async {
+    final screen = find.byType(MediaPlaybackScreen);
+    final container = ProviderScope.containerOf(tester.element(screen.first));
     for (var i = 0; i < 40; i += 1) {
+      // 本地媒体探测包含真实文件 IO；只推进 fake clock 不会让它完成。
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
       await tester.pump(const Duration(milliseconds: 100));
+      final state = container.read(mediaPlaybackProvider);
       if (backend.openCalls.isNotEmpty &&
-          find
-              .byKey(const ValueKey('managed-media-loading'))
-              .evaluate()
-              .isEmpty &&
-          find.byKey(const ValueKey('fake-video-view')).evaluate().isNotEmpty &&
-          find
-              .byKey(const ValueKey('media-progress-elapsed-label'))
-              .evaluate()
-              .isNotEmpty) {
+          (!waitForPlaybackReady ||
+              (!state.isLoading &&
+                  !state.isTranscriptLoading &&
+                  find
+                      .byKey(const ValueKey('managed-media-loading'))
+                      .evaluate()
+                      .isEmpty &&
+                  find
+                      .byKey(const ValueKey('media-progress-elapsed-label'))
+                      .evaluate()
+                      .isNotEmpty)) &&
+          (!requireVideoView ||
+              find
+                  .byKey(const ValueKey('fake-video-view'))
+                  .evaluate()
+                  .isNotEmpty)) {
         // 媒体容器就绪后，字幕 Provider 仍可能在下一帧提交结果；多推进一小段
         // 时间，避免后续断言观察到“媒体已就绪但字幕尚未挂载”的中间态。
         await tester.pump(const Duration(milliseconds: 500));
         return;
       }
     }
+    final state = container.read(mediaPlaybackProvider);
+    fail(
+      '媒体页面未就绪: loading=${state.isLoading}, '
+      'transcriptLoading=${state.isTranscriptLoading}, '
+      'openCalls=${backend.openCalls.length}',
+    );
+  }
+
+  Future<void> updatePlaybackSettings(
+    WidgetTester tester,
+    MediaPlayback controller,
+    PlaybackSettings settings,
+  ) async {
+    final update = controller.updateSettings(settings);
+    // 生命周期队列和 SharedPreferences 会在 tester 的 fake-async zone 中
+    // 通过微任务及平台消息完成；推进一帧后再等待其 Future，避免测试回调悬挂。
+    await tester.pump();
+    await update;
+  }
+
+  Future<void> pumpUntil(
+    WidgetTester tester,
+    bool Function() condition, {
+    String reason = 'condition was not met',
+  }) async {
+    for (var frame = 0; frame < 40 && !condition(); frame += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(condition(), isTrue, reason: reason);
   }
 
   tearDown(() async {
@@ -212,7 +274,7 @@ void main() {
     expect(find.text('Failed to load video'), findsNothing);
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(backend.openCalls, isNotEmpty);
-    expect(find.text('No transcript'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
     expect(find.text('Screen Video'), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
     final viewportWidth =
@@ -257,6 +319,33 @@ void main() {
     expect(backend.videoTrackCalls, contains(false));
   });
 
+  testMediaWidgets('音频随心听使用媒体引擎且只隐藏视频画面', (tester) async {
+    final audioItem = AudioItem(
+      id: item.id,
+      name: 'Screen Audio',
+      audioPath: 'echo-loop-audio-screen.mp3',
+      addedDate: item.addedDate,
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: audioItem),
+        overrides: [
+          mediaBackendFactoryProvider.overrideWithValue(() => backend),
+          mediaSessionRouterProvider.overrideWithValue(router),
+        ],
+      ),
+    );
+    await pumpMediaReady(tester, requireVideoView: false);
+
+    expect(backend.openCalls, [audioFile.path]);
+    expect(backend.videoViewSizes, isEmpty);
+    expect(find.byKey(const ValueKey('media-visual-surface')), findsNothing);
+    expect(find.byKey(const ValueKey('media-control-panel')), findsOneWidget);
+    expect(find.byKey(const ValueKey('media-progress-bar')), findsOneWidget);
+    expect(find.text('Screen Audio'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
+  });
+
   testMediaWidgets('已创建意群播放器后退出页面不在卸载期修改媒体状态', (tester) async {
     await tester.pumpWidget(
       createTestApp(
@@ -277,6 +366,77 @@ void main() {
 
     expect(tester.takeException(), isNull);
   });
+
+  for (final pauseFails in [false, true]) {
+    testMediaWidgets('页面直接卸载时安全完成媒体收尾（暂停失败：$pauseFails）', (tester) async {
+      final visible = ValueNotifier(true);
+      addTearDown(visible.dispose);
+      await tester.pumpWidget(
+        createTestApp(
+          ValueListenableBuilder<bool>(
+            valueListenable: visible,
+            builder: (context, show, child) => show
+                ? MediaPlaybackScreen(audioItem: item)
+                : const SizedBox.shrink(),
+          ),
+          overrides: mediaOverrides(withTranscript: true),
+        ),
+      );
+      await pumpMediaReady(tester);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(MediaPlaybackScreen)),
+      );
+      final controller = container.read(mediaPlaybackProvider.notifier);
+      controller.senseGroupRangePlayback;
+      unawaited(controller.play());
+      await tester.pump();
+      expect(backend.playing, isTrue);
+
+      // 保留应用级 ProviderScope，直接卸载页面；不能预先调用 release 掩盖 dispose 问题。
+      AppLogger.instance.clear();
+      if (pauseFails) backend.pauseError = StateError('exit pause failure');
+      visible.value = false;
+      await tester.pumpAndSettle();
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains('media finish start'),
+        ),
+        isTrue,
+      );
+      // 收尾包含定时器和文件 IO，按完成日志推进模拟时钟，而不是等待固定时长。
+      bool cleanupFinished() => AppLogger.instance.entries.any(
+        (entry) =>
+            entry.message.contains('media finish complete') ||
+            entry.message.contains('media dispose cleanup failed'),
+      );
+      for (var frame = 0; frame < 50 && !cleanupFinished(); frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+        await tester.runAsync(() => Future<void>(() {}));
+      }
+      expect(cleanupFinished(), isTrue, reason: '页面收尾必须完成');
+      expect(tester.takeException(), isNull);
+      if (!pauseFails) expect(backend.playing, isFalse);
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains(
+            'Tried to modify a provider while the widget tree was building',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        AppLogger.instance.entries.any(
+          (entry) => entry.message.contains('media dispose cleanup failed'),
+        ),
+        pauseFails,
+        reason: '后台释放失败必须记录，且不能成为未处理的异步异常',
+      );
+      expect(router.isRouted, isFalse);
+      expect(container.read(mediaPlaybackProvider).audioItem, isNull);
+      // 故障注入只覆盖本次页面退出，应用级 ProviderScope 清理恢复正常后端。
+      backend.pauseError = null;
+    });
+  }
 
   testMediaWidgets('视频播放控制区避让底部系统安全区', (tester) async {
     final originalPhysicalSize = tester.view.physicalSize;
@@ -520,7 +680,7 @@ void main() {
     expect(find.byType(TabBar), findsNothing);
     expect(find.byType(TabBarView), findsOneWidget);
     final card = tester.widget<ParagraphSentenceListCard>(cardFinder);
-    expect(card.onSentenceTap, isNotNull);
+    expect(card.onSentenceExplanationTap, isNotNull);
 
     final cardRect = tester.getRect(cardFinder);
     final viewportWidth =
@@ -533,29 +693,191 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
-  testMediaWidgets('视频画面和字幕区之间显示主题化细分割线', (tester) async {
+  testMediaWidgets('讲解页面隐藏期间不跟随，返回后无动画定位最新当前句', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
     await tester.pumpWidget(
-      createTestApp(
+      createTestScreen(
         MediaPlaybackScreen(audioItem: item),
-        overrides: mediaOverrides(withTranscript: true),
+        navigatorObservers: [rootRouteObserver],
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
       ),
     );
     await pumpMediaReady(tester);
 
-    final dividerFinder = find.byKey(
-      const ValueKey('media-visual-transcript-divider'),
-    );
-    expect(dividerFinder, findsOneWidget);
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    const selectedIndex = 12;
+    await controller.selectFullSentence(selectedIndex, autoPlay: false);
+    await tester.pumpAndSettle();
 
-    final divider = tester.widget<Container>(dividerFinder);
-    expect(tester.getSize(dividerFinder).width, 1);
-    expect(tester.getSize(dividerFinder).height, greaterThan(1));
-    expect(
-      divider.color,
-      Theme.of(
-        tester.element(dividerFinder),
-      ).colorScheme.outlineVariant.withValues(alpha: 0.45),
+    final scrollable = find.byType(ScrollablePositionedList);
+    await tester.drag(scrollable, const Offset(0, -900));
+    await tester.pumpAndSettle();
+
+    final card = tester.widget<ParagraphSentenceListCard>(
+      find.byType(ParagraphSentenceListCard),
     );
+    card.onSentenceExplanationTap!(sentences[selectedIndex]);
+    await tester.pumpAndSettle();
+    expect(find.text('Sentence Detail'), findsOneWidget);
+
+    // 模拟详情页覆盖期间当前播放句继续变化；底层字幕列表不应跟着滚动。
+    const latestIndex = 8;
+    await controller.selectFullSentence(latestIndex, autoPlay: false);
+
+    Navigator.of(tester.element(find.text('Sentence Detail'))).pop();
+    await tester.pumpAndSettle();
+
+    final listRect = tester.getRect(scrollable);
+    final selectedTile = find.byWidgetPredicate(
+      (widget) =>
+          widget is MaskedSentenceTile && widget.sentence.index == latestIndex,
+    );
+    expect(selectedTile, findsOneWidget);
+    expect(
+      tester.getRect(selectedTile).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '讲解返回后应在列表重新显示前恢复当前句位置',
+    );
+    expect(
+      tester.widget<Opacity>(find.byKey(kParagraphListInitialFocusKey)).opacity,
+      1,
+      reason: '从讲解页返回时列表保持可见并直接定位',
+    );
+  });
+
+  testMediaWidgets('精听与列表模式往返保留手动滚动位置', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    final scrollable = find.byType(ScrollablePositionedList);
+    await tester.drag(scrollable, const Offset(0, -900));
+    await tester.pumpAndSettle();
+
+    final listRect = tester.getRect(scrollable);
+    final trackedIndex = tester
+        .widgetList<MaskedSentenceTile>(find.byType(MaskedSentenceTile))
+        .map((tile) => tile.sentence.index)
+        .firstWhere((index) => index > 0);
+    final trackedSentence = find.byWidgetPredicate(
+      (widget) =>
+          widget is MaskedSentenceTile && widget.sentence.index == trackedIndex,
+    );
+    final trackedTop = tester.getRect(trackedSentence).top;
+    expect(tester.getRect(trackedSentence).bottom, greaterThan(listRect.top));
+    expect(trackedTop, lessThan(listRect.bottom));
+
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: false),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.getRect(trackedSentence).top,
+      closeTo(trackedTop, 2),
+      reason: '播放焦点未变时，切换模式不应重置用户滚动位置',
+    );
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('精听期间当前句变化后切回列表直接定位最新句', (tester) async {
+    final sentences = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 3),
+        endTime: Duration(seconds: index * 3 + 2),
+      ),
+    );
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: sentences,
+        ),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    await controller.selectFullSentence(12, autoPlay: false);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: false),
+    );
+    await tester.pumpAndSettle();
+
+    final scrollable = find.byType(ScrollablePositionedList);
+    final listRect = tester.getRect(scrollable);
+    final selectedSentence = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 12,
+    );
+    expect(selectedSentence, findsOneWidget);
+    expect(
+      tester.getRect(selectedSentence).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '精听期间焦点变化时，列表应直接对齐最新当前句',
+    );
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
   });
 
   testMediaWidgets('单句模式复用音频讲解视图并保留视频画面', (tester) async {
@@ -588,18 +910,31 @@ void main() {
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
     expect(find.text('Sentence 1/2'), findsOneWidget);
     expect(find.text('0:01 - 0:03'), findsOneWidget);
-    final pagerRect = tester.getRect(
-      find.byKey(kFullSingleSentenceSwipeAreaKey),
+    final swipeArea = find.byKey(kFullSingleSentenceSwipeAreaKey);
+    final pagerRect = tester.getRect(swipeArea);
+    final pagerRootRect = tester.getRect(find.byType(FreePlayerSentencePager));
+    final infoRowRect = tester.getRect(find.byType(PracticeSentenceInfoRow));
+    final pagerHostRect = tester.getRect(
+      find.ancestor(of: swipeArea, matching: find.byType(Padding)).first,
     );
+    expect(pagerRect.left, pagerHostRect.left + AppSpacing.m);
+    expect(pagerRect.right, pagerHostRect.right - AppSpacing.m);
+    expect(infoRowRect.left, pagerRootRect.left);
+    expect(infoRowRect.right, pagerRootRect.right);
     expect(
       tester.getRect(find.byType(SentenceExplanationView).hitTestable()).left,
-      pagerRect.left + AppSpacing.m,
-      reason: '视频随心听讲解区应相对分页器保留宿主级水平边距',
+      pagerRect.left,
+      reason: '随心听讲解内容应与已留白的滑动区左边缘对齐',
+    );
+    expect(
+      tester.getRect(find.byType(SentenceExplanationView).hitTestable()).right,
+      pagerRect.right,
+      reason: '随心听讲解内容应与已留白的滑动区右边缘对齐',
     );
     final viewportWidth =
         tester.view.physicalSize.width / tester.view.devicePixelRatio;
     expect(pagerRect.left, greaterThan(0));
-    expect(pagerRect.right, greaterThanOrEqualTo(viewportWidth));
+    expect(pagerRect.right, lessThan(viewportWidth));
 
     await releaseMediaPage(tester);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -713,6 +1048,144 @@ void main() {
     await tester.pump(const Duration(seconds: 6));
   });
 
+  testMediaWidgets('播放中横滑切句等卡片停稳后再播放目标句', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await updatePlaybackSettings(
+      tester,
+      controller,
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    unawaited(controller.play());
+    await tester.pump();
+    expect(backend.playCalls, 1);
+
+    final pager = find.byKey(kFullSingleSentenceSwipeAreaKey);
+    final gesture = await tester.startGesture(tester.getCenter(pager));
+    await gesture.moveBy(Offset(-tester.getSize(pager).width * 0.7, 0));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    expect(backend.playCalls, 1);
+
+    await gesture.up();
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '分页停稳后应提交目标句',
+    );
+    await pumpUntil(
+      tester,
+      () => backend.playCalls == 2,
+      reason: '目标句提交后应恢复播放',
+    );
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(backend.playCalls, 2);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('播放中点击下一句等卡片动画结束后再播放目标句', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+    unawaited(controller.play());
+    await tester.pump();
+    expect(backend.playCalls, 1);
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.skip_next));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 0);
+    expect(backend.playCalls, 1);
+
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '卡片动画结束后应提交目标句',
+    );
+    await pumpUntil(
+      tester,
+      () => backend.playCalls == 2,
+      reason: '目标句提交后应恢复播放',
+    );
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(backend.playCalls, 2);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
+  testMediaWidgets('暂停时点击下一句完成切卡片但不自动播放', (tester) async {
+    await tester.pumpWidget(
+      createTestApp(
+        MediaPlaybackScreen(audioItem: item),
+        overrides: mediaOverrides(withTranscript: true),
+      ),
+    );
+    await pumpMediaReady(tester);
+
+    final context = tester.element(find.byType(MediaPlaybackScreen));
+    final container = ProviderScope.containerOf(context);
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(singleSentenceMode: true),
+    );
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.tap(find.widgetWithIcon(IconButton, Icons.skip_next));
+    await pumpUntil(
+      tester,
+      () => container.read(mediaPlaybackProvider).currentFullIndex == 1,
+      reason: '卡片动画结束后应提交目标句',
+    );
+
+    expect(container.read(mediaPlaybackProvider).currentFullIndex, 1);
+    expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
+    expect(backend.playCalls, 0);
+    expect(backend.seekCalls.last, const Duration(seconds: 4));
+
+    await releaseMediaPage(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testMediaWidgets('第一句时上一句按钮禁用，下一句按钮启用', (tester) async {
     await tester.pumpWidget(
       createTestApp(
@@ -776,6 +1249,35 @@ void main() {
       ),
     );
     await pumpMediaReady(tester);
+    final l10n =
+        AppLocalizations.of(tester.element(find.byType(MediaPlaybackScreen))) ??
+        (throw StateError('播放器测试页缺少本地化配置'));
+    final infoBar = find.byKey(const ValueKey('media-info-bar'));
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.fullText)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: infoBar,
+        matching: find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.article,
+    );
+    final sentenceModeIcon = find.byKey(
+      const ValueKey('media-info-sentence-mode-icon'),
+    );
+    final labelListIcon = tester.widget<Icon>(sentenceModeIcon);
+    expect(labelListIcon.icon, Icons.menu);
+    expect(labelListIcon.size, 14);
 
     final context = tester.element(find.byType(MediaPlaybackScreen));
     final container = ProviderScope.containerOf(context);
@@ -796,7 +1298,41 @@ void main() {
       container.read(mediaPlaybackProvider).playlistMode,
       PlaylistMode.bookmarks,
     );
-    expect(find.byIcon(Icons.bookmarks), findsOneWidget);
+    final selectedBookmarkIcon = find.descendant(
+      of: button,
+      matching: find.byIcon(Icons.bookmarks),
+    );
+    expect(selectedBookmarkIcon, findsOneWidget);
+    expect(
+      tester.widget<Icon>(selectedBookmarkIcon).color,
+      AppTheme.bookmarkColor,
+    );
+    final bookmarkCountBadge = find.ancestor(
+      of: selectedBookmarkIcon,
+      matching: find.byType(Badge),
+    );
+    final badge = tester.widget<Badge>(bookmarkCountBadge);
+    expect(badge.backgroundColor, AppTheme.bookmarkCountSelectedBadgeColor);
+    expect(badge.textColor, AppTheme.bookmarkCountSelectedBadgeTextColor);
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.bookmarked)),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: infoBar,
+        matching: find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.bookmarks,
+    );
 
     await tester.tap(button);
     await tester.pumpAndSettle();
@@ -804,10 +1340,30 @@ void main() {
       container.read(mediaPlaybackProvider).playlistMode,
       PlaylistMode.full,
     );
-    expect(find.byIcon(Icons.bookmarks_outlined), findsOneWidget);
+    final fullModeBookmarkIcon = find.byIcon(Icons.bookmarks_outlined);
+    expect(fullModeBookmarkIcon, findsOneWidget);
+    final fullModeBookmarkBadge = find.ancestor(
+      of: fullModeBookmarkIcon,
+      matching: find.byType(Badge),
+    );
+    final fullModeBadge = tester.widget<Badge>(fullModeBookmarkBadge);
+    expect(fullModeBadge.backgroundColor, AppTheme.bookmarkCountBadgeColor);
+    expect(fullModeBadge.textColor, AppTheme.bookmarkCountBadgeTextColor);
+    expect(
+      find.descendant(of: infoBar, matching: find.text(l10n.fullText)),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<Icon>(
+            find.byKey(const ValueKey('media-info-playlist-mode-icon')),
+          )
+          .icon,
+      Icons.article,
+    );
   });
 
-  testMediaWidgets('收藏列表播放中仍可点击编号、正文和书签热区', (tester) async {
+  testMediaWidgets('收藏列表播放中仍可点击正文、讲解按钮和书签热区', (tester) async {
     await tester.pumpWidget(
       createTestScreen(
         MediaPlaybackScreen(audioItem: item),
@@ -837,7 +1393,7 @@ void main() {
     }
 
     await tester.tap(
-      find.byKey(const ValueKey('$kMaskedSentenceNumberHitAreaKeyPrefix-1')),
+      find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
     );
     await tester.pump(const Duration(milliseconds: 20));
     expect(container.read(mediaPlaybackProvider).currentBookmarkIndex, 1);
@@ -846,7 +1402,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
     await tester.tap(
-      find.byKey(const ValueKey('$kMaskedSentenceBodyHitAreaKeyPrefix-1')),
+      find.byKey(
+        const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-1'),
+      ),
     );
     await tester.pumpAndSettle();
     expect(find.text('Sentence Detail'), findsOneWidget);
@@ -980,10 +1538,11 @@ void main() {
     expect(state.settings.singleSentenceMode, isFalse);
     expect(find.byType(ParagraphSentenceListCard), findsOneWidget);
 
-    final listModeButton = find.ancestor(
-      of: find.byIcon(Icons.article),
-      matching: find.byType(IconButton),
+    final listModeButton = find.byKey(
+      const ValueKey('media-list-mode-toggle-button'),
     );
+    expect(tester.widget<IconButton>(listModeButton).iconSize, 22);
+    expect(tester.getSize(listModeButton), const Size.square(48));
     await tester.tap(listModeButton);
     await tester.pumpAndSettle();
     expect(
@@ -1072,7 +1631,7 @@ void main() {
     );
     expect(videoRect.width, closeTo(dividerRect.left, 0.1));
     // 控制区与单列一致，其余左栏高度全部交给黑色观看画布。
-    expect(controlPanelRect.height, closeTo(singleControlPanelHeight, 0.1));
+    expect(controlPanelRect.height, closeTo(singleControlPanelHeight, 0.5));
     expect(
       videoRect.height,
       closeTo(wideLayoutRect.height - controlPanelRect.height, 0.1),
@@ -1240,7 +1799,7 @@ void main() {
         ),
       ),
     );
-    await pumpMediaReady(tester);
+    await pumpMediaReady(tester, waitForPlaybackReady: false);
 
     expect(
       find.byKey(const ValueKey('media-playback-wide-layout')),
@@ -1281,7 +1840,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AppBar), findsOneWidget);
-    expect(find.text('No transcript'), findsOneWidget);
+    expect(find.text('No subtitles available'), findsOneWidget);
     expect(find.byIcon(Icons.fullscreen), findsOneWidget);
     expect(find.byKey(const ValueKey('fake-video-view')), findsOneWidget);
   });
@@ -1412,22 +1971,52 @@ void main() {
 
   testMediaWidgets('拖动进度圆点过程中实时刷新已播和剩余时间', (tester) async {
     backend.setDuration(const Duration(minutes: 2));
+    final transcript = List<Sentence>.generate(
+      24,
+      (index) => Sentence(
+        index: index,
+        text: 'Sentence $index.',
+        startTime: Duration(seconds: index * 5),
+        endTime: Duration(seconds: index * 5 + 4),
+      ),
+    );
     await tester.pumpWidget(
       createTestApp(
         MediaPlaybackScreen(audioItem: item),
-        overrides: [
-          mediaBackendFactoryProvider.overrideWithValue(() => backend),
-          mediaSessionRouterProvider.overrideWithValue(router),
-        ],
+        overrides: mediaOverrides(
+          withTranscript: true,
+          transcriptOverride: transcript,
+        ),
       ),
     );
     await pumpMediaReady(tester);
+    await tester.pumpAndSettle();
+
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(MediaPlaybackScreen)),
+    );
+    final controller = container.read(mediaPlaybackProvider.notifier);
+    unawaited(controller.play());
+    await tester.pump();
 
     final barRect = tester.getRect(
       find.byKey(const ValueKey('media-progress-bar')),
     );
+    final firstSentence = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 0,
+    );
+    final firstSentenceTop = tester.getRect(firstSentence).top;
     final gesture = await tester.startGesture(barRect.centerLeft);
     await tester.pump();
+    // 播放仍在进行时，播放进度可能继续跨句；拖动期间列表不能跟随这些更新滚动。
+    backend.emitPosition(const Duration(seconds: 20));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(
+      tester.getRect(firstSentence).top,
+      closeTo(firstSentenceTop, 1),
+      reason: '拖动进度条期间暂停列表自动聚焦',
+    );
     await gesture.moveTo(barRect.center);
     await tester.pump();
 
@@ -1445,6 +2034,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 16));
 
     expect(backend.seekCalls.last.inSeconds, closeTo(60, 1));
+    expect(
+      tester.widget<Opacity>(find.byKey(kParagraphListInitialFocusKey)).opacity,
+      1,
+      reason: '进度条 seek 后列表应保持可见',
+    );
+    await tester.pumpAndSettle();
+    expect(
+      container.read(mediaPlaybackProvider).sentenceFocusReason,
+      SentenceFocusReason.navigation,
+    );
+    final listRect = tester.getRect(find.byType(ScrollablePositionedList));
+    final selectedTile = find.byWidgetPredicate(
+      (widget) => widget is MaskedSentenceTile && widget.sentence.index == 12,
+    );
+    expect(selectedTile, findsOneWidget);
+    expect(
+      tester.getRect(selectedTile).top,
+      closeTo(listRect.top + listRect.height * 0.4, 3),
+      reason: '进度条 seek 完成后当前句应落在 0.4 锚点',
+    );
     await tester.pump(const Duration(milliseconds: 180));
   });
 

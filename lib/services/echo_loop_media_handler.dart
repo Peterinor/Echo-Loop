@@ -42,6 +42,8 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
   Future<void> Function()? _onPauseCommand;
   Future<void> Function()? _onSkipToPrevious;
   Future<void> Function()? _onSkipToNext;
+  Future<void> Function()? _onRewind;
+  Future<void> Function()? _onFastForward;
   bool? _logicalPlaying;
   bool _progressFrozen = false;
   bool _opened = false;
@@ -65,6 +67,24 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
   }) {
     _onSkipToPrevious = onPrevious;
     _onSkipToNext = onNext;
+    if (onPrevious != null || onNext != null) {
+      _onRewind = null;
+      _onFastForward = null;
+    }
+    _broadcastState();
+  }
+
+  /// 注册无字幕媒体的后退/前进回调，与切句控制互斥。
+  void setSeekHandlers({
+    Future<void> Function()? onRewind,
+    Future<void> Function()? onFastForward,
+  }) {
+    _onRewind = onRewind;
+    _onFastForward = onFastForward;
+    if (onRewind != null || onFastForward != null) {
+      _onSkipToPrevious = null;
+      _onSkipToNext = null;
+    }
     _broadcastState();
   }
 
@@ -213,10 +233,22 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
   }
 
   @override
-  Future<void> skipToNext() async => _onSkipToNext?.call();
+  Future<void> skipToNext() async {
+    final callback = _onSkipToNext ?? _onFastForward;
+    await callback?.call();
+  }
 
   @override
-  Future<void> skipToPrevious() async => _onSkipToPrevious?.call();
+  Future<void> skipToPrevious() async {
+    final callback = _onSkipToPrevious ?? _onRewind;
+    await callback?.call();
+  }
+
+  @override
+  Future<void> rewind() async => _onRewind?.call();
+
+  @override
+  Future<void> fastForward() async => _onFastForward?.call();
 
   Future<void> dispose() async {
     _disposed = true;
@@ -228,25 +260,33 @@ class EchoLoopMediaHandler extends BaseAudioHandler with SeekHandler {
     await _becomingNoisySub?.cancel();
   }
 
+  /// 按统一的上一项、播放/暂停、下一项顺序发布系统媒体卡片 controls。
   void _broadcastState() {
     final playing = _logicalPlaying ?? _backend.playing;
-    final canSkip = _onSkipToPrevious != null || _onSkipToNext != null;
+    final canNavigate =
+        _onSkipToPrevious != null ||
+        _onSkipToNext != null ||
+        _onRewind != null ||
+        _onFastForward != null;
     final controls = <MediaControl>[
-      if (canSkip) MediaControl.skipToPrevious,
+      if (canNavigate) MediaControl.skipToPrevious,
       playing ? MediaControl.pause : MediaControl.play,
-      MediaControl.stop,
-      if (canSkip) MediaControl.skipToNext,
+      if (canNavigate) MediaControl.skipToNext,
     ];
+    final compactActions = canNavigate ? const [0, 1, 2] : const [0];
     playbackState.add(
       PlaybackState(
         controls: controls,
-        systemActions: const {
+        systemActions: {
           MediaAction.play,
           MediaAction.pause,
           MediaAction.seek,
-          MediaAction.stop,
+          if (canNavigate) ...{
+            MediaAction.skipToNext,
+            MediaAction.skipToPrevious,
+          },
         },
-        androidCompactActionIndices: canSkip ? const [0, 1, 3] : const [0, 1],
+        androidCompactActionIndices: compactActions,
         processingState: _mapState(),
         playing: playing,
         updatePosition: _backend.position,

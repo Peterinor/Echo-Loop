@@ -107,6 +107,9 @@ class AudioListView extends ConsumerStatefulWidget {
   /// 需要独立 sort state 的场景）。
   final AudioSortType? overrideSortType;
 
+  /// 覆盖滚动物理属性，例如下拉刷新需要的始终可滚动行为。
+  final ScrollPhysics? scrollPhysics;
+
   /// 是否处于多选模式（合集详情页批量删除）。默认关闭，库/播客场景零影响。
   final bool selectionMode;
 
@@ -129,6 +132,7 @@ class AudioListView extends ConsumerStatefulWidget {
     this.menuGuideStep,
     this.guideEnabled = true,
     this.overrideSortType,
+    this.scrollPhysics,
     this.selectionMode = false,
     this.selectedIds = const {},
     this.onEnterSelection,
@@ -189,6 +193,7 @@ class _AudioListViewState extends ConsumerState<AudioListView> {
     final headerCount = header == null ? 0 : 1;
     final listView = ListView.builder(
       padding: header == null ? const EdgeInsets.all(8) : EdgeInsets.zero,
+      physics: widget.scrollPhysics,
       itemCount: sortedItems.length + headerCount,
       itemBuilder: (context, index) {
         if (header != null && index == 0) return header;

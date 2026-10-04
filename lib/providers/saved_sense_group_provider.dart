@@ -34,21 +34,19 @@ class SavedSenseGroupList extends _$SavedSenseGroupList {
     int? groupStartMs,
     int? groupEndMs,
   }) async {
-    final dao = ref.read(savedSenseGroupDaoProvider);
-    await dao.saveSenseGroup(
-      phraseText: phraseText,
-      displayText: displayText,
-      audioItemId: audioItemId,
-      sentenceIndex: sentenceIndex,
-      sentenceText: sentenceText,
-      sentenceStartMs: sentenceStartMs,
-      sentenceEndMs: sentenceEndMs,
-      groupStartMs: groupStartMs,
-      groupEndMs: groupEndMs,
-    );
     await ref
         .read(favoriteVocabularyLifecycleProvider)
-        .restoreSenseGroupSchedule(phraseText);
+        .saveSenseGroup(
+          phraseText: phraseText,
+          displayText: displayText,
+          audioItemId: audioItemId,
+          sentenceIndex: sentenceIndex,
+          sentenceText: sentenceText,
+          sentenceStartMs: sentenceStartMs,
+          sentenceEndMs: sentenceEndMs,
+          groupStartMs: groupStartMs,
+          groupEndMs: groupEndMs,
+        );
   }
 
   /// 取消收藏意群

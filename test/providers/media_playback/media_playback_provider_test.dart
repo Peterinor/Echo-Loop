@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import 'package:audio_service/audio_service.dart' hide PlaybackState;
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
@@ -11,6 +13,7 @@ import 'package:echo_loop/models/listening_practice_state.dart';
 import 'package:echo_loop/models/media_load_result.dart';
 import 'package:echo_loop/models/playback_settings.dart';
 import 'package:echo_loop/models/sentence.dart';
+import 'package:echo_loop/models/sentence_focus_reason.dart';
 import 'package:echo_loop/models/study_stage.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
@@ -40,6 +43,7 @@ class _FailOnceStudyTimeService extends StudyTimeService {
 
   bool failNextSessionDuration = false;
   int sessionDurationCalls = 0;
+  void Function()? onRecordSessionDuration;
 
   @override
   Future<void> recordSessionDurations({
@@ -49,6 +53,7 @@ class _FailOnceStudyTimeService extends StudyTimeService {
     DateTime? date,
   }) async {
     sessionDurationCalls += 1;
+    onRecordSessionDuration?.call();
     if (failNextSessionDuration) {
       failNextSessionDuration = false;
       throw StateError('simulated final statistics flush failure');
@@ -73,6 +78,7 @@ void main() {
   late ProviderContainer container;
   late AppDatabase database;
   late _FailOnceStudyTimeService studyTimeService;
+  late List<Sentence> transcriptSentences;
 
   final sentences = <Sentence>[
     Sentence(
@@ -105,10 +111,15 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     appDir = await Directory.systemTemp.createTemp('echo-loop-media-playback-');
     appDataDirectoryOverride = appDir;
-    mediaFile = File('${appDir.path}/echo-loop-media-playback.mp4');
+    // 模拟启动期已准备的真实封面，避免后台写入与 Windows 临时目录清理竞争。
+    await File(
+      'assets/icon/app-icon-1024.png',
+    ).copy(p.join(appDir.path, 'now_playing_artwork.png'));
+    mediaFile = File(p.join(appDir.path, 'echo-loop-media-playback.mp4'));
     await mediaFile.writeAsBytes(const [0, 1, 2]);
     backend = FakeMediaPlayerBackend()
       ..setDuration(const Duration(seconds: 120));
+    transcriptSentences = List<Sentence>.of(sentences);
     audioItemDao = FakeAudioItemDao()
       ..transcriptSrtStore['media-playback-test'] =
           '1\n00:00:43,000 --> 00:00:50,000\nFirst sentence.\n';
@@ -130,7 +141,7 @@ void main() {
         playbackStateDaoProvider.overrideWithValue(playbackStateDao),
         studyTimeServiceProvider.overrideWithValue(studyTimeService),
         audioEngineProvider.overrideWith(
-          () => _TranscriptAudioEngine(sentences),
+          () => _TranscriptAudioEngine(transcriptSentences),
         ),
       ],
     );
@@ -222,6 +233,77 @@ void main() {
 
     final record = await database.dailyStudyRecordDao.getByDate(DateTime.now());
     expect(record?.studyTimeMilliseconds, greaterThanOrEqualTo(1000));
+  });
+
+  test('媒体锁屏控制统一为上一首、播放暂停、下一首并保留对应行为', () async {
+    final controller = await loadController();
+
+    final subtitleControls = router.playbackState.value.controls
+        .map((control) => control.action)
+        .toList();
+    expect(subtitleControls, [
+      MediaAction.skipToPrevious,
+      MediaAction.play,
+      MediaAction.skipToNext,
+    ]);
+    expect(router.playbackState.value.androidCompactActionIndices, [0, 1, 2]);
+    await router.skipToNext();
+    expect(backend.seekCalls.last, const Duration(seconds: 60));
+
+    await controller.releaseFromScreen();
+    transcriptSentences.clear();
+    await loadController();
+
+    expect(
+      router.playbackState.value.controls.map((control) => control.action),
+      subtitleControls,
+    );
+    await router.skipToPrevious();
+    await router.skipToNext();
+    expect(backend.seekCalls.takeLast(2), [
+      Duration.zero,
+      const Duration(seconds: 10),
+    ]);
+  });
+
+  test('退出先暂停再 flush 计时，断点使用暂停后的 backend 位置', () async {
+    final controller = await loadController();
+    final generation = controller.beginStudyPage();
+    unawaited(controller.play());
+    await waitUntil(() => backend.playCalls == 1);
+    backend.emitPosition(const Duration(seconds: 12));
+    await Future<void>.delayed(Duration.zero);
+    backend.setPositionWithoutEvent(const Duration(seconds: 18));
+
+    var pauseCallsAtFlush = 0;
+    var routedWhenSaving = false;
+    studyTimeService.onRecordSessionDuration = () {
+      pauseCallsAtFlush = backend.pauseCalls;
+    };
+    playbackStateDao.onSave = () => routedWhenSaving = router.isRouted;
+
+    await controller.finishStudyPage(generation: generation);
+
+    expect(pauseCallsAtFlush, greaterThan(0));
+    expect(routedWhenSaving, isTrue);
+    expect(playbackStateDao.savedPositions.last, const Duration(seconds: 18));
+    expect(router.isRouted, isFalse);
+  });
+
+  test('backend 暂停失败时仍 flush 计时、保存断点并解绑媒体会话', () async {
+    final controller = await loadController();
+    final generation = controller.beginStudyPage();
+    backend.pauseError = StateError('simulated pause failure');
+    playbackStateDao.onSave = () => expect(router.isRouted, isTrue);
+
+    await expectLater(
+      controller.finishStudyPage(generation: generation),
+      throwsA(isA<StateError>()),
+    );
+
+    expect(studyTimeService.sessionDurationCalls, 1);
+    expect(playbackStateDao.savedPositions, [Duration.zero]);
+    expect(router.isRouted, isFalse);
   });
 
   test('统计 flush 失败时媒体退出仍 detach backend', () async {
@@ -484,6 +566,10 @@ void main() {
     final controller = await loadController();
 
     await controller.seekAbsolute(Duration.zero);
+    expect(
+      container.read(mediaPlaybackProvider).sentenceFocusReason,
+      SentenceFocusReason.navigation,
+    );
     unawaited(controller.play());
     await Future<void>.delayed(Duration.zero);
 
@@ -513,6 +599,7 @@ void main() {
     state = container.read(mediaPlaybackProvider);
     expect(state.position, const Duration(seconds: 58));
     expect(state.currentFullIndex, 1);
+    expect(state.sentenceFocusReason, SentenceFocusReason.playback);
     await controller.pause();
   });
 
@@ -543,6 +630,12 @@ void main() {
     var state = container.read(mediaPlaybackProvider);
     expect(state.position, const Duration(seconds: 60));
     expect(state.currentFullIndex, 1);
+    expect(state.sentenceFocusReason, SentenceFocusReason.navigation);
+
+    await controller.nextSentence();
+    state = container.read(mediaPlaybackProvider);
+    expect(state.currentFullIndex, 2);
+    expect(state.sentenceFocusReason, SentenceFocusReason.navigation);
 
     backend.emitPosition(const Duration(seconds: 61));
     await Future<void>.delayed(Duration.zero);
@@ -555,6 +648,7 @@ void main() {
 
   test('整篇循环进入下一遍后播放图标状态恢复为播放中', () async {
     final controller = await loadController();
+    const interval = Duration(milliseconds: 100);
     await controller.updateSettings(
       container
           .read(mediaPlaybackProvider)
@@ -562,7 +656,7 @@ void main() {
           .copyWith(
             loopWhole: true,
             wholeLoopCount: 2,
-            wholeInterval: Duration.zero,
+            wholeInterval: interval,
           ),
     );
 
@@ -577,6 +671,13 @@ void main() {
     expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
 
     backend.emitCompleted();
+    await waitUntil(
+      () => container.read(mediaPlaybackProvider).wholeLoopsDone == 1,
+    );
+    expect(container.read(mediaPlaybackProvider).isPlaying, isTrue);
+    expect(router.playbackState.value.playing, isTrue);
+    expect(router.playbackState.value.speed, 0);
+
     await waitUntil(() => backend.playCalls >= 2);
 
     expect(backend.seekCalls.last, Duration.zero);
@@ -585,6 +686,71 @@ void main() {
 
     await controller.pause();
     expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
+  });
+
+  test('单句循环间隔期间保持暂停态图标，点击暂停取消待续播', () async {
+    final controller = await loadController();
+    const interval = Duration(milliseconds: 100);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(
+            loopSentence: true,
+            sentenceLoopCount: 2,
+            sentenceInterval: interval,
+          ),
+    );
+
+    unawaited(controller.play());
+    await waitUntil(() => backend.playCalls == 1);
+    backend.emitPosition(const Duration(seconds: 50));
+    await waitUntil(
+      () => container.read(mediaPlaybackProvider).sentenceRepeatsDone == 1,
+    );
+
+    expect(container.read(mediaPlaybackProvider).isPlaying, isTrue);
+    expect(router.playbackState.value.playing, isTrue);
+    expect(router.playbackState.value.speed, 0);
+    expect(router.playbackState.value.controls, contains(MediaControl.pause));
+
+    await controller.pause();
+    expect(container.read(mediaPlaybackProvider).isPlaying, isFalse);
+    expect(router.playbackState.value.controls, contains(MediaControl.play));
+
+    // 等待配置的间隔确实到期，确认被暂停取消的续播没有再次调用 backend。
+    await Future<void>.delayed(interval + const Duration(milliseconds: 20));
+    expect(backend.playCalls, 1);
+  });
+
+  test('最后一遍完成后显示播放并从头重播', () async {
+    final controller = await loadController();
+    const interval = Duration(milliseconds: 10);
+    await controller.updateSettings(
+      container
+          .read(mediaPlaybackProvider)
+          .settings
+          .copyWith(
+            loopSentence: true,
+            sentenceLoopCount: 2,
+            sentenceInterval: interval,
+          ),
+    );
+    await controller.seekAbsolute(const Duration(seconds: 105));
+
+    unawaited(controller.play());
+    await waitUntil(() => backend.playCalls == 1);
+    backend.emitPosition(const Duration(seconds: 110));
+    await waitUntil(() => backend.playCalls == 2);
+
+    backend.emitPosition(const Duration(seconds: 110));
+    await waitUntil(() => !container.read(mediaPlaybackProvider).isPlaying);
+    expect(router.playbackState.value.controls, contains(MediaControl.play));
+
+    unawaited(controller.play());
+    await waitUntil(() => backend.playCalls == 3);
+    expect(container.read(mediaPlaybackProvider).isPlaying, isTrue);
+    await controller.pause();
   });
 
   test('自然播完后退出页面仍将断点保存为开头', () async {
@@ -971,10 +1137,19 @@ void main() {
 
 class _MockPlaybackStateDao extends Mock implements PlaybackStateDao {
   final savedPositions = <Duration>[];
+  void Function()? onSave;
 
   @override
   Future<void> saveState(PlaybackStatesCompanion entry) async {
+    onSave?.call();
     savedPositions.add(Duration(milliseconds: entry.positionMs.value));
+  }
+}
+
+extension<T> on Iterable<T> {
+  List<T> takeLast(int count) {
+    final values = toList();
+    return values.sublist(values.length - count);
   }
 }
 

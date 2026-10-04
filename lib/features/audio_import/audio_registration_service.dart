@@ -1,12 +1,15 @@
 import 'package:dio/dio.dart';
+import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 
 import '../../models/audio_item.dart';
 import '../../providers/audio_library_provider.dart';
 import '../../providers/collection_provider.dart';
 import '../../services/app_logger.dart';
-import '../../utils/audio_duration.dart';
+import '../../utils/media_duration.dart';
 import 'audio_import_cancel.dart';
+
+const _durationDebugLogTag = 'MediaDuration';
 
 /// 已在应用沙盒内的音频注册服务。
 ///
@@ -17,10 +20,10 @@ class AudioRegistrationService {
     Uuid? uuid,
     Future<int> Function(String relativePath)? readDurationSeconds,
   }) : _uuid = uuid ?? const Uuid(),
-       _readDurationSeconds = readDurationSeconds ?? getAudioDurationSeconds;
+       _readDurationSeconds = readDurationSeconds;
 
   final Uuid _uuid;
-  final Future<int> Function(String relativePath) _readDurationSeconds;
+  final Future<int> Function(String relativePath)? _readDurationSeconds;
 
   Future<AudioRegistrationResult> registerSandboxedAudio({
     required SandboxedAudioRegistrationInput input,
@@ -32,7 +35,15 @@ class AudioRegistrationService {
     CancelToken? cancelToken,
   }) async {
     final traceId = cancelToken?.hashCode.toRadixString(16) ?? 'none';
+    final diagnosticTraceId = _uuid.v4();
     AppLogger.log('AudioImportRegister', 'begin trace=$traceId');
+    AppLogger.log(
+      _durationDebugLogTag,
+      'event=register_begin trace=$diagnosticTraceId '
+      'source=${input.importSourceType.name} '
+      'mediaType=${mediaTypeForPath(input.relativePath).name} '
+      'extension=${p.extension(input.relativePath)}',
+    );
     cancelToken?.throwIfCanceled();
     final originalSha = input.originalAudioSha256;
     if (originalSha != null) {
@@ -71,11 +82,49 @@ class AudioRegistrationService {
 
     cancelToken?.throwIfCanceled();
     AppLogger.log('AudioImportRegister', 'duration_begin trace=$traceId');
-    final duration = await _readDurationSeconds(input.relativePath);
+    final durationWatch = Stopwatch()..start();
+    final durationReader = _readDurationSeconds;
+    if (durationReader == null) {
+      AppLogger.log(
+        _durationDebugLogTag,
+        'event=duration_reader_begin trace=$diagnosticTraceId '
+        'backend=media_kit',
+      );
+    } else {
+      AppLogger.log(
+        _durationDebugLogTag,
+        'event=duration_reader_begin trace=$diagnosticTraceId reader=injected',
+      );
+    }
+    late final int duration;
+    try {
+      duration = durationReader == null
+          ? await getMediaDurationSeconds(
+              input.relativePath,
+              traceId: diagnosticTraceId,
+            )
+          : await durationReader(input.relativePath);
+    } on Object catch (error) {
+      durationWatch.stop();
+      AppLogger.log(
+        _durationDebugLogTag,
+        'event=duration_reader_failed trace=$diagnosticTraceId '
+        'errorType=${error.runtimeType} '
+        'elapsedMs=${durationWatch.elapsedMilliseconds}',
+      );
+      rethrow;
+    }
+    durationWatch.stop();
+    AppLogger.log(
+      _durationDebugLogTag,
+      'event=duration_reader_complete trace=$diagnosticTraceId '
+      'seconds=$duration outcome=${duration > 0 ? 'positive' : 'zero'} '
+      'elapsedMs=${durationWatch.elapsedMilliseconds}',
+    );
     AppLogger.log('AudioImportRegister', 'duration_complete trace=$traceId');
     cancelToken?.throwIfCanceled();
     final audioItem = AudioItem(
-      id: _uuid.v4(),
+      id: diagnosticTraceId,
       name: input.name,
       audioPath: input.relativePath,
       addedDate: DateTime.now(),
@@ -92,6 +141,13 @@ class AudioRegistrationService {
       'database_commit_begin trace=$traceId',
     );
     await audioLibrary.addAudioItem(audioItem);
+    AppLogger.log(
+      _durationDebugLogTag,
+      'event=item_persisted trace=$diagnosticTraceId itemId=${audioItem.id} '
+      'source=${input.importSourceType.name} '
+      'extension=${p.extension(input.relativePath)} '
+      'durationSeconds=${audioItem.totalDuration}',
+    );
     AppLogger.log(
       'AudioImportRegister',
       'database_commit_complete trace=$traceId',

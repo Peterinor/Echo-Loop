@@ -16,14 +16,17 @@ class _FakeEpisodeDownloadService extends AudioImportService {
   _FakeEpisodeDownloadService({this.shouldThrow = false});
 
   final bool shouldThrow;
+  String? lastDisplayName;
 
   @override
   Future<DownloadedAudio> downloadEpisodeToSandbox({
     required String url,
+    required String displayName,
     String? enclosureType,
     CancelToken? cancelToken,
     AudioImportProgressCallback? onProgress,
   }) async {
+    lastDisplayName = displayName;
     if (shouldThrow) {
       throw const AudioImportException(
         AudioImportFailureCode.network,
@@ -47,6 +50,7 @@ class _BlockingEpisodeDownloadService extends AudioImportService {
   @override
   Future<DownloadedAudio> downloadEpisodeToSandbox({
     required String url,
+    required String displayName,
     String? enclosureType,
     CancelToken? cancelToken,
     AudioImportProgressCallback? onProgress,
@@ -89,7 +93,8 @@ void main() {
 
     test('成功下载就地更新现有条目，不新建条目', () async {
       final item = podcastItem();
-      final container = makeContainer(_FakeEpisodeDownloadService(), item);
+      final service = _FakeEpisodeDownloadService();
+      final container = makeContainer(service, item);
       addTearDown(container.dispose);
 
       final ok = await container
@@ -97,6 +102,7 @@ void main() {
           .downloadPodcastEpisode(item);
 
       expect(ok, isTrue);
+      expect(service.lastDisplayName, item.name);
       final items = container.read(audioLibraryProvider).audioItems;
       // 仍只有一个条目（未产生孤儿）
       expect(items.length, 1);

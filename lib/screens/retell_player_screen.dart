@@ -109,9 +109,12 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
   /// seekToSentence 同步阶段 guard（同 blind_listen 注释）。
   bool _isSeeking = false;
 
-  /// 新手引导：编号区 / 主体区 Showcase key（随 State 生命周期存在）
-  final GlobalKey _guideNumberKey = GlobalKey(
-    debugLabel: 'retellGuideSentenceNumber',
+  /// 切段清理期间冻结录音状态副作用和自动启动。
+  bool _isParagraphTransitioning = false;
+
+  /// 新手引导：讲解按钮 / 主体播放区 Showcase key（随 State 生命周期存在）
+  final GlobalKey _guideExplanationKey = GlobalKey(
+    debugLabel: 'retellGuideSentenceExplanation',
   );
   final GlobalKey _guideBodyKey = GlobalKey(
     debugLabel: 'retellGuideSentenceBody',
@@ -295,7 +298,11 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
 
     if (prev.currentParagraphIndex != next.currentParagraphIndex) {
       _manualStoppedThisParagraph = false;
-      ref.read(retellRecordingControllerProvider.notifier).clearRecording();
+      if (!_isParagraphTransitioning) {
+        unawaited(
+          ref.read(retellRecordingControllerProvider.notifier).clearRecording(),
+        );
+      }
     }
 
     final recState = _latestRecordingState;
@@ -345,7 +352,9 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     }
     // 评估完成（有 ASR: processing→idle，无 ASR: recording→idle）
     if (prev?.phase != RetellRecordingPhase.idle &&
-        next.phase == RetellRecordingPhase.idle) {
+        next.phase == RetellRecordingPhase.idle &&
+        next.currentAttempt != null &&
+        !_isParagraphTransitioning) {
       // 复述完成后一律显示全部字幕（不影响用户在复述过程中的设置）
       ref
           .read(retellPlayerProvider.notifier)
@@ -549,7 +558,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     required RetellPlayerState playerState,
     required RetellRecordingState recState,
   }) {
-    if (!mounted || _isShowingDialog) return;
+    if (!mounted || _isShowingDialog || _isParagraphTransitioning) return;
 
     if (playerState.phase != RetellPhase.retelling ||
         _isExitingMediaFullscreenForRetell ||
@@ -587,6 +596,10 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (_isParagraphTransitioning || _currentPromptId() != promptId) {
+        AppLogger.log('RetellScreen', '⏭ 自动录音跳过: 段落已切换');
+        return;
+      }
       if (_isHandlingEvaluationComplete) {
         AppLogger.log('RetellScreen', '⏭ 自动录音跳过: 评估完成处理中');
         return;
@@ -1249,7 +1262,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     _manualStoppedThisParagraph = false;
     AppLogger.log('RetellScreen', '重播当前段落');
     await _cancelRecordingAndPlayback();
-    ref.read(retellRecordingControllerProvider.notifier).clearRecording();
+    await ref.read(retellRecordingControllerProvider.notifier).clearRecording();
     await ref.read(retellPlayerProvider.notifier).replayDuringCountdown();
   }
 
@@ -1264,36 +1277,67 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
   /// 最后一段时保留录音结果（badge）和手动标记，避免完成弹窗期间
   /// 触发自动录音或 badge 消失。
   Future<void> _goToNextParagraph() async {
+    if (_isParagraphTransitioning) return;
+    _isParagraphTransitioning = true;
     final retellState = ref.read(retellPlayerProvider);
     final isLastParagraph =
         retellState.currentParagraphIndex >= retellState.totalParagraphs - 1;
 
-    if (!isLastParagraph) {
-      _manualStoppedThisParagraph = false;
-      ref.read(retellRecordingControllerProvider.notifier).clearRecording();
-    }
+    try {
+      // 先禁止清理期间的 listener 自动录音，再取消音频和录音；
+      // clearRecording 会等待底层 warmup/录音会话确实结束。
+      await _cancelRecordingAndPlayback();
+      if (!isLastParagraph) {
+        _manualStoppedThisParagraph = false;
+        await ref
+            .read(retellRecordingControllerProvider.notifier)
+            .clearRecording();
+      }
 
-    AppLogger.log('RetellScreen', '→ 下一段 (last=$isLastParagraph)');
-    await _cancelRecordingAndPlayback();
+      AppLogger.log('RetellScreen', '→ 下一段 (last=$isLastParagraph)');
+      if (retellState.phase == RetellPhase.retelling) {
+        await ref.read(retellPlayerProvider.notifier).completeRetellingTurn();
+      } else {
+        await ref.read(retellPlayerProvider.notifier).goToNextParagraph();
+      }
 
-    if (retellState.phase == RetellPhase.retelling) {
-      await ref.read(retellPlayerProvider.notifier).completeRetellingTurn();
-    } else {
-      await ref.read(retellPlayerProvider.notifier).goToNextParagraph();
-    }
-
-    // 最后一段 → 直接触发完成处理
-    if (isLastParagraph) {
-      _handleCompleted();
+      // 最后一段 → 直接触发完成处理
+      if (isLastParagraph) {
+        _handleCompleted();
+      }
+    } finally {
+      _isParagraphTransitioning = false;
+      if (mounted && !isLastParagraph) {
+        final latestPlayer = ref.read(retellPlayerProvider);
+        final latestRecording = ref.read(retellRecordingControllerProvider);
+        _maybeAutoStartRecording(
+          playerState: latestPlayer,
+          recState: latestRecording,
+        );
+      }
     }
   }
 
   Future<void> _goToPreviousParagraph() async {
+    if (_isParagraphTransitioning) return;
+    _isParagraphTransitioning = true;
     _manualStoppedThisParagraph = false;
     AppLogger.log('RetellScreen', '→ 上一段');
-    await _cancelRecordingAndPlayback();
-    ref.read(retellRecordingControllerProvider.notifier).clearRecording();
-    await ref.read(retellPlayerProvider.notifier).goToPreviousParagraph();
+    try {
+      await _cancelRecordingAndPlayback();
+      await ref
+          .read(retellRecordingControllerProvider.notifier)
+          .clearRecording();
+      await ref.read(retellPlayerProvider.notifier).goToPreviousParagraph();
+    } finally {
+      _isParagraphTransitioning = false;
+      if (mounted) {
+        _maybeAutoStartRecording(
+          playerState: ref.read(retellPlayerProvider),
+          recState: ref.read(retellRecordingControllerProvider),
+        );
+      }
+    }
   }
 
   Future<void> _openSettings() async {
@@ -1317,7 +1361,7 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     await showRetellSettingsSheet(context);
   }
 
-  /// 点击句子编号 → 从该句开始播放
+  /// 点击句子正文 → 从该句开始播放
   ///
   /// 分场景处理：
   /// - **listening 阶段**：seekToSentence 内 _cancelAll 已经处理音频清理，
@@ -1527,22 +1571,22 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
     // 录音结果（从 controller state 获取）
     final currentAttempt = retellRecState.currentAttempt;
 
-    // 新手引导：编号→开播、文本→讲解。统一挂在第 1 句（idx=0），首项最显眼。
+    // 新手引导：文本→开播、左侧图标→讲解。统一挂在第 1 句（idx=0），首项最显眼。
     // 盲听和复述共用同一个 flow id —— 用户先在任一页看过就不再弹另一页。
     const guideTargetLocalIdx = 0;
-    final numberStep = GuideStep(
-      key: _guideNumberKey,
-      description: l10n.guideSentenceTileNumberDescription,
-    );
     final bodyStep = GuideStep(
       key: _guideBodyKey,
       description: l10n.guideSentenceTileBodyDescription,
+    );
+    final explanationStep = GuideStep(
+      key: _guideExplanationKey,
+      description: l10n.guideSentenceTileExplanationDescription,
     );
     final guideFlows = <GuideFlow>[
       GuideFlow(
         flowId: GuideFlowIds.sentenceTileTour,
         shouldRun: sentences.isNotEmpty,
-        steps: [numberStep, bodyStep],
+        steps: [bodyStep, explanationStep],
       ),
     ];
 
@@ -1620,13 +1664,13 @@ class _RetellPlayerScreenState extends ConsumerState<RetellPlayerScreen>
                         ? state.playingSentenceIndex
                         : -1,
                     bookmarkedSentenceIndices: state.bookmarkedSentenceIndices,
-                    onSentenceTap: _handleSentenceDetail,
+                    onSentenceExplanationTap: _handleSentenceDetail,
                     onSentencePlayFrom: _handleSentencePlayFrom,
                     onSentenceBookmarkToggle: (sentence) => ref
                         .read(retellPlayerProvider.notifier)
                         .toggleBookmark(widget.audioItemId, sentence),
                     guideTargetLocalIdx: guideTargetLocalIdx,
-                    numberAreaGuideStep: numberStep,
+                    explanationAreaGuideStep: explanationStep,
                     bodyAreaGuideStep: bodyStep,
                   ),
                   contentControls:

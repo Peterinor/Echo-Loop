@@ -2089,8 +2089,9 @@
   "guideStudyStreakDescription": "Tap here to view your learning calendar.",
   "guideFavoritesSentencesListDescription": "Your saved sentences, grouped by source.",
   "guideFavoritesVocabularyListDescription": "Your saved words, phrases, and sense groups.",
-  "guideSentenceTileNumberDescription": "Tap the number to play from this sentence.",
-  "guideSentenceTileBodyDescription": "Tap the sentence to view explanations.",
+  "guideSentenceTileBodyDescription": "Tap the sentence to play from here.",
+  "guideSentenceTileExplanationDescription": "Tap the explanation icon on the left to view this sentence's explanation.",
+  "viewSentenceExplanation": "View sentence explanation",
   "guideSubtitleEditorBoundaryHandleDescription": "Drag the red or green handles on the waveform to adjust the current sentence's start and end time.",
   "guideSubtitleEditorSentencePlayDescription": "Tap the play button on the left to play this sentence.",
   "guideSubtitleEditorSentenceMenuDescription": "Tap the menu on the right to merge or delete this sentence.",
@@ -2151,6 +2152,7 @@
   "removeCommunityConfirmMessage": "All media files, their subtitles, and learning records in this collection will be deleted. This cannot be undone.",
   "removeCommunityConfirmConfirm": "Remove",
   "communityCollectionDeprecated": "This collection has been removed. You can still use the local copy.",
+  "communityCollectionRefreshFailed": "Sync failed. Pull down to retry.",
   "communityFileUnavailable": "This file was removed from the shared collection",
   "communityFilesRemoved": "{count} files were removed from shared collections",
   "@communityFilesRemoved": {
@@ -2184,6 +2186,9 @@
     }
   },
   "downloadLoading": "Loading",
+  "backgroundDownloadRunningTitle": "Downloading",
+  "backgroundDownloadCompleteTitle": "Download complete",
+  "backgroundDownloadFailedTitle": "Download failed",
   "audioListColumnName": "Name",
   "audioListColumnDuration": "Duration",
   "onboardingTitle": "Quick chat",
@@ -2711,5 +2716,7 @@
   "pronunciationInterjection": "Interjection",
   "pronunciationLibrary": "Offline Word Pronunciation",
   "pronunciationLibraryDescription": "Pre-recorded word audio for dictionary lookups",
-  "redownload": "Download again"
+  "redownload": "Download again",
+  "collapseSidebar": "Collapse sidebar",
+  "expandSidebar": "Expand sidebar"
 }

@@ -1613,8 +1613,9 @@
   "guideStudyStreakDescription": "点击这里查看学习日历",
   "guideFavoritesSentencesListDescription": "这里是你收藏的句子，并按来源分组展示。",
   "guideFavoritesVocabularyListDescription": "这里是你收藏的单词、词组、意群。",
-  "guideSentenceTileNumberDescription": "点击编号从这句开始播放。",
-  "guideSentenceTileBodyDescription": "点击句子查看讲解。",
+  "guideSentenceTileBodyDescription": "点击句子从这里开始播放。",
+  "guideSentenceTileExplanationDescription": "点击左侧讲解图标查看这句话的讲解。",
+  "viewSentenceExplanation": "查看句子讲解",
   "guideSubtitleEditorBoundaryHandleDescription": "拖动波形图上的红绿手柄，可以调整当前句子的起止时间。",
   "guideSubtitleEditorSentencePlayDescription": "点击左侧播放按钮，可以播放这一句。",
   "guideSubtitleEditorSentenceMenuDescription": "点击右侧菜单，可以合并或删除这一句。",
@@ -1675,6 +1676,7 @@
   "removeCommunityConfirmMessage": "将删除本合集所有媒体、字幕和相关学习记录，此操作不可恢复。",
   "removeCommunityConfirmConfirm": "确认移除",
   "communityCollectionDeprecated": "该合集已移除，本地副本仍可继续使用。",
+  "communityCollectionRefreshFailed": "同步失败，下拉重试",
   "communityFileUnavailable": "该文件已从共享合集中移除",
   "communityFilesRemoved": "共享合集中有 {count} 个文件已移除",
   "@communityFilesRemoved": {
@@ -1708,6 +1710,9 @@
     }
   },
   "downloadLoading": "加载中",
+  "backgroundDownloadRunningTitle": "正在下载",
+  "backgroundDownloadCompleteTitle": "下载完成",
+  "backgroundDownloadFailedTitle": "下载失败",
   "audioListColumnName": "名称",
   "audioListColumnDuration": "时长",
   "onboardingTitle": "先聊两句",
@@ -2215,5 +2220,7 @@
   "pronunciationInterjection": "感叹词",
   "pronunciationLibrary": "离线单词发音",
   "pronunciationLibraryDescription": "词典查词时优先播放预录的单词发音",
-  "redownload": "重新下载"
+  "redownload": "重新下载",
+  "collapseSidebar": "收起侧边栏",
+  "expandSidebar": "展开侧边栏"
 }

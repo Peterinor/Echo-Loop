@@ -5,6 +5,11 @@ import 'package:echo_loop/database/app_database.dart' as db;
 import 'package:echo_loop/database/daos/bookmark_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_rating.dart';
+import 'package:echo_loop/features/memory_scheduler/config/memory_profiles.dart';
+import 'package:echo_loop/features/memory_scheduler/domain/memory_namespaces.dart';
+import 'package:echo_loop/features/memory_scheduler/domain/memory_scheduler_commands.dart';
+import 'package:echo_loop/features/memory_scheduler/domain/memory_subject_ref.dart';
+import 'package:echo_loop/features/memory_scheduler/providers/memory_scheduler_providers.dart';
 import 'package:echo_loop/models/favorite_review_settings.dart';
 import 'package:echo_loop/providers/audio_engine/audio_engine_provider.dart';
 import 'package:echo_loop/providers/audio_engine/foreground_audio_engine_provider.dart';
@@ -158,8 +163,8 @@ BookmarkWithAudio _bookmark(int id) => BookmarkWithAudio(
     sentenceText: 'Sentence $id',
     startTime: id.toDouble(),
     endTime: id + 1.0,
-    createdAt: DateTime(2026),
-    updatedAt: DateTime(2026),
+    createdAt: DateTime(2026, 1, 20 - id),
+    updatedAt: DateTime(2026, 1, 20 - id),
     syncStatus: 0,
   ),
   audioName: 'Material',
@@ -233,6 +238,49 @@ Future<void> _addPlayableMedia(db.AppDatabase database) {
   );
 }
 
+Future<void> _initializeBookmarkReview(
+  ProviderContainer container,
+  List<BookmarkWithAudio> bookmarks,
+) async {
+  final database = container.read(appDatabaseProvider);
+  await _addPlayableMedia(database);
+  final scheduler = container.read(memorySchedulerProvider);
+  for (final item in bookmarks) {
+    final bookmark = item.bookmark;
+    await database
+        .into(database.bookmarks)
+        .insertOnConflictUpdate(
+          db.BookmarksCompanion.insert(
+            memorySubjectId: Value(bookmark.memorySubjectId),
+            audioItemId: bookmark.audioItemId,
+            sentenceIndex: bookmark.sentenceIndex,
+            sentenceText: bookmark.sentenceText,
+            startTime: bookmark.startTime,
+            endTime: bookmark.endTime,
+            createdAt: bookmark.createdAt,
+            updatedAt: bookmark.updatedAt,
+            deletedAt: Value(bookmark.deletedAt),
+          ),
+        );
+    final subjectId = bookmark.memorySubjectId;
+    if (subjectId == null || subjectId.trim().isEmpty) continue;
+    final subject = MemorySubjectRef(
+      namespace: kSavedSentenceNamespace,
+      subjectId: subjectId,
+    );
+    if (await scheduler.getSchedule(subject) == null) {
+      await scheduler.ensureSchedule(
+        EnsureMemoryScheduleCommand(
+          subject: subject,
+          profile: kFsrsDefaultProfileRef,
+          occurredAt: DateTime.now(),
+        ),
+      );
+    }
+  }
+  await container.read(bookmarkReviewProvider.notifier).initialize();
+}
+
 late Directory _testAppDataDirectory;
 
 void main() {
@@ -262,15 +310,57 @@ void main() {
       bookmark: _bookmark(9).bookmark.copyWith(endTime: 9),
       audioName: 'Material',
     );
-    await container.read(bookmarkReviewProvider.notifier).initialize([
-      _bookmark(1),
-      invalid,
-    ]);
+    await _initializeBookmarkReview(container, [_bookmark(1), invalid]);
     final state = container.read(bookmarkReviewProvider);
     expect(state.initialTotal, 1);
     expect(state.face, BookmarkReviewFace.front);
     expect(state.currentCard?.sentence.text, 'Sentence 1');
   });
+
+  test(
+    'changing order during review selects the new first unreviewed card',
+    () async {
+      final scope = _testScope(_TestBookmarkDao());
+      final container = scope.container;
+      addTearDown(() async {
+        await _disposeBookmarkContainer(container);
+        await scope.database.close();
+      });
+      await _initializeBookmarkReview(container, [
+        _bookmark(3),
+        _bookmark(2),
+        _bookmark(1),
+      ]);
+      expect(
+        container.read(bookmarkReviewProvider).currentCard?.sentence.index,
+        3,
+      );
+
+      final reordered = Completer<void>();
+      final subscription = container.listen(bookmarkReviewProvider, (_, next) {
+        if (next.currentCard?.sentence.index == 1 && !reordered.isCompleted) {
+          reordered.complete();
+        }
+      });
+      addTearDown(subscription.close);
+
+      await container
+          .read(favoriteReviewSettingsProvider.notifier)
+          .update(
+            const FavoriteReviewSettings(
+              autoPlayFront: false,
+              autoPlayBack: false,
+              order: FavoriteReviewOrder.dueAt,
+            ),
+          );
+      await reordered.future.timeout(const Duration(seconds: 3));
+
+      final state = container.read(bookmarkReviewProvider);
+      expect(state.currentCard?.sentence.index, 1);
+      expect(state.reviewedCount, 0);
+      expect(state.remainingCount, 3);
+    },
+  );
 
   test('reveal stops playback and exposes placeholder back', () async {
     final scope = _testScope(_TestBookmarkDao());
@@ -281,7 +371,7 @@ void main() {
     });
     final notifier = container.read(bookmarkReviewProvider.notifier);
     await _addPlayableMedia(scope.database);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(container, [_bookmark(1)]);
     await notifier.revealBack();
     expect(
       container.read(bookmarkReviewProvider).face,
@@ -304,7 +394,7 @@ void main() {
               as _RecordingForegroundAudioEngine;
       final notifier = container.read(bookmarkReviewProvider.notifier);
 
-      await notifier.initialize([_bookmark(1)]);
+      await _initializeBookmarkReview(container, [_bookmark(1)]);
       await notifier.revealBack();
       await notifier.interruptPlayback();
 
@@ -344,7 +434,7 @@ void main() {
     final disabledNotifier = disabled.container.read(
       bookmarkReviewProvider.notifier,
     );
-    await disabledNotifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(disabled.container, [_bookmark(1)]);
     await disabledNotifier.startCurrentCard();
     await disabledNotifier.revealBack();
     expect(disabled.player.rangePlays, 0);
@@ -362,7 +452,7 @@ void main() {
       bookmarkReviewProvider.notifier,
     );
     await _addPlayableMedia(enabled.database);
-    await enabledNotifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(enabled.container, [_bookmark(1)]);
     unawaited(enabledNotifier.startCurrentCard());
     await enabled.player.waitForRangePlaybackStart();
     expect(enabled.player.rangePlays, 1);
@@ -387,7 +477,7 @@ void main() {
     });
     final notifier = container.read(bookmarkReviewProvider.notifier);
     await _addPlayableMedia(scope.database);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(container, [_bookmark(1)]);
     await notifier.revealBack();
 
     final playback = notifier.toggleCurrentPlayback();
@@ -415,7 +505,7 @@ void main() {
     });
     final notifier = scope.container.read(bookmarkReviewProvider.notifier);
     await _addPlayableMedia(scope.database);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
     await notifier.revealBack();
 
     final playback = notifier.toggleCurrentPlayback();
@@ -437,7 +527,7 @@ void main() {
     });
     final notifier = scope.container.read(bookmarkReviewProvider.notifier);
     await _addPlayableMedia(scope.database);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
     await notifier.revealBack();
 
     final playback = notifier.toggleCurrentPlayback();
@@ -467,7 +557,7 @@ void main() {
       });
       final notifier = scope.container.read(bookmarkReviewProvider.notifier);
       await _addPlayableMedia(scope.database);
-      await notifier.initialize([_bookmark(1)]);
+      await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
       await notifier.revealBack();
 
       final playback = notifier.toggleCurrentPlayback();
@@ -494,7 +584,7 @@ void main() {
       });
       final notifier = scope.container.read(bookmarkReviewProvider.notifier);
       await _addPlayableMedia(scope.database);
-      await notifier.initialize([_bookmark(1)]);
+      await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
       await notifier.revealBack();
       await scope.player.waitForRangePlaybackStart();
       expect(scope.player.pendingRangePlay, isNotNull);
@@ -518,7 +608,7 @@ void main() {
     });
     final notifier = scope.container.read(bookmarkReviewProvider.notifier);
     await _addPlayableMedia(scope.database);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
     await notifier.revealBack();
 
     final playback = notifier.toggleCurrentPlayback();
@@ -540,7 +630,7 @@ void main() {
       await scope.database.close();
     });
     final notifier = container.read(bookmarkReviewProvider.notifier);
-    await notifier.initialize([_bookmark(1), _bookmark(2)]);
+    await _initializeBookmarkReview(container, [_bookmark(1), _bookmark(2)]);
     final removed = container.read(bookmarkReviewProvider).currentCard!;
     await notifier.removeCurrentBookmark();
     expect(dao.removed, [(removed.audioItemId, removed.originalSentenceIndex)]);
@@ -558,9 +648,7 @@ void main() {
       await scope.database.close();
     });
 
-    await scope.container
-        .read(bookmarkReviewProvider.notifier)
-        .initialize(const []);
+    await scope.container.read(bookmarkReviewProvider.notifier).initialize();
 
     final state = scope.container.read(bookmarkReviewProvider);
     expect(state.currentCard, isNull);
@@ -578,7 +666,7 @@ void main() {
         await scope.database.close();
       });
       final notifier = scope.container.read(bookmarkReviewProvider.notifier);
-      await notifier.initialize([_bookmark(1)]);
+      await _initializeBookmarkReview(scope.container, [_bookmark(1)]);
 
       await notifier.removeCurrentBookmark();
 
@@ -598,7 +686,7 @@ void main() {
       await scope.database.close();
     });
     final notifier = container.read(bookmarkReviewProvider.notifier);
-    await notifier.initialize([_bookmark(1)]);
+    await _initializeBookmarkReview(container, [_bookmark(1)]);
     await notifier.removeCurrentBookmark();
     final state = container.read(bookmarkReviewProvider);
     expect(state.remainingCount, 1);

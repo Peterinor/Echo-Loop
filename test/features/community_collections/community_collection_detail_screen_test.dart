@@ -9,6 +9,7 @@ import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../helpers/mock_providers.dart';
 import '../../helpers/test_app.dart';
@@ -16,6 +17,7 @@ import '../../helpers/test_app.dart';
 void main() {
   testWidgets('详情失败显示重试按钮且重试后恢复素材列表', (tester) async {
     var attempts = 0;
+    final notifier = _RetryFiles(() => ++attempts);
     await tester.pumpWidget(
       createTestApp(
         const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
@@ -36,7 +38,7 @@ void main() {
           ),
           communityCollectionFilesProvider(
             'collection-1',
-          ).overrideWith(() => _RetryFiles(() => ++attempts)),
+          ).overrideWith(() => notifier),
         ],
       ),
     );
@@ -45,6 +47,7 @@ void main() {
     await tester.tap(find.text('Failed to load, tap to retry'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
+    expect(notifier.refreshForces, [true]);
     expect(find.text('0 items'), findsOneWidget);
     expect(find.text('Failed to load, tap to retry'), findsNothing);
   });
@@ -75,7 +78,11 @@ void main() {
     ),
   ];
 
-  Future<void> pumpDetail(WidgetTester tester) async {
+  Future<void> pumpDetail(
+    WidgetTester tester, {
+    bool subscribed = false,
+    _TestCommunityCollectionFiles? detailNotifier,
+  }) async {
     await tester.pumpWidget(
       createTestApp(
         const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
@@ -94,9 +101,28 @@ void main() {
               ),
             ),
           ),
-          communityCollectionFilesProvider(
-            'collection-1',
-          ).overrideWith(() => _TestCommunityCollectionFiles(files)),
+          if (subscribed)
+            collectionListProvider.overrideWith(
+              () => TestCollectionList(
+                CollectionState(
+                  rawCollections: [
+                    Collection(
+                      id: 'local-1',
+                      name: 'Stale local name',
+                      createdDate: DateTime(2026, 9, 22),
+                      source: CollectionSource.community,
+                      remoteId: 'collection-1',
+                    ),
+                  ],
+                  audioIdsMap: const {
+                    'local-1': ['local-only-file'],
+                  },
+                ),
+              ),
+            ),
+          communityCollectionFilesProvider('collection-1').overrideWith(
+            () => detailNotifier ?? _TestCommunityCollectionFiles(files),
+          ),
         ],
       ),
     );
@@ -129,6 +155,7 @@ void main() {
     expect(find.text('Duration'), findsOneWidget);
     expect(find.text('1:05'), findsOneWidget);
     expect(find.text('Track 2'), findsOneWidget);
+    expect(find.text('Add to My Collections'), findsOneWidget);
     expect(find.text('0s'), findsNothing);
     expect(
       find.ancestor(of: find.text('Name'), matching: find.byType(ListView)),
@@ -196,27 +223,18 @@ void main() {
     expect(find.text('Stale description'), findsNothing);
   });
 
-  testWidgets('未加入合集时点击素材提示先添加合集', (tester) async {
+  testWidgets('未加入合集时点击预览素材不会触发加入操作', (tester) async {
     await pumpDetail(tester);
 
     await tester.tap(find.text('Track 1'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Add Collection First'), findsOneWidget);
-    expect(
-      find.text(
-        'Add this collection to My Collection, then you can start practicing.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Cancel'), findsOneWidget);
-
-    await tester.tap(find.text('Cancel'));
-    await tester.pumpAndSettle();
     expect(find.text('Add Collection First'), findsNothing);
+    expect(find.text('Track 1'), findsOneWidget);
   });
 
-  testWidgets('已加入合集详情直接使用本地列表，不等待远端文件请求', (tester) async {
+  testWidgets('未加入合集详情下拉时强制刷新且缓存内容仍可见', (tester) async {
+    final detailNotifier = _TestCommunityCollectionFiles(files);
     await tester.pumpWidget(
       createTestApp(
         const CommunityCollectionDetailScreen(remoteId: 'collection-1'),
@@ -229,40 +247,69 @@ void main() {
                 description: 'A short collection',
                 coverUrl: null,
                 authorNickname: 'Echo Studio',
-                fileCount: 2,
+                fileCount: files.length,
                 publishedAt: DateTime(2026, 9, 22),
               ),
             ),
           ),
-          collectionListProvider.overrideWith(
-            () => TestCollectionList(
-              CollectionState(
-                rawCollections: [
-                  Collection(
-                    id: 'local-1',
-                    name: 'Community English',
-                    createdDate: DateTime(2026, 9, 22),
-                    source: CollectionSource.community,
-                    remoteId: 'collection-1',
-                  ),
-                ],
-                audioIdsMap: const {'local-1': []},
-              ),
-            ),
-          ),
+          communityCollectionFilesProvider(
+            'collection-1',
+          ).overrideWith(() => detailNotifier),
         ],
       ),
     );
     await tester.pumpAndSettle();
+    detailNotifier.refreshCalls = 0;
+    detailNotifier.forceRefreshCalls = 0;
 
-    expect(find.text('0 items'), findsOneWidget);
+    await tester.drag(find.byType(ListView), const Offset(0, 320));
+    await tester.pumpAndSettle();
+
+    expect(detailNotifier.forceRefreshCalls, 1);
+    expect(find.text('Track 1'), findsOneWidget);
+  });
+
+  testWidgets('已加入合集详情仍展示公开文件列表，仅底部按钮改为开始学习', (tester) async {
+    final detailNotifier = _TestCommunityCollectionFiles(
+      files,
+      PublicCollectionCatalogEntry(
+        id: 'collection-1',
+        name: 'Remote public name',
+        description: 'Public description',
+        coverUrl: null,
+        authorNickname: 'Public author',
+        fileCount: files.length,
+        publishedAt: DateTime(2026, 9, 22),
+      ),
+    );
+    await pumpDetail(tester, subscribed: true, detailNotifier: detailNotifier);
+
+    expect(detailNotifier.buildCalls, greaterThan(0));
+    expect(find.text('Remote public name'), findsOneWidget);
+    expect(find.text('Stale local name'), findsNothing);
+    expect(find.text('2 items'), findsOneWidget);
+    expect(find.text('Track 1'), findsOneWidget);
+    expect(find.text('Start Practicing'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.tap(find.text('Track 1'));
+    await tester.pumpAndSettle();
+    expect(find.text('Add Collection First'), findsNothing);
+    expect(find.text('Track 1'), findsOneWidget);
   });
 }
 
 class _RetryFiles extends CommunityCollectionFiles {
   _RetryFiles(this.attempt);
   final int Function() attempt;
+  final refreshForces = <bool>[];
+
+  /// 模拟强制刷新后的远端恢复；与上游刷新接口保持一致。
+  @override
+  Future<void> refresh({bool force = false}) async {
+    refreshForces.add(force);
+    state = AsyncData(await build('collection-1'));
+  }
 
   @override
   Future<CommunityCollectionPagedState<CommunityCollectionFile>> build(
@@ -301,6 +348,9 @@ class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
 class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
   final List<CommunityCollectionFile> files;
   final PublicCollectionCatalogEntry? collection;
+  var buildCalls = 0;
+  var refreshCalls = 0;
+  var forceRefreshCalls = 0;
 
   _TestCommunityCollectionFiles(this.files, [this.collection]);
 
@@ -308,6 +358,7 @@ class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
   Future<CommunityCollectionPagedState<CommunityCollectionFile>> build(
     String collectionId,
   ) async {
+    buildCalls++;
     return CommunityCollectionPagedState.fromFirstPage(
       CommunityCollectionCatalogPage(
         cursor: null,
@@ -316,5 +367,11 @@ class _TestCommunityCollectionFiles extends CommunityCollectionFiles {
         nextCursor: null,
       ),
     );
+  }
+
+  @override
+  Future<void> refresh({bool force = false}) async {
+    refreshCalls++;
+    if (force) forceRefreshCalls++;
   }
 }

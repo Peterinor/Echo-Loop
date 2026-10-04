@@ -1,13 +1,16 @@
 import 'dart:async';
 
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
 import 'package:echo_loop/database/app_database.dart' as db;
 import 'package:echo_loop/database/daos/saved_word_dao.dart';
 import 'package:echo_loop/database/providers.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_rating.dart';
+import 'package:echo_loop/features/memory_scheduler/config/memory_profiles.dart';
 import 'package:echo_loop/providers/learning_session/favorite_vocabulary_review_provider.dart';
 import 'package:echo_loop/providers/favorite_review_settings_provider.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_schedule.dart';
+import 'package:echo_loop/features/memory_scheduler/domain/memory_scheduler_commands.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_subject_ref.dart';
 import 'package:echo_loop/features/memory_scheduler/domain/memory_namespaces.dart';
 import 'package:echo_loop/features/memory_scheduler/providers/memory_scheduler_providers.dart';
@@ -117,6 +120,89 @@ db.SavedWord _word(String subjectId, String text, {String? sentenceText}) =>
       sentenceText: sentenceText,
     );
 
+Future<void> _initializeFavoriteVocabularyReview(
+  ProviderContainer container,
+  List<db.SavedWord> words,
+  List<db.SavedSenseGroup> phrases,
+) async {
+  final database = container.read(appDatabaseProvider);
+  final scheduler = container.read(memorySchedulerProvider);
+  final now = DateTime.now();
+  for (final word in words) {
+    final existing = await (database.select(
+      database.savedWords,
+    )..where((table) => table.word.equals(word.word))).getSingleOrNull();
+    final savedWord = existing ?? word;
+    if (existing == null) {
+      await database
+          .into(database.savedWords)
+          .insert(
+            db.SavedWordsCompanion.insert(
+              word: word.word,
+              memorySubjectId: Value(word.memorySubjectId),
+              sentenceText: Value(word.sentenceText),
+              createdAt: word.createdAt,
+              updatedAt: word.updatedAt,
+              deletedAt: Value(word.deletedAt),
+            ),
+          );
+    }
+    final subjectId = savedWord.memorySubjectId;
+    if (subjectId == null || subjectId.trim().isEmpty) continue;
+    final subject = MemorySubjectRef(
+      namespace: kSavedWordOrPhraseNamespace,
+      subjectId: subjectId,
+    );
+    if (await scheduler.getSchedule(subject) == null) {
+      await scheduler.ensureSchedule(
+        EnsureMemoryScheduleCommand(
+          subject: subject,
+          profile: kFsrsDefaultProfileRef,
+          occurredAt: now,
+        ),
+      );
+    }
+  }
+  for (final phrase in phrases) {
+    final existing =
+        await (database.select(database.savedSenseGroups)
+              ..where((table) => table.phraseText.equals(phrase.phraseText)))
+            .getSingleOrNull();
+    final savedPhrase = existing ?? phrase;
+    if (existing == null) {
+      await database
+          .into(database.savedSenseGroups)
+          .insert(
+            db.SavedSenseGroupsCompanion.insert(
+              phraseText: phrase.phraseText,
+              memorySubjectId: Value(phrase.memorySubjectId),
+              displayText: phrase.displayText,
+              sentenceText: Value(phrase.sentenceText),
+              createdAt: phrase.createdAt,
+              updatedAt: phrase.updatedAt,
+              deletedAt: Value(phrase.deletedAt),
+            ),
+          );
+    }
+    final subjectId = savedPhrase.memorySubjectId;
+    if (subjectId == null || subjectId.trim().isEmpty) continue;
+    final subject = MemorySubjectRef(
+      namespace: kSavedSenseGroupNamespace,
+      subjectId: subjectId,
+    );
+    if (await scheduler.getSchedule(subject) == null) {
+      await scheduler.ensureSchedule(
+        EnsureMemoryScheduleCommand(
+          subject: subject,
+          profile: kFsrsDefaultProfileRef,
+          occurredAt: now,
+        ),
+      );
+    }
+  }
+  await container.read(favoriteVocabularyReviewProvider.notifier).initialize();
+}
+
 void main() {
   late db.AppDatabase database;
   late ProviderContainer container;
@@ -147,7 +233,7 @@ void main() {
   });
 
   test('initialize builds the deck and starts on front', () async {
-    await container.read(favoriteVocabularyReviewProvider.notifier).initialize([
+    await _initializeFavoriteVocabularyReview(container, [
       _word('w1', 'apple'),
       _word('w2', 'banana'),
     ], []);
@@ -164,7 +250,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'apple')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'apple'),
+      ], []);
       final card = container
           .read(favoriteVocabularyReviewProvider)
           .currentCard!;
@@ -185,7 +273,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'hello world')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'hello world'),
+      ], []);
 
       await notifier.replayCurrent();
 
@@ -199,7 +289,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'hello world')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'hello world'),
+      ], []);
 
       await notifier.replayCurrent();
       await notifier.disposeSession();
@@ -219,7 +311,9 @@ void main() {
 
   test('failed vocabulary playback does not write input statistics', () async {
     final notifier = container.read(favoriteVocabularyReviewProvider.notifier);
-    await notifier.initialize([_word('w1', 'hello world')], []);
+    await _initializeFavoriteVocabularyReview(container, [
+      _word('w1', 'hello world'),
+    ], []);
     fakePlayback.result = AudioPlaybackResult.failed;
 
     await notifier.replayCurrent();
@@ -242,7 +336,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'hello world')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'hello world'),
+      ], []);
       fakePlayback.result = AudioPlaybackResult.cancelled;
 
       await notifier.replayCurrent();
@@ -267,7 +363,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'hello world')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'hello world'),
+      ], []);
       fakePlayback.holdSpeak = true;
 
       final playback = notifier.replayCurrent();
@@ -290,7 +388,7 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([
+      await _initializeFavoriteVocabularyReview(container, [
         _word('w1', 'apple', sentenceText: 'I ate an apple.'),
       ], []);
       await notifier.revealBack();
@@ -312,7 +410,7 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([
+      await _initializeFavoriteVocabularyReview(container, [
         _word('w1', 'apple', sentenceText: 'I ate an apple.'),
       ], []);
       await notifier.revealBack();
@@ -341,7 +439,7 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([
+      await _initializeFavoriteVocabularyReview(container, [
         _word('w1', 'apple', sentenceText: 'I ate an apple.'),
       ], []);
       await notifier.revealBack();
@@ -382,14 +480,16 @@ void main() {
     final notifier = disabledContainer.read(
       favoriteVocabularyReviewProvider.notifier,
     );
-    await notifier.initialize([_word('w1', 'apple')], []);
+    await _initializeFavoriteVocabularyReview(disabledContainer, [
+      _word('w1', 'apple'),
+    ], []);
     await notifier.startCurrentCard();
     expect(fakePlayback.spoken, isEmpty);
   });
 
   test('source playback toggles between replay and stop', () async {
     final notifier = container.read(favoriteVocabularyReviewProvider.notifier);
-    await notifier.initialize([
+    await _initializeFavoriteVocabularyReview(container, [
       _word('w1', 'apple', sentenceText: 'I ate an apple.'),
     ], []);
     await notifier.revealBack();
@@ -413,7 +513,7 @@ void main() {
 
   test('revealBack fetches ratings and submitting advances the deck', () async {
     final notifier = container.read(favoriteVocabularyReviewProvider.notifier);
-    await notifier.initialize([
+    await _initializeFavoriteVocabularyReview(container, [
       _word('w1', 'apple'),
       _word('w2', 'banana'),
     ], []);
@@ -438,7 +538,9 @@ void main() {
       final notifier = container.read(
         favoriteVocabularyReviewProvider.notifier,
       );
-      await notifier.initialize([_word('w1', 'apple')], []);
+      await _initializeFavoriteVocabularyReview(container, [
+        _word('w1', 'apple'),
+      ], []);
       await notifier.revealBack();
 
       fakePlayback.holdSpeak = true;
@@ -469,7 +571,7 @@ void main() {
     await database.savedWordDao.saveWord(word: 'apple');
     await database.savedWordDao.saveWord(word: 'banana');
     final words = await database.savedWordDao.getAll();
-    await notifier.initialize(words, []);
+    await _initializeFavoriteVocabularyReview(container, words, []);
     final removed = switch (container
         .read(favoriteVocabularyReviewProvider)
         .currentCard) {
@@ -501,7 +603,7 @@ void main() {
   test('empty deck creates a zero-stat completion summary', () async {
     final notifier = container.read(favoriteVocabularyReviewProvider.notifier);
 
-    await notifier.initialize(const [], const []);
+    await notifier.initialize();
 
     final state = container.read(favoriteVocabularyReviewProvider);
     expect(state.currentCard, isNull);
@@ -521,7 +623,7 @@ void main() {
         displayText: 'on the table',
       );
       final first = (await database.savedSenseGroupDao.watchAll().first).single;
-      await notifier.initialize([], [first]);
+      await _initializeFavoriteVocabularyReview(container, [], [first]);
 
       await notifier.removeCurrentVocabulary();
 
@@ -563,7 +665,9 @@ void main() {
     final notifier = failingContainer.read(
       favoriteVocabularyReviewProvider.notifier,
     );
-    await notifier.initialize([_word('w1', 'apple')], []);
+    await _initializeFavoriteVocabularyReview(failingContainer, [
+      _word('w1', 'apple'),
+    ], []);
 
     await notifier.removeCurrentVocabulary();
 
@@ -582,7 +686,7 @@ void main() {
       );
       await database.savedWordDao.saveWord(word: 'apple');
       final first = (await database.savedWordDao.getAll()).single;
-      await notifier.initialize([first], const []);
+      await _initializeFavoriteVocabularyReview(container, [first], const []);
 
       await notifier.removeCurrentVocabulary();
 

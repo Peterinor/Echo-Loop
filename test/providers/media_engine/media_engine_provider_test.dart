@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:path/path.dart' as p;
+
 import 'package:audio_service/audio_service.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/sentence.dart';
@@ -41,6 +43,10 @@ void main() {
     backendFactoryCalls = 0;
     appDir = await Directory.systemTemp.createTemp('echo-loop-media-engine-');
     appDataDirectoryOverride = appDir;
+    // 模拟启动期已准备的真实封面，避免后台写入与 Windows 临时目录清理竞争。
+    await File(
+      'assets/icon/app-icon-1024.png',
+    ).copy(p.join(appDir.path, 'now_playing_artwork.png'));
     backend = FakeMediaPlayerBackend();
     router = MediaSessionRouter(defaultHandler: BaseAudioHandler());
     container = ProviderContainer(
@@ -52,7 +58,7 @@ void main() {
         mediaSessionRouterProvider.overrideWithValue(router),
       ],
     );
-    mediaFile = File('${appDir.path}/echo-loop-video-test.mp4');
+    mediaFile = File(p.join(appDir.path, 'echo-loop-video-test.mp4'));
     await mediaFile.writeAsBytes(const [0, 1, 2]);
   });
 
@@ -83,7 +89,48 @@ void main() {
     expect(backend.openInitialPositions, [const Duration(seconds: 4)]);
     expect(backend.rateCalls, [1.25]);
     expect(router.isRouted, isTrue);
+    expect(router.mediaItem.value?.id, 'video-1');
+    expect(router.mediaItem.value?.title, 'Video');
+    expect(
+      router.playbackState.value.processingState,
+      AudioProcessingState.ready,
+    );
     expect(container.read(mediaEngineProvider).currentMediaId, 'video-1');
+
+    final playingState = router.playbackState.firstWhere(
+      (state) => state.playing,
+    );
+    await engine.play().timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => throw StateError('engine.play timed out'),
+    );
+    await playingState.timeout(
+      const Duration(seconds: 2),
+      onTimeout: () => throw StateError(
+        'backend=${backend.playing} '
+        'handler=${router.inner.playbackState.value.playing} '
+        'router=${router.playbackState.value.playing}',
+      ),
+    );
+    expect(router.playbackState.value.playing, isTrue);
+
+    final clearedMediaItem = router.mediaItem.firstWhere(
+      (mediaItem) => mediaItem == null,
+    );
+    final idleState = router.playbackState.firstWhere(
+      (state) => state.processingState == AudioProcessingState.idle,
+    );
+    await engine.releaseFromScreen();
+    await Future.wait<void>([
+      clearedMediaItem.then<void>((_) {}),
+      idleState.then<void>((_) {}),
+    ]);
+    expect(router.isRouted, isFalse);
+    expect(router.mediaItem.value, isNull);
+    expect(
+      router.playbackState.value.processingState,
+      AudioProcessingState.idle,
+    );
   });
 
   test('playRange 到达区间终点后自动暂停，并在起播前通知就绪', () async {

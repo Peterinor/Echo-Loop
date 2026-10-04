@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
 import '../models/blind_listen_settings.dart';
 import '../models/sentence.dart';
+import '../models/study_stage.dart';
 import '../models/stage_settings_overrides.dart' show BriefingPauseChoice;
 import 'common/paragraph_selection_sheet.dart';
+import 'study/study_stage_visuals.dart';
 
 /// 显示盲听段落选择弹窗
 ///
@@ -41,9 +43,11 @@ Future<void> showBlindListenParagraphSheet({
   VoidCallback? onSkip,
 }) {
   final l10n = AppLocalizations.of(context)!;
+  final visual = studyStageVisual(StudyStage.blindListen, l10n);
   return showParagraphSelectionSheet(
     context: context,
-    icon: Icons.headphones,
+    icon: visual.icon,
+    iconColor: visual.iconColor,
     title: l10n.blindListenBriefingTitle,
     subtitle: l10n.blindListenBriefingTip,
     sentences: sentences,

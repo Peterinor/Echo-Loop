@@ -161,9 +161,14 @@ class _IntensiveListenPlayerScreenState
     try {
       await _sentencePager.animateAndCommit(
         targetSentenceIndex,
-        commit: () => ref
-            .read(intensiveListenPlayerProvider.notifier)
-            .commitPendingAnnotationAdvance(targetSentenceIndex),
+        commit: () {
+          final commit = ref
+              .read(intensiveListenPlayerProvider.notifier)
+              .commitPendingAnnotationAdvance(targetSentenceIndex);
+          // Provider 已同步切换句索引；新句播放在后台继续时即可开始下一次导航。
+          _isAutoAdvancingAnnotationPage = false;
+          return commit;
+        },
       );
     } finally {
       _isAutoAdvancingAnnotationPage = false;
@@ -740,8 +745,10 @@ class _IntensiveListenPlayerScreenState
                                   currentIndex:
                                       playerState.currentSentenceIndex,
                                   itemCount: player.sentences.length,
+                                  horizontalPadding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.m,
+                                  ),
                                   isTransitionLocked:
-                                      _isAutoAdvancingAnnotationPage ||
                                       playerState.annotationState?.phase
                                           is WaitingAnnotationPageTransition,
                                   onSentenceSettled: player.goToSentence,
@@ -789,6 +796,7 @@ class _IntensiveListenPlayerScreenState
                                             isTextRevealed:
                                                 isActivePage &&
                                                 playerState.isTextRevealed,
+                                            horizontalPadding: EdgeInsets.zero,
                                             showHiddenTextPlaceholderLines:
                                                 !playerState.usesMediaEngine ||
                                                 !presentation
@@ -1053,11 +1061,7 @@ class _AnnotationContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      // 与顶部进度区使用相同边距，保持句次、收藏和讲解内容左右对齐。
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
-      child: Column(children: [Expanded(child: child)]),
-    );
+    return Column(children: [Expanded(child: child)]);
   }
 }
 
@@ -1094,16 +1098,11 @@ extension on _IntensiveListenPlayerScreenState {
       return;
     }
     final player = ref.read(intensiveListenPlayerProvider.notifier);
-    // 盲听句间停顿的“上一句”语义是重播当前句，不产生分页切换。
-    if (playerState.isPauseBetweenSentences &&
-        playerState.annotationState == null) {
-      unawaited(player.goToPrevious());
-      return;
-    }
+    final targetIndex = playerState.currentSentenceIndex - 1;
     unawaited(
       _sentencePager.animateAndCommit(
-        playerState.currentSentenceIndex - 1,
-        commit: player.goToPrevious,
+        targetIndex,
+        commit: () => player.goToSentence(targetIndex),
       ),
     );
   }
@@ -1121,10 +1120,11 @@ extension on _IntensiveListenPlayerScreenState {
       unawaited(_handleCompleted());
       return;
     }
+    final targetIndex = playerState.currentSentenceIndex + 1;
     unawaited(
       _sentencePager.animateAndCommit(
-        playerState.currentSentenceIndex + 1,
-        commit: player.goToNext,
+        targetIndex,
+        commit: () => player.goToSentence(targetIndex),
       ),
     );
   }

@@ -6782,17 +6782,23 @@ abstract class AppLocalizations {
   /// **'Your saved words, phrases, and sense groups.'**
   String get guideFavoritesVocabularyListDescription;
 
-  /// No description provided for @guideSentenceTileNumberDescription.
-  ///
-  /// In en, this message translates to:
-  /// **'Tap the number to play from this sentence.'**
-  String get guideSentenceTileNumberDescription;
-
   /// No description provided for @guideSentenceTileBodyDescription.
   ///
   /// In en, this message translates to:
-  /// **'Tap the sentence to view explanations.'**
+  /// **'Tap the sentence to play from here.'**
   String get guideSentenceTileBodyDescription;
+
+  /// No description provided for @guideSentenceTileExplanationDescription.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the explanation icon on the left to view this sentence\'s explanation.'**
+  String get guideSentenceTileExplanationDescription;
+
+  /// No description provided for @viewSentenceExplanation.
+  ///
+  /// In en, this message translates to:
+  /// **'View sentence explanation'**
+  String get viewSentenceExplanation;
 
   /// No description provided for @guideSubtitleEditorBoundaryHandleDescription.
   ///
@@ -7088,6 +7094,12 @@ abstract class AppLocalizations {
   /// **'This collection has been removed. You can still use the local copy.'**
   String get communityCollectionDeprecated;
 
+  /// No description provided for @communityCollectionRefreshFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Sync failed. Pull down to retry.'**
+  String get communityCollectionRefreshFailed;
+
   /// No description provided for @communityFileUnavailable.
   ///
   /// In en, this message translates to:
@@ -7165,6 +7177,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Loading'**
   String get downloadLoading;
+
+  /// No description provided for @backgroundDownloadRunningTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Downloading'**
+  String get backgroundDownloadRunningTitle;
+
+  /// No description provided for @backgroundDownloadCompleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Download complete'**
+  String get backgroundDownloadCompleteTitle;
+
+  /// No description provided for @backgroundDownloadFailedTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Download failed'**
+  String get backgroundDownloadFailedTitle;
 
   /// No description provided for @audioListColumnName.
   ///
@@ -9757,6 +9787,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Download again'**
   String get redownload;
+
+  /// No description provided for @collapseSidebar.
+  ///
+  /// In en, this message translates to:
+  /// **'Collapse sidebar'**
+  String get collapseSidebar;
+
+  /// No description provided for @expandSidebar.
+  ///
+  /// In en, this message translates to:
+  /// **'Expand sidebar'**
+  String get expandSidebar;
 }
 
 class _AppLocalizationsDelegate

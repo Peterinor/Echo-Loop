@@ -17,6 +17,7 @@ import 'daos/daily_stage_study_record_dao.dart';
 import 'daos/study_statistics_dao.dart';
 import 'daos/tts_cache_dao.dart';
 import 'daos/memory_schedule_dao.dart';
+import 'daos/favorite_review_dao.dart';
 import '../services/study_time_service.dart';
 import '../services/study_activity_gate.dart';
 import '../services/app_logger.dart';
@@ -208,6 +209,11 @@ final ttsCacheDaoProvider = Provider<TtsCacheDao>((ref) {
 /// MemoryScheduler DAO Provider。
 final memoryScheduleDaoProvider = Provider<MemoryScheduleDao>((ref) {
   return ref.watch(appDatabaseProvider).memoryScheduleDao;
+});
+
+/// 收藏复习队列直接查询已到期调度及对应收藏内容的 DAO Provider。
+final favoriteReviewDaoProvider = Provider<FavoriteReviewDao>((ref) {
+  return ref.watch(appDatabaseProvider).favoriteReviewDao;
 });
 
 /// StudyTimeService Provider

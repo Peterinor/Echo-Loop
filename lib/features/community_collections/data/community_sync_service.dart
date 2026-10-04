@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart' show Ref;
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -44,7 +46,7 @@ class CommunitySyncCompleted extends CommunitySyncOutcome {
   });
 }
 
-/// 后台刷新命中节流窗口时跳过网络请求。
+/// 没有合集需要执行远端同步时返回该结果。
 class CommunitySyncThrottled extends CommunitySyncOutcome {
   const CommunitySyncThrottled();
 }
@@ -79,9 +81,12 @@ class CommunitySyncService {
   final SharedPreferences? _preferences;
   final DateTime Function() _now;
   late final RefreshCoordinator<String, CommunitySyncOutcome> _refresh;
+  Future<void> _syncQueue = Future<void>.value();
 
   static const throttleWindow = Duration(hours: 2);
-  static const _lastSyncAtKey = 'community_collection_last_sync_at_v2';
+  static const _legacyLastSyncAtKey = 'community_collection_last_sync_at_v2';
+  static const _collectionLastSyncAtKeyPrefix =
+      'community_collection_last_sync_at_v2:';
 
   CommunitySyncService({
     required db.AppDatabase database,
@@ -98,113 +103,219 @@ class CommunitySyncService {
     _refresh = RefreshCoordinator<String, CommunitySyncOutcome>(now: _now);
   }
 
-  /// 同一时刻只允许一个同步请求；后台调用受 2 小时节流，手动刷新可强制执行。
+  /// 同一时刻只允许一个全量同步；后台逐个检查合集的 2 小时基线。
+  /// [force] 会绕过基线并刷新全部合集。
   Future<CommunitySyncOutcome> syncAll({bool force = false}) {
     return _refresh
         .run(
-          key: 'community-subscriptions',
-          force: force,
-          lastRefreshedAt: _lastSyncAt,
-          throttleWindow: throttleWindow,
-          refresh: _runSyncAll,
+          key: force
+              ? 'community-subscriptions-forced'
+              : 'community-subscriptions-background',
+          // 全量入口每次都需扫描订阅列表；是否请求远端由单合集基线决定。
+          force: true,
+          lastRefreshedAt: null,
+          throttleWindow: Duration.zero,
+          refresh: () => _serializeSync(() => _runSyncAll(force: force)),
         )
-        .then((result) async {
+        .then((result) {
           return switch (result) {
             RefreshThrottled<CommunitySyncOutcome>() =>
               const CommunitySyncThrottled(),
-            RefreshCompleted<CommunitySyncOutcome>(:final result) =>
-              _recordCompleted(result),
+            RefreshCompleted<CommunitySyncOutcome>(:final result) => result,
           };
         });
   }
 
-  DateTime? get _lastSyncAt {
-    final millis = _preferences?.getInt(_lastSyncAtKey);
-    return millis == null ? null : DateTime.fromMillisecondsSinceEpoch(millis);
+  /// 强制同步单个本地合集，并只重置该合集自己的自动同步基线。
+  Future<CommunitySyncOutcome> syncCollection(String localCollectionId) {
+    return _refresh
+        .run(
+          key: 'community-collection:$localCollectionId',
+          force: true,
+          lastRefreshedAt: null,
+          throttleWindow: Duration.zero,
+          refresh: () =>
+              _serializeSync(() => _runSyncCollection(localCollectionId)),
+        )
+        .then((result) {
+          return switch (result) {
+            RefreshThrottled<CommunitySyncOutcome>() =>
+              const CommunitySyncThrottled(),
+            RefreshCompleted<CommunitySyncOutcome>(:final result) => result,
+          };
+        });
   }
 
-  Future<CommunitySyncOutcome> _recordCompleted(
-    CommunitySyncOutcome result,
-  ) async {
-    if (result is CommunitySyncCompleted) {
-      await _preferences?.setInt(_lastSyncAtKey, _now().millisecondsSinceEpoch);
-    }
-    return result;
-  }
-
-  Future<CommunitySyncOutcome> _runSyncAll() async {
-    final locals = await (_db.select(
-      _db.collections,
-    )..where((t) => t.source.equals('community') & t.deletedAt.isNull())).get();
-    if (locals.isEmpty) return const CommunitySyncSkipped();
-
+  /// 全量同步与单合集同步共用串行队列，避免并发写入同一批本地数据。
+  Future<T> _serializeSync<T>(Future<T> Function() action) async {
+    final previous = _syncQueue;
+    final completer = Completer<void>();
+    _syncQueue = completer.future;
     try {
-      var deprecated = 0;
-      var undeprecated = 0;
-      var added = 0;
-      var removed = 0;
-      var unavailable = 0;
-      var failedCollections = 0;
-      var failedFiles = 0;
+      await previous;
+      return await action();
+    } finally {
+      completer.complete();
+    }
+  }
 
-      for (final local in locals) {
-        try {
-          final remoteId = local.remoteId;
-          if (remoteId == null) {
-            if (local.deprecatedAt == null) {
-              await _markDeprecated(local.id);
-              deprecated++;
-            }
-            continue;
-          }
+  /// 读取合集独立基线；缺少时兼容旧版全局时间戳或加入合集的时间。
+  DateTime _lastSyncAt(db.Collection local) {
+    final collectionMillis = _preferences?.getInt(
+      _collectionLastSyncAtKey(local.id),
+    );
+    if (collectionMillis != null) {
+      return DateTime.fromMillisecondsSinceEpoch(collectionMillis);
+    }
 
-          // 只同步本地已加入的合集；详情第一页的 404 才代表合集已下架。
-          final snapshot = await _fetchCollection(remoteId);
-          if (snapshot == null) {
-            if (local.deprecatedAt == null) {
-              await _markDeprecated(local.id);
-              deprecated++;
-            }
-            continue;
-          }
-          if (local.deprecatedAt != null) {
-            await _restore(local.id);
-            undeprecated++;
-          }
-          final result = await _applyCollection(
-            local,
-            snapshot.collection,
-            snapshot.files,
-          );
-          added += result.added;
-          removed += result.removed;
-          unavailable += result.unavailable;
-          failedFiles += result.failedFiles;
-        } catch (error, stackTrace) {
-          failedCollections++;
-          AppLogger.log(
-            'CommunitySync',
-            'collection sync failed localId=${local.id} remoteId=${local.remoteId}: $error',
-          );
-          AppLogger.log('CommunitySync', stackTrace.toString());
-        }
-      }
+    final legacyMillis = _preferences?.getInt(_legacyLastSyncAtKey);
+    if (legacyMillis == null) return local.createdDate;
+    final legacyLastSyncAt = DateTime.fromMillisecondsSinceEpoch(legacyMillis);
+    return local.createdDate.isAfter(legacyLastSyncAt)
+        ? local.createdDate
+        : legacyLastSyncAt;
+  }
 
-      return CommunitySyncCompleted(
-        collectionsScanned: locals.length,
-        collectionsDeprecated: deprecated,
-        collectionsUndeprecated: undeprecated,
-        filesAdded: added,
-        filesRemoved: removed,
-        filesMarkedUnavailable: unavailable,
-        failedCollections: failedCollections,
-        failedFiles: failedFiles,
+  /// 成功后只持久化当前合集的刷新时间，不影响其它合集。
+  Future<void> _recordCollectionSyncAt(String localCollectionId) async {
+    final stored = await _preferences?.setInt(
+      _collectionLastSyncAtKey(localCollectionId),
+      _now().millisecondsSinceEpoch,
+    );
+    if (stored == false) {
+      throw StateError(
+        'Failed to persist community collection sync baseline '
+        'for $localCollectionId',
       );
+    }
+  }
+
+  String _collectionLastSyncAtKey(String localCollectionId) =>
+      '$_collectionLastSyncAtKeyPrefix$localCollectionId';
+
+  /// 判断单合集是否需要同步；force 忽略基线。
+  /// 缺少远端 ID 的失效合集只修复一次。
+  bool _shouldSyncCollection(db.Collection local, {required bool force}) {
+    if (force) return true;
+    if (local.remoteId == null) return local.deprecatedAt == null;
+    return _now().difference(_lastSyncAt(local)) >= throttleWindow;
+  }
+
+  Future<CommunitySyncOutcome> _runSyncAll({required bool force}) async {
+    try {
+      final locals =
+          await (_db.select(_db.collections)..where(
+                (t) => t.source.equals('community') & t.deletedAt.isNull(),
+              ))
+              .get();
+      return await _syncCollections(locals, force: force);
     } catch (error, stackTrace) {
       AppLogger.log('CommunitySync', 'sync failed: $error');
       AppLogger.log('CommunitySync', stackTrace.toString());
       return CommunitySyncFailed(error);
     }
+  }
+
+  /// 按本地合集 ID 加载仍有效的社区合集并执行单合集同步。
+  Future<CommunitySyncOutcome> _runSyncCollection(
+    String localCollectionId,
+  ) async {
+    try {
+      final local =
+          await (_db.select(_db.collections)..where(
+                (t) =>
+                    t.id.equals(localCollectionId) &
+                    t.source.equals('community') &
+                    t.deletedAt.isNull(),
+              ))
+              .getSingleOrNull();
+      if (local == null) return const CommunitySyncSkipped();
+      return await _syncCollections([local], force: true);
+    } catch (error, stackTrace) {
+      AppLogger.log(
+        'CommunitySync',
+        'single collection sync failed localId=$localCollectionId: $error',
+      );
+      AppLogger.log('CommunitySync', stackTrace.toString());
+      return CommunitySyncFailed(error);
+    }
+  }
+
+  /// 同步给定的本地社区合集，并汇总每个合集及文件的结果。
+  Future<CommunitySyncOutcome> _syncCollections(
+    List<db.Collection> locals, {
+    required bool force,
+  }) async {
+    if (locals.isEmpty) return const CommunitySyncSkipped();
+
+    var scanned = 0;
+    var deprecated = 0;
+    var undeprecated = 0;
+    var added = 0;
+    var removed = 0;
+    var unavailable = 0;
+    var failedCollections = 0;
+    var failedFiles = 0;
+
+    for (final local in locals) {
+      if (!_shouldSyncCollection(local, force: force)) continue;
+      scanned++;
+      try {
+        final remoteId = local.remoteId;
+        if (remoteId == null) {
+          if (local.deprecatedAt == null) {
+            await _markDeprecated(local.id);
+            deprecated++;
+          }
+          continue;
+        }
+
+        // 只同步本地已加入的合集；详情第一页的 404 才代表合集已下架。
+        final snapshot = await _fetchCollection(remoteId);
+        if (snapshot == null) {
+          if (local.deprecatedAt == null) {
+            await _markDeprecated(local.id);
+            deprecated++;
+          }
+          await _recordCollectionSyncAt(local.id);
+          continue;
+        }
+        if (local.deprecatedAt != null) {
+          await _restore(local.id);
+          undeprecated++;
+        }
+        final result = await _applyCollection(
+          local,
+          snapshot.collection,
+          snapshot.files,
+        );
+        added += result.added;
+        removed += result.removed;
+        unavailable += result.unavailable;
+        failedFiles += result.failedFiles;
+        await _recordCollectionSyncAt(local.id);
+      } catch (error, stackTrace) {
+        failedCollections++;
+        AppLogger.log(
+          'CommunitySync',
+          'collection sync failed localId=${local.id} remoteId=${local.remoteId}: $error',
+        );
+        AppLogger.log('CommunitySync', stackTrace.toString());
+      }
+    }
+
+    if (scanned == 0) return const CommunitySyncThrottled();
+
+    return CommunitySyncCompleted(
+      collectionsScanned: scanned,
+      collectionsDeprecated: deprecated,
+      collectionsUndeprecated: undeprecated,
+      filesAdded: added,
+      filesRemoved: removed,
+      filesMarkedUnavailable: unavailable,
+      failedCollections: failedCollections,
+      failedFiles: failedFiles,
+    );
   }
 
   /// 拉取单个已加入合集的全部详情页；第一页 404 返回 null 表示合集已下架。

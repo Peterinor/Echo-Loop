@@ -109,8 +109,7 @@ class _DeferredBookmarkReview extends BookmarkReview {
   BookmarkReviewState build() => const BookmarkReviewState();
 
   @override
-  Future<void> initialize(List<BookmarkWithAudio> bookmarks) =>
-      initialized.future;
+  Future<void> initialize() => initialized.future;
 }
 
 class _ImmediateBookmarkReview extends BookmarkReview {
@@ -118,7 +117,7 @@ class _ImmediateBookmarkReview extends BookmarkReview {
   BookmarkReviewState build() => const BookmarkReviewState();
 
   @override
-  Future<void> initialize(List<BookmarkWithAudio> bookmarks) async {}
+  Future<void> initialize() async {}
 }
 
 /// 创建测试用 Bookmark 数据
@@ -463,6 +462,13 @@ void main() {
       expect(
         tester.widget<AppBar>(find.byType(AppBar)).actionsPadding,
         const EdgeInsets.only(right: AppSpacing.s),
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('favorites-more')),
+          matching: find.byIcon(Icons.more_horiz),
+        ),
+        findsOneWidget,
       );
       final statistics = tester.getRect(
         find.byKey(const Key('favorites-statistics')),

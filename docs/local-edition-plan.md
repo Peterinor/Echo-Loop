@@ -279,3 +279,20 @@ Android 集成测试使用 `integration_test/local_edition_test.dart` 与对应 
 - 已执行 `scripts/check.sh`：在全仓静态分析阶段被既有 `integration_test/kokoro_tts_test.dart` 的 3 个错误阻断（旧 `TtsEngineKind.echoLoop` 与工厂签名），该文件在本次合并前后未变化；没有跳过或削弱测试来使脚本通过。脚本后续 macOS 设备测试和构建不能在本机 Windows 执行。
 - Maestro 脚本已尝试，CLI 未安装；改用已有 Flutter 设备集成测试。Android 模拟器资源集成测试通过：Example 预览、匿名加入、已有音频和字幕校验、常驻 Podcast 入口、精选、Apple 搜索、RSS 订阅和单集列表。覆盖安装前后数据库由 v55 升到 v57，原有 484 条素材、5 个合集、3 条学习进度和 3 条书签的标识均保留；本机升级前数据库快照位于 `D:\env\echo-loop\pre-upstream-merge.db`。
 - 普通 Android 本地版 Debug APK 已重新构建并通过 `adb install -r` 覆盖安装；实际确认学习首页、AI 设置卡片及配置页导航、资源库发现入口可用，当前模拟器停留在资源库。日常包使用 `lib/main.dart`，未注入测试代理或模型密钥。本轮未推送 GitHub，未重新构建 iOS。
+
+
+## 再次同步上游至 1.0.39（2026-10-04）
+
+- 合并 upstream/main `01e9f0e7`，相对上一轮 `315a326a` 纳入 46 个提交，版本从 1.0.36 升至 1.0.39；沿用上游 subtitle 0.2.0 和 Drift schema v58。
+- 完整接入上游的统一音视频随心听、锁屏媒体控制、精听切句、段落录音竞态修复、收藏复习事务与到期队列、时长探测、社区分页刷新及资源库内导航。未额外改写这些核心逻辑。
+- 解决 5 个冲突文件：`community_collection_detail_screen.dart`、`discover_collections_screen.dart`、`app_router.dart`、`audio_import_service_test.dart`、`discover_collections_screen_test.dart`。详情页采用上游公开预览和强制刷新，保留友好重试提示；保留匿名加入、独立 Podcast 入口、自定义 AI 设置与账号/付费路由限制。删除被上游新详情流程替代的旧辅助函数，未保留重复业务路径。
+- 按 AGENTS.md 保留本地 `.claude/settings.json`，未接受上游对该文件的删除；`CLAUDE.md` 和 `.claude/settings.local.json` 同样未改动。
+- 测试适配：详情重试 fake 对齐强制刷新接口并断言 force=true；三个媒体测试使用平台路径拼接，预置与启动流程相同的真实封面文件，消除 Windows 删除临时目录时与后台封面写入的竞争。保留所有业务断言，无任意等待、跳过或降低测试标准。
+- 本地模式 92 项通过，真实模型测试因未注入密钥沿用原设计跳过；新增资源导航及旧链接兼容用例在本地模式通过；原生配置/构建脚本 6 项通过。
+- 受影响的上游测试及官方访问策略首轮 937 项通过、16 项 Windows 兼容失败、5 项原有跳过。修正后媒体三组重测 99 项通过、1 项封面清理失败；为页面测试补齐相同封面准备后，该文件 41 项全部通过。所有本轮发现的失败均已重测覆盖。
+- `flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib test integration_test/local_resources_test.dart` 通过，无 error，保留 30 条已有 warning/info；最终修改的四个测试文件定向分析无问题；`git diff --check` 通过。
+- 已执行 `scripts/check.sh`，仍被未改动的 `integration_test/kokoro_tts_test.dart` 三个既有编译错误阻断，不能声称全量检查通过。其后续 macOS 集成测试和构建也不能在本机 Windows 执行。
+- Maestro 脚本已尝试，缺少 CLI；改用现有 Flutter Android 设备集成测试并通过（1 项完整资源场景及 teardown）。真实验证 Example 预览、匿名加入、已下载音频和字幕校验、Podcast 常驻入口、精选、Apple 搜索、RSS 订阅及单集列表。
+- 模拟器覆盖升级 v57→v58：原有 485 条素材、5 个合集、3 条学习进度、3 条书签的全部主键保留；本次 RSS 刷新新增一期节目，最终 486 条素材。升级前后快照为 `D:\env\echo-loop\pre-sync-1.0.39.db` 与 `post-sync-1.0.39.db`。未卸载应用或清空用户数据。
+- 普通 Android 本地版 Debug 包（`lib/main.dart`，不含测试代理或模型密钥）已编译并覆盖安装，系统包信息确认 1.0.39，实际首页正常显示已有学习任务。安装后的模拟器停留在应用首页。
+- 本轮仅同步本地分支；未推送 GitHub，未构建新的 iOS 包。iPhone 真机、ARM64 发布包网络审计及麦克风/VAD 验证仍待执行。

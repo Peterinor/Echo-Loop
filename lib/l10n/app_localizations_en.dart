@@ -3888,12 +3888,15 @@ class AppLocalizationsEn extends AppLocalizations {
       'Your saved words, phrases, and sense groups.';
 
   @override
-  String get guideSentenceTileNumberDescription =>
-      'Tap the number to play from this sentence.';
+  String get guideSentenceTileBodyDescription =>
+      'Tap the sentence to play from here.';
 
   @override
-  String get guideSentenceTileBodyDescription =>
-      'Tap the sentence to view explanations.';
+  String get guideSentenceTileExplanationDescription =>
+      'Tap the explanation icon on the left to view this sentence\'s explanation.';
+
+  @override
+  String get viewSentenceExplanation => 'View sentence explanation';
 
   @override
   String get guideSubtitleEditorBoundaryHandleDescription =>
@@ -4069,6 +4072,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This collection has been removed. You can still use the local copy.';
 
   @override
+  String get communityCollectionRefreshFailed =>
+      'Sync failed. Pull down to retry.';
+
+  @override
   String get communityFileUnavailable =>
       'This file was removed from the shared collection';
 
@@ -4117,6 +4124,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get downloadLoading => 'Loading';
+
+  @override
+  String get backgroundDownloadRunningTitle => 'Downloading';
+
+  @override
+  String get backgroundDownloadCompleteTitle => 'Download complete';
+
+  @override
+  String get backgroundDownloadFailedTitle => 'Download failed';
 
   @override
   String get audioListColumnName => 'Name';
@@ -5539,4 +5555,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get redownload => 'Download again';
+
+  @override
+  String get collapseSidebar => 'Collapse sidebar';
+
+  @override
+  String get expandSidebar => 'Expand sidebar';
 }

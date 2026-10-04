@@ -76,7 +76,7 @@ class ChatHeaderActions extends ConsumerWidget {
     );
 
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_vert),
+      icon: const Icon(Icons.more_horiz),
       onSelected: (value) {
         if (value == 'clear') notifier.clear();
         if (value == 'regenerate') notifier.retry();

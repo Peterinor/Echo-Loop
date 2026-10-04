@@ -31,6 +31,10 @@ class AppTheme {
 
   /// 语义色：书签/收藏/星标
   static const Color bookmarkColor = Colors.amber;
+  static const Color bookmarkCountBadgeColor = bookmarkColor;
+  static const Color bookmarkCountBadgeTextColor = Color(0xFF3D2E00);
+  static const Color bookmarkCountSelectedBadgeColor = Color(0xFF405A7A);
+  static const Color bookmarkCountSelectedBadgeTextColor = Colors.white;
 
   /// 语义色：置顶图钉
   static const Color pinColor = Color(0xFFE53935);

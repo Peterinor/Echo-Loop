@@ -3,15 +3,18 @@ import 'package:echo_loop/features/auth/providers/auth_providers.dart';
 import 'package:echo_loop/features/community_collections/providers/community_enrollment_provider.dart';
 import 'package:echo_loop/features/community_collections/widgets/community_collection_card.dart';
 import 'package:flutter/material.dart';
+import 'package:echo_loop/features/community_collections/data/community_sync_service.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_models.dart';
 import 'package:echo_loop/features/community_collections/models/community_collection_paging.dart';
 import 'package:echo_loop/features/community_collections/providers/discover_community_collections_provider.dart';
 import 'package:echo_loop/features/community_collections/screens/discover_collections_screen.dart';
+import 'package:echo_loop/features/podcast/data/podcast_catalog_service.dart';
 import 'package:echo_loop/features/podcast/models/podcast_catalog.dart';
 import 'package:echo_loop/features/podcast/providers/discover_podcasts_provider.dart';
 import 'package:echo_loop/models/collection.dart';
 import 'package:echo_loop/providers/collection_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 
 import '../../helpers/test_app.dart';
 import '../../helpers/mock_providers.dart';
@@ -185,12 +188,80 @@ void main() {
     expect(find.text('Apple Podcasts'), findsOneWidget);
     expect(find.text('Search podcasts'), findsNothing);
   });
+
+  testWidgets('发现页下拉只强制刷新社区合集目录', (tester) async {
+    final catalogProvider = _TestDiscoverCommunityCollections(
+      PublicCollectionCatalogEntry(
+        id: 'collection-1',
+        name: 'Community Collection',
+        description: null,
+        coverUrl: null,
+        fileCount: 1,
+        publishedAt: DateTime(2026, 1, 1),
+      ),
+      extraEntries: List.generate(
+        12,
+        (index) => PublicCollectionCatalogEntry(
+          id: 'collection-$index',
+          name: 'Community Collection $index',
+          description: null,
+          coverUrl: null,
+          fileCount: 1,
+          publishedAt: DateTime(2026, 1, 1),
+        ),
+      ),
+    );
+    final syncService = _MockCommunitySyncService();
+    final podcastService = _MockPodcastCatalogService();
+    when(() => syncService.syncAll(force: true)).thenAnswer(
+      (_) async => const CommunitySyncCompleted(
+        collectionsScanned: 0,
+        collectionsDeprecated: 0,
+        collectionsUndeprecated: 0,
+        filesAdded: 0,
+        filesRemoved: 0,
+      ),
+    );
+    when(
+      () => podcastService.refresh(force: true),
+    ).thenAnswer((_) async => const PodcastCatalogUnchanged());
+
+    await tester.pumpWidget(
+      createTestApp(
+        const DiscoverCommunityCollectionsScreen(),
+        overrides: [
+          discoverCommunityCollectionsProvider.overrideWith(
+            () => catalogProvider,
+          ),
+          discoverPodcastsProvider.overrideWithValue(const []),
+          communitySyncServiceProvider.overrideWithValue(syncService),
+          podcastCatalogServiceProvider.overrideWithValue(podcastService),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    final callsBeforePull = catalogProvider.refreshCalls;
+
+    await tester.drag(find.byType(ListView).first, const Offset(0, 500));
+    await tester.pumpAndSettle();
+
+    expect(catalogProvider.refreshCalls, callsBeforePull + 1);
+    expect(catalogProvider.refreshForces.last, isTrue);
+    verifyNever(() => syncService.syncAll(force: any(named: 'force')));
+    verifyNever(() => podcastService.refresh(force: any(named: 'force')));
+  });
 }
 
 class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
   final PublicCollectionCatalogEntry catalogEntry;
+  final List<PublicCollectionCatalogEntry> extraEntries;
+  int refreshCalls = 0;
+  final List<bool> refreshForces = [];
 
-  _TestDiscoverCommunityCollections(this.catalogEntry);
+  _TestDiscoverCommunityCollections(
+    this.catalogEntry, {
+    this.extraEntries = const [],
+  });
 
   @override
   Future<CommunityCollectionPagedState<PublicCollectionCatalogEntry>>
@@ -198,10 +269,16 @@ class _TestDiscoverCommunityCollections extends DiscoverCommunityCollections {
     return CommunityCollectionPagedState.fromFirstPage(
       CommunityCollectionCatalogPage(
         cursor: null,
-        items: [catalogEntry],
+        items: [catalogEntry, ...extraEntries],
         nextCursor: null,
       ),
     );
+  }
+
+  @override
+  Future<void> refresh({bool force = false}) async {
+    refreshCalls++;
+    refreshForces.add(force);
   }
 }
 
@@ -228,3 +305,8 @@ class _TestEnrollment extends CommunityEnrollment {
     );
   }
 }
+
+class _MockCommunitySyncService extends Mock implements CommunitySyncService {}
+
+class _MockPodcastCatalogService extends Mock
+    implements PodcastCatalogService {}

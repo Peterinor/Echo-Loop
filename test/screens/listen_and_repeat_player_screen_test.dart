@@ -36,6 +36,7 @@ import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/common/playback_controls.dart';
 import 'package:echo_loop/widgets/common/recording_button.dart';
 import 'package:echo_loop/widgets/common/bookmark_toggle_row.dart';
+import 'package:echo_loop/widgets/practice/sentence_explanation_view.dart';
 
 import '../helpers/mock_providers.dart';
 
@@ -423,6 +424,43 @@ void main() {
       expect(find.byIcon(Icons.tune), findsOneWidget);
     });
 
+    testWidgets('音频启动期间显示普通加载态，不显示视频画布', (tester) async {
+      final load = Completer<MediaLoadResult>();
+      final controller = _TestListenAndRepeatController(
+        createState(),
+        createTestSentences(count: 5),
+        startPlayingNoop: true,
+      );
+
+      await tester.pumpWidget(
+        _createTestWidget(
+          controller: controller,
+          mediaStartup: MediaLearningStartup(
+            loadKey: 'audio-1',
+            load: () => load.future,
+            cancel: () async {},
+            showVideoLoading: false,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is ColoredBox && widget.color == Colors.black,
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+
+      load.complete(MediaLoadResult.ready);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byKey(const ValueKey('media-video-canvas')), findsNothing);
+    });
+
     testWidgets('视频画面位于进度条上方', (tester) async {
       final controller = _TestListenAndRepeatController(
         createState(usesMediaEngine: true),
@@ -455,6 +493,19 @@ void main() {
       final pager = find.byKey(
         const ValueKey('listen-and-repeat-sentence-page-view'),
       );
+      final pagerRect = tester.getRect(pager);
+      final screenWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.m));
+      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.m));
+      final progressTextRect = tester.getRect(find.text('Sentence 3/5'));
+      expect(pagerRect.left, closeTo(progressTextRect.left, 1));
+      final explanationRect = tester.getRect(
+        find.byType(SentenceExplanationView).first,
+      );
+      expect(explanationRect.left, closeTo(pagerRect.left, 1));
+      expect(explanationRect.right, closeTo(pagerRect.right, 1));
+
       await tester.fling(pager, const Offset(-400, 0), 1000);
       await tester.pumpAndSettle();
       expect(controller.goToSentenceCalls, 1);

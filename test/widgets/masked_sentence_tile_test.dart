@@ -156,7 +156,7 @@ void main() {
       );
     }
 
-    testWidgets('点击编号区触发 onPlayFromTap，不触发 onDetailTap', (tester) async {
+    testWidgets('点击左侧讲解按钮触发 onDetailTap，不触发播放', (tester) async {
       var playFromCount = 0;
       var detailCount = 0;
       await tester.pumpWidget(
@@ -168,15 +168,18 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 编号 "1" 文本
-      await tester.tap(find.text('1'));
+      await tester.tap(
+        find.byKey(
+          const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-0'),
+        ),
+      );
       await tester.pump();
 
-      expect(playFromCount, 1);
-      expect(detailCount, 0);
+      expect(playFromCount, 0);
+      expect(detailCount, 1);
     });
 
-    testWidgets('点击文本区触发 onDetailTap，不触发 onPlayFromTap', (tester) async {
+    testWidgets('点击文本区触发播放，不触发 onDetailTap', (tester) async {
       var playFromCount = 0;
       var detailCount = 0;
       await tester.pumpWidget(
@@ -192,8 +195,8 @@ void main() {
       await tester.tap(find.text('Hello'));
       await tester.pump();
 
-      expect(detailCount, 1);
-      expect(playFromCount, 0);
+      expect(detailCount, 0);
+      expect(playFromCount, 1);
     });
 
     testWidgets('点击右侧收藏区触发 onBookmarkTap，不触发其他回调', (tester) async {
@@ -222,7 +225,7 @@ void main() {
       expect(detailCount, 0);
     });
 
-    testWidgets('isPlayingSentence=true 时编号位置渲染 play_arrow 图标', (tester) async {
+    testWidgets('当前句显示讲解图标，不显示编号或播放图标', (tester) async {
       await tester.pumpWidget(
         buildInteractiveTile(
           sentence: _sentence('Hello world', index: 4),
@@ -233,12 +236,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.byIcon(Icons.play_arrow), findsOneWidget);
-      // 不再渲染数字 "5"
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
       expect(find.text('5'), findsNothing);
     });
 
-    testWidgets('isPlayingSentence=false 时编号位置渲染数字', (tester) async {
+    testWidgets('非当前句也显示讲解图标，不显示编号或播放图标', (tester) async {
       await tester.pumpWidget(
         buildInteractiveTile(
           sentence: _sentence('Hello world', index: 4),
@@ -249,11 +252,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('5'), findsOneWidget);
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+      expect(find.text('5'), findsNothing);
       expect(find.byIcon(Icons.play_arrow), findsNothing);
     });
 
-    testWidgets('编号点击区宽度收窄为 32dp', (tester) async {
+    testWidgets('左侧讲解按钮宽度保持 32dp', (tester) async {
       await tester.pumpWidget(
         buildInteractiveTile(
           sentence: _sentence('Hello world', index: 0),
@@ -262,9 +266,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 编号文本 "1" 的祖先 SizedBox 应收窄为 32dp。
+      // 讲解按钮的祖先 SizedBox 应为 32dp。
       final sizedBoxes = tester.widgetList<SizedBox>(
-        find.ancestor(of: find.text('1'), matching: find.byType(SizedBox)),
+        find.descendant(
+          of: find.byKey(
+            const ValueKey('$kMaskedSentenceExplanationHitAreaKeyPrefix-0'),
+          ),
+          matching: find.byType(SizedBox),
+        ),
       );
       final hasWidth32 = sizedBoxes.any((s) => s.width == 32);
       expect(hasWidth32, true);
@@ -291,10 +300,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // 没有 callback，内容仍渲染
+      // 没有 callback，正文仍渲染，左侧讲解图标保持可见。
       expect(find.text('Hello'), findsOneWidget);
-      expect(find.text('1'), findsOneWidget);
-      // 不应有 InkWell（两个 hit area 都 onTap=null）
+      expect(find.byIcon(Icons.auto_awesome), findsOneWidget);
+      // 不应有 InkWell（两个交互区都 onTap=null）
       expect(find.byType(InkWell), findsNothing);
     });
   });

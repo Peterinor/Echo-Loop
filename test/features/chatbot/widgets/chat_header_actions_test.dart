@@ -33,7 +33,7 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byIcon(Icons.more_horiz));
     await tester.pumpAndSettle();
 
     expect(find.text('Regenerate'), findsOneWidget);

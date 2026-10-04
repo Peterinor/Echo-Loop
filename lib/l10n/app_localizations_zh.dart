@@ -3723,10 +3723,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get guideFavoritesVocabularyListDescription => '这里是你收藏的单词、词组、意群。';
 
   @override
-  String get guideSentenceTileNumberDescription => '点击编号从这句开始播放。';
+  String get guideSentenceTileBodyDescription => '点击句子从这里开始播放。';
 
   @override
-  String get guideSentenceTileBodyDescription => '点击句子查看讲解。';
+  String get guideSentenceTileExplanationDescription => '点击左侧讲解图标查看这句话的讲解。';
+
+  @override
+  String get viewSentenceExplanation => '查看句子讲解';
 
   @override
   String get guideSubtitleEditorBoundaryHandleDescription =>
@@ -3888,6 +3891,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get communityCollectionDeprecated => '该合集已移除，本地副本仍可继续使用。';
 
   @override
+  String get communityCollectionRefreshFailed => '同步失败，下拉重试';
+
+  @override
   String get communityFileUnavailable => '该文件已从共享合集中移除';
 
   @override
@@ -3934,6 +3940,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get downloadLoading => '加载中';
+
+  @override
+  String get backgroundDownloadRunningTitle => '正在下载';
+
+  @override
+  String get backgroundDownloadCompleteTitle => '下载完成';
+
+  @override
+  String get backgroundDownloadFailedTitle => '下载失败';
 
   @override
   String get audioListColumnName => '名称';
@@ -5293,4 +5308,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get redownload => '重新下载';
+
+  @override
+  String get collapseSidebar => '收起侧边栏';
+
+  @override
+  String get expandSidebar => '展开侧边栏';
 }

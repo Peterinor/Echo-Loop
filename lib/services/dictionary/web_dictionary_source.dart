@@ -1,6 +1,6 @@
 /// 配置驱动的网页型词典源
 ///
-/// 网页词典（Cambridge / Oxford / Longman / Merriam-Webster / Collins /
+/// 网页词典（Cambridge / Oxford / Longman / Britannica / Merriam-Webster / Collins /
 /// Vocabulary.com / Wiktionary / OZDIC / PlayPhrase / YouGlish / Forvo /
 /// WordReference / Etymonline / 有道）本质相同——不抓取/解析 HTML，只按词构造 URL，
 /// 交给内置 WebView 显示。差异仅在 URL 模板与品牌展示，故抽象为一份 [WebDictConfig]
@@ -124,6 +124,13 @@ const List<WebDictConfig> kWebDictConfigs = [
     buildUrl: _collinsUrl,
   ),
   WebDictConfig(
+    id: 'britannica',
+    displayName: 'Britannica',
+    icon: Icons.menu_book_rounded,
+    color: Color(0xFF2D5B9A), // Britannica 蓝
+    buildUrl: _britannicaUrl,
+  ),
+  WebDictConfig(
     id: 'vocabulary',
     displayName: 'Vocabulary.com',
     icon: Icons.book_rounded,
@@ -194,6 +201,7 @@ String _cambridgeUrl(String w) =>
 String _oxfordUrl(String w) =>
     'https://www.oxfordlearnersdictionaries.com/definition/english/$w';
 String _longmanUrl(String w) => 'https://www.ldoceonline.com/dictionary/$w';
+String _britannicaUrl(String w) => 'https://www.britannica.com/dictionary/$w';
 String _merriamWebsterUrl(String w) =>
     'https://www.merriam-webster.com/dictionary/$w';
 String _collinsUrl(String w) =>

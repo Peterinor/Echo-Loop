@@ -991,7 +991,8 @@ class _SentenceExplanationViewState
     final l10n = AppLocalizations.of(context)!;
     // 引导关闭时（PageView 离屏页）四个 step 一律为 null：SentenceAnnotationCard 的
     // _wrapGuide 见 null 即不包 Showcase，离屏页不会向 showcaseview 注册，规避回收崩溃。
-    final enableGuide = widget.enableGuide;
+    // 总开关关闭时不创建 Showcase 目标，避免分页回收后第三方注册回调访问已卸载状态。
+    final enableGuide = widget.enableGuide && ref.watch(guideEnabledProvider);
     final sentenceStep = enableGuide
         ? GuideStep(
             key: _guideSentenceKey,

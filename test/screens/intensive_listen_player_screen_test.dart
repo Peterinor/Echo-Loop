@@ -31,6 +31,7 @@ import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/widgets/common/bookmark_toggle_row.dart';
 import 'package:echo_loop/widgets/practice/sentence_annotation_card.dart';
 import 'package:echo_loop/widgets/practice/sentence_explanation_view.dart';
+import 'package:echo_loop/widgets/practice/practice_normal_mode_view.dart';
 
 import '../helpers/mock_providers.dart';
 
@@ -81,6 +82,7 @@ class _RecordingIntensiveListenPlayer extends TestIntensiveListenPlayer {
   int goToPreviousCalls = 0;
   int goToSentenceCalls = 0;
   int startPlayingCalls = 0;
+  Completer<void>? pendingAnnotationAdvanceGate;
 
   @override
   Future<void> startPlaying() async {
@@ -136,6 +138,13 @@ class _RecordingIntensiveListenPlayer extends TestIntensiveListenPlayer {
       isTextRevealed: false,
       isCurrentSentenceAutoMarked: false,
     );
+  }
+
+  @override
+  Future<void> commitPendingAnnotationAdvance(int targetSentenceIndex) async {
+    await super.commitPendingAnnotationAdvance(targetSentenceIndex);
+    final gate = pendingAnnotationAdvanceGate;
+    if (gate != null) await gate.future;
   }
 
   void emit(IntensiveListenState nextState) {
@@ -442,10 +451,14 @@ void main() {
         ),
         findsNothing,
       );
-      expect(
-        tester.getRect(find.byType(SentenceExplanationView)).left,
-        closeTo(tester.getRect(find.text('Sentence 1/5')).left, 1),
+      final pageViewRect = tester.getRect(
+        find.byKey(const ValueKey('intensive-sentence-page-view')),
       );
+      final explanationRect = tester.getRect(
+        find.byType(SentenceExplanationView),
+      );
+      expect(explanationRect.left, closeTo(pageViewRect.left, 1));
+      expect(explanationRect.right, closeTo(pageViewRect.right, 1));
     });
 
     testWidgets('普通模式显示播放遍数（默认 1 次）', (tester) async {
@@ -878,6 +891,20 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final pagerRect = tester.getRect(
+        find.byKey(const ValueKey('intensive-sentence-page-view')),
+      );
+      final screenWidth =
+          tester.view.physicalSize.width / tester.view.devicePixelRatio;
+      expect(pagerRect.left, greaterThanOrEqualTo(AppSpacing.m));
+      expect(pagerRect.right, lessThanOrEqualTo(screenWidth - AppSpacing.m));
+
+      final subtitleRegionRect = tester.getRect(
+        find.byKey(PracticeNormalModeView.subtitleMainRegionKey),
+      );
+      expect(subtitleRegionRect.left, closeTo(pagerRect.left, 1));
+      expect(subtitleRegionRect.right, closeTo(pagerRect.right, 1));
+
       await tester.fling(
         find.byKey(const ValueKey('intensive-sentence-page-view')),
         const Offset(-400, 0),
@@ -914,6 +941,34 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(player.goToSentenceCalls, 1);
+      expect(player.currentIndex, 1);
+      expect(find.text('Sentence 2/5'), findsOneWidget);
+    });
+
+    testWidgets('句间倒计时点击上一句与右滑使用同一目标索引', (tester) async {
+      late _RecordingIntensiveListenPlayer player;
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            currentSentenceIndex: 2,
+            totalSentences: 5,
+            isPauseBetweenPlays: true,
+            isPauseBetweenSentences: true,
+            isPlaying: false,
+          ),
+          playerFactory: (state, sentences) {
+            player = _RecordingIntensiveListenPlayer(state, sentences);
+            return player;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.skip_previous_rounded));
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.goToPreviousCalls, 0);
       expect(player.currentIndex, 1);
       expect(find.text('Sentence 2/5'), findsOneWidget);
     });
@@ -1127,6 +1182,51 @@ void main() {
         find.byKey(const ValueKey('intensive-sentence-mode-1-blind')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('自动翻到新句后播放未结束也允许继续切句', (tester) async {
+      late _RecordingIntensiveListenPlayer player;
+      final playbackGate = Completer<void>();
+      await tester.pumpWidget(
+        createTestWidget(
+          playerState: createPlayerState(
+            isAnnotationMode: true,
+            isPlaying: false,
+          ),
+          playerFactory: (state, sentences) {
+            player = _RecordingIntensiveListenPlayer(state, sentences)
+              ..pendingAnnotationAdvanceGate = playbackGate;
+            return player;
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      player.emit(
+        player.state.copyWith(
+          isAnnotationMode: true,
+          isAnnotationReplay: false,
+          isPlaying: false,
+          annotationState: const IntensiveAnnotationState(
+            phase: WaitingAnnotationPageTransition(targetSentenceIndex: 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(player.currentIndex, 1);
+      expect(player.state.annotationState, isNull);
+
+      await tester.tap(find.byIcon(Icons.skip_next_rounded));
+      await tester.pumpAndSettle();
+
+      expect(player.goToSentenceCalls, 1);
+      expect(player.goToNextCalls, 0);
+      expect(player.currentIndex, 2);
+
+      playbackGate.complete();
+      await tester.pump();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('讲解状态取消横滑时保留源句讲解态', (tester) async {

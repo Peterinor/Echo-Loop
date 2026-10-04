@@ -26,7 +26,6 @@ import '../config/auth_config.dart' as auth_config;
 import '../config/paddle_config.dart' as paddle_config;
 import '../config/revenuecat_config.dart' as revenuecat_config;
 import '../database/app_database.dart';
-import '../database/migration/sp_to_drift_migration.dart';
 import '../database/providers.dart';
 import '../features/onboarding_survey/providers/onboarding_survey_provider.dart'
     show sharedPreferencesProvider;
@@ -176,18 +175,12 @@ class DefaultStartupBootstrapper implements StartupBootstrapper {
     final issues = <StartupIssue>[];
     await _configurePersistentLogs(issues);
 
-    // 显式打开数据库，确保 Drift schema upgrade 的异常不会被旧数据导入吞掉。
+    // 显式打开数据库，使 schema upgrade 失败进入本地初始化错误状态。
     await _trace('database_open_and_schema_check', () async {
       await _database.customSelect('SELECT 1').get();
     });
 
     if (!_isDemoMode) {
-      final migration = SpToDriftMigration(
-        _database,
-        _prefs,
-        subtitleLoader: defaultSubtitleLoader,
-      );
-      await _trace('shared_preferences_to_drift_migration', migration.migrate);
       await _runBestEffort(
         issues,
         'bundled_examples_install',

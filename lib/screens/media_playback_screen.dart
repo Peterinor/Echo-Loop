@@ -35,7 +35,7 @@ import 'sentence_detail_screen.dart';
 
 /// media_kit 随心听页面。
 ///
-/// 当前从带画面轨的媒体入口进入；命名与状态按未来音频/视频共用方向设计。
+/// 音频与视频共用页面、播放控制和媒体会话，仅视频材料渲染画面。
 class MediaPlaybackScreen extends ConsumerStatefulWidget {
   const MediaPlaybackScreen({super.key, required this.audioItem});
 
@@ -47,21 +47,27 @@ class MediaPlaybackScreen extends ConsumerStatefulWidget {
 }
 
 class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, RouteAware {
   /// 单列播放器控制区的紧凑基准高度。
   ///
   /// 双栏复用同一基准，避免宽屏时把视频下方的控制区人为拉高。
   static const _singleColumnControlPanelHeight = 176.0;
 
   late final TabController _playlistViewController;
+  final _fullSentencePagerController = FreePlayerSentencePagerController();
+  final _bookmarkSentencePagerController = FreePlayerSentencePagerController();
   late final MediaPlayback _controller;
   late final int _studyPageGeneration;
   late final MediaSleepTimer _sleepTimer;
   late final MediaFullscreenService _fullscreenService;
   late final StreamSubscription<bool> _fullscreenSubscription;
+  ModalRoute<void>? _observedRoute;
   AppLifecycleListener? _lifecycle;
   Duration? _seekPreviewPosition;
   int _seekPreviewToken = 0;
+  int _focusRestoreRevision = 0;
+  bool _isProgressDragging = false;
+  bool _routeVisible = true;
   bool _isNavigatingToDetail = false;
 
   @override
@@ -77,6 +83,34 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     });
     _playlistViewController = TabController(length: 2, vsync: this);
     _lifecycle = AppLifecycleListener(onStateChange: _handleLifecycle);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route == null || identical(route, _observedRoute)) return;
+    if (_observedRoute != null) {
+      rootRouteObserver.unsubscribe(this);
+    }
+    _observedRoute = route;
+    rootRouteObserver.subscribe(this, route);
+  }
+
+  @override
+  void didPushNext() {
+    if (!mounted || !_routeVisible) return;
+    setState(() => _routeVisible = false);
+  }
+
+  @override
+  void didPopNext() {
+    // 返回播放器时要求活动字幕列表按最新当前句立即定位。
+    if (!mounted) return;
+    setState(() {
+      _routeVisible = true;
+      _focusRestoreRevision += 1;
+    });
   }
 
   void _handleLifecycle(AppLifecycleState state) {
@@ -111,14 +145,36 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
 
   @override
   void dispose() {
+    if (_observedRoute != null) {
+      rootRouteObserver.unsubscribe(this);
+    }
     _lifecycle?.dispose();
     unawaited(_fullscreenSubscription.cancel());
     unawaited(_releaseFullscreen());
     _playlistViewController.dispose();
-    // 页面销毁时在后台启动幂等收尾，防止媒体资源继续工作或丢失最终统计。
-    unawaited(_controller.finishStudyPage(generation: _studyPageGeneration));
+    _scheduleStudyPageFinish();
     scheduleMicrotask(_sleepTimer.cancel);
     super.dispose();
+  }
+
+  /// 销毁兜底在当前生命周期结束后执行，避免暂停或清空状态时修改构建中的 provider。
+  ///
+  /// 捕获当前页面代际，防止延迟任务释放新页面；后台收尾没有调用方等待，
+  /// 因此必须记录并接住异常，避免释放失败变成未处理的异步异常。
+  void _scheduleStudyPageFinish() {
+    final controller = _controller;
+    final generation = _studyPageGeneration;
+    scheduleMicrotask(() async {
+      try {
+        await controller.finishStudyPage(generation: generation);
+      } catch (error, stackTrace) {
+        AppLogger.log(
+          'StudyExit',
+          'media dispose cleanup failed generation=$generation '
+              'error=$error\n$stackTrace',
+        );
+      }
+    });
   }
 
   Future<void> _releaseFullscreen() async {
@@ -136,11 +192,15 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
         onPlayPause: () => state.isPlaying
             ? unawaited(_controller.pause())
             : unawaited(_controller.play()),
-        onPrevious: () => unawaited(_controller.previousSentence()),
-        onNext: () => unawaited(_controller.nextSentence()),
+        onPrevious: () =>
+            unawaited(_handleSentenceNavigation(-1, trigger: 'hotkey')),
+        onNext: () =>
+            unawaited(_handleSentenceNavigation(1, trigger: 'hotkey')),
         child: Scaffold(
-          backgroundColor: state.visualTrackExpanded ? Colors.black : null,
-          appBar: state.visualTrackExpanded
+          backgroundColor: widget.audioItem.isVideo && state.visualTrackExpanded
+              ? Colors.black
+              : null,
+          appBar: widget.audioItem.isVideo && state.visualTrackExpanded
               ? null
               : AppBar(
                   titleSpacing: 0,
@@ -151,6 +211,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
             loadKey: widget.audioItem.id,
             load: () => _controller.load(widget.audioItem),
             cancel: _controller.cancelLoad,
+            showVideoLoading: widget.audioItem.isVideo,
             child: DictionaryPanelHost(
               handleBackButton: true,
               child: _buildBody(context, state, l10n),
@@ -162,7 +223,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
   }
 
   Widget _buildAppBarTitle(MediaPlaybackState state, AppLocalizations l10n) {
-    final item = state.audioItem ?? widget.audioItem;
+    final loadedItem = state.audioItem;
+    final item = loadedItem != null && loadedItem.id == widget.audioItem.id
+        ? loadedItem
+        : widget.audioItem;
     final collectionNames = ref.watch(
       collectionListProvider.select((s) {
         final ids = s.audioToCollectionsMap[item.id] ?? const <String>[];
@@ -185,8 +249,19 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     MediaPlaybackState state,
     AppLocalizations l10n,
   ) {
-    if (state.visualTrackExpanded) {
+    final hasVideoTrack = widget.audioItem.isVideo;
+    if (hasVideoTrack && state.visualTrackExpanded) {
       return _buildMediaVisualSurface(state);
+    }
+
+    if (!hasVideoTrack) {
+      return Column(
+        key: const ValueKey('media-playback-audio-layout'),
+        children: [
+          Expanded(child: _buildTranscriptView(context, state, l10n)),
+          _buildControlPanel(context, state),
+        ],
+      );
     }
 
     return LayoutBuilder(
@@ -321,7 +396,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
             ),
             const SizedBox(height: AppSpacing.m),
             Text(
-              l10n.videoNoTranscript,
+              l10n.noTranscript,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
@@ -347,6 +422,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           state.currentFullIndex,
           PlaylistMode.full,
           (s) => controller.selectFullSentence(s.index),
+          pagerController: _fullSentencePagerController,
         ),
         _buildBookmarkPane(state, l10n),
       ],
@@ -394,6 +470,7 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
       PlaylistMode.bookmarks,
       (s) => controller.selectBookmarkedSentence(s.index),
       playingLocalIndex: playingLocalIndex,
+      pagerController: _bookmarkSentencePagerController,
     );
   }
 
@@ -404,53 +481,71 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     PlaylistMode mode,
     ValueChanged<Sentence> onPlayFrom, {
     int? playingLocalIndex,
+    required FreePlayerSentencePagerController pagerController,
   }) {
     final controller = ref.read(mediaPlaybackProvider.notifier);
     final settings = mode == PlaylistMode.bookmarks
         ? state.bookmarkSettings
         : state.fullSettings;
-    if (settings.singleSentenceMode && currentSentenceIndex != null) {
-      final audioItem = state.audioItem ?? widget.audioItem;
-      final isBookmarkMode = mode == PlaylistMode.bookmarks;
-      return FreePlayerSentencePager(
-        key: PageStorageKey(
-          'media-single-sentence-${audioItem.id}-${mode.name}',
-        ),
-        audioItem: audioItem,
-        sentences: sentences,
-        currentSentenceIndex: currentSentenceIndex,
-        bookmarkedSentenceIndices: state.bookmarkedIndices,
-        showTranscript: settings.showTranscript,
-        isPlaying: state.isPlaying,
-        scope: isBookmarkMode
-            ? FreePlayerSentenceScope.bookmarks
-            : FreePlayerSentenceScope.full,
-        actions: FreePlayerSentenceActions(
-          onSentenceSelected: isBookmarkMode
-              ? controller.selectBookmarkedSentence
-              : controller.selectFullSentence,
-          onBookmarkToggle: _handleBookmarkToggle,
-          onStopMainPlayer: () => unawaited(controller.pause()),
-          onToolbarButtonTapped: () =>
-              unawaited(controller.pauseAfterCurrentSentence()),
-        ),
-      );
-    }
-    return ParagraphSentenceListCard(
-      key: PageStorageKey(
-        'media-sentence-list-${widget.audioItem.id}-${mode.name}',
+    final audioItem = state.audioItem ?? widget.audioItem;
+    final isBookmarkMode = mode == PlaylistMode.bookmarks;
+    final showSingleSentence =
+        settings.singleSentenceMode && currentSentenceIndex != null;
+    final resolvedPlayingLocalIndex =
+        playingLocalIndex ?? currentSentenceIndex ?? -1;
+
+    final singleSentencePane = FreePlayerSentencePager(
+      key: PageStorageKey('media-single-sentence-${audioItem.id}-${mode.name}'),
+      controller: pagerController,
+      audioItem: audioItem,
+      sentences: sentences,
+      currentSentenceIndex: currentSentenceIndex ?? 0,
+      bookmarkedSentenceIndices: state.bookmarkedIndices,
+      showTranscript: settings.showTranscript,
+      isPlaying: state.isPlaying,
+      scope: isBookmarkMode
+          ? FreePlayerSentenceScope.bookmarks
+          : FreePlayerSentenceScope.full,
+      actions: FreePlayerSentenceActions(
+        onSentenceSelected: isBookmarkMode
+            ? controller.selectBookmarkedSentence
+            : controller.selectFullSentence,
+        onBookmarkToggle: _handleBookmarkToggle,
+        onStopMainPlayer: () => unawaited(controller.pause()),
+        onToolbarButtonTapped: () =>
+            unawaited(controller.pauseAfterCurrentSentence()),
       ),
+    );
+    final listPane = ParagraphSentenceListCard(
+      key: ValueKey('media-sentence-list-${audioItem.id}-${mode.name}'),
       sentences: sentences,
       displayMode: state.settings.showTranscript
           ? RetellDisplayMode.showAll
           : RetellDisplayMode.hideAll,
       keywordMap: const {},
-      playingSentenceIndex: playingLocalIndex ?? currentSentenceIndex ?? -1,
+      playingSentenceIndex: resolvedPlayingLocalIndex,
       autoFocusEnabled: true,
+      focusActive:
+          !showSingleSentence &&
+          _routeVisible &&
+          !_isProgressDragging &&
+          mode == state.playlistMode,
+      focusRequestRevision: state.sentenceFocusRevision,
+      focusReason: state.sentenceFocusReason,
+      focusRestoreRevision: _focusRestoreRevision,
+      directInitialPositioning: true,
+      preserveScrollPositionOnReactivation: true,
       bookmarkedSentenceIndices: state.bookmarkedIndices,
       onSentencePlayFrom: onPlayFrom,
-      onSentenceTap: _handleSentenceDetail,
+      onSentenceExplanationTap: _handleSentenceDetail,
       onSentenceBookmarkToggle: (s) => _handleBookmarkToggle(s.index),
+    );
+
+    return _MediaSentencePaneSwitcher(
+      key: ValueKey('media-sentence-pane-${audioItem.id}-${mode.name}'),
+      showList: !showSingleSentence,
+      listPane: listPane,
+      singleSentencePane: singleSentencePane,
     );
   }
 
@@ -509,15 +604,17 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           startTimeMs: sentence.startTime.inMilliseconds,
           endTimeMs: sentence.endTime.inMilliseconds,
           rangePlayback: controller.senseGroupRangePlayback,
-          mediaSession: SentenceDetailMediaSession(
-            readState: () => ref.read(mediaPlaybackProvider),
-            setVisible: controller.setVisualTrackVisible,
-            setSubtitleVisible: controller.setVideoSubtitleVisible,
-            setFullscreen: _setVisualTrackExpanded,
-            buildVideoView: (size) => ref
-                .read(mediaEngineProvider.notifier)
-                .buildVideoView(viewportSize: size),
-          ),
+          mediaSession: widget.audioItem.isVideo
+              ? SentenceDetailMediaSession(
+                  readState: () => ref.read(mediaPlaybackProvider),
+                  setVisible: controller.setVisualTrackVisible,
+                  setSubtitleVisible: controller.setVideoSubtitleVisible,
+                  setFullscreen: _setVisualTrackExpanded,
+                  buildVideoView: (size) => ref
+                      .read(mediaEngineProvider.notifier)
+                      .buildVideoView(viewportSize: size),
+                )
+              : null,
         ),
       );
       if (!mounted) return;
@@ -546,7 +643,13 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     double? minimumHeight,
     bool compact = false,
   }) {
-    final controls = _MediaControls(state: state, compact: compact);
+    final controls = _MediaControls(
+      state: state,
+      compact: compact,
+      onPrevious: () =>
+          unawaited(_handleSentenceNavigation(-1, trigger: 'button')),
+      onNext: () => unawaited(_handleSentenceNavigation(1, trigger: 'button')),
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: minimumHeight ?? 0),
       child: Container(
@@ -575,6 +678,78 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
           ),
         ),
       ),
+    );
+  }
+
+  /// 将页面内的上一句/下一句统一路由到当前播放列表的单句分页器。
+  Future<void> _handleSentenceNavigation(
+    int offset, {
+    required String trigger,
+  }) async {
+    final state = ref.read(mediaPlaybackProvider);
+    final direction = offset < 0 ? 'previous' : 'next';
+    final currentPosition = state.currentPlayablePosition;
+    final sourceIndex =
+        currentPosition == null ||
+            currentPosition < 0 ||
+            currentPosition >= state.playableSentences.length
+        ? null
+        : state.playableSentences[currentPosition].index;
+    AppLogger.log(
+      'FreePlayerNavigation',
+      'request trigger=$trigger item=${state.audioItem?.id ?? widget.audioItem.id} '
+          'playlist=${state.playlistMode.name} direction=$direction '
+          'from=$sourceIndex isPlaying=${state.isPlaying} '
+          'singleSentence=${state.settings.singleSentenceMode}',
+    );
+    if (!state.hasSentences) {
+      if (offset < 0) {
+        await _controller.previousSentence();
+      } else {
+        await _controller.nextSentence();
+      }
+      return;
+    }
+    if (!state.settings.singleSentenceMode) {
+      if (offset < 0) {
+        await _controller.previousSentence();
+      } else {
+        await _controller.nextSentence();
+      }
+      return;
+    }
+
+    final sentences = state.playableSentences;
+    if (currentPosition == null) {
+      AppLogger.log(
+        'FreePlayerNavigation',
+        'ignored trigger=$trigger reason=no_current_position direction=$direction',
+      );
+      return;
+    }
+    final targetPosition = currentPosition + offset;
+    if (targetPosition < 0 || targetPosition >= sentences.length) {
+      AppLogger.log(
+        'FreePlayerNavigation',
+        'ignored trigger=$trigger reason=boundary direction=$direction '
+            'from=$sourceIndex targetPosition=$targetPosition '
+            'playableCount=${sentences.length}',
+      );
+      return;
+    }
+    final targetIndex = sentences[targetPosition].index;
+    AppLogger.log(
+      'FreePlayerNavigation',
+      'target trigger=$trigger direction=$direction from=$sourceIndex '
+          'to=$targetIndex autoPlay=${state.isPlaying}',
+    );
+
+    final pagerController = state.playlistMode == PlaylistMode.bookmarks
+        ? _bookmarkSentencePagerController
+        : _fullSentencePagerController;
+    await pagerController.animateToSentence(
+      sentences[targetPosition].index,
+      autoPlay: state.isPlaying,
     );
   }
 
@@ -617,7 +792,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
                 total: total,
                 onDragStart: (details) {
                   _seekPreviewToken += 1;
-                  _updateSeekPreview(details.timeStamp);
+                  setState(() {
+                    _isProgressDragging = true;
+                    _seekPreviewPosition = details.timeStamp;
+                  });
                 },
                 onDragUpdate: (details) =>
                     _updateSeekPreview(details.timeStamp),
@@ -659,6 +837,10 @@ class _MediaPlaybackScreenState extends ConsumerState<MediaPlaybackScreen>
     MediaPlayback controller,
   ) async {
     await controller.seekAbsolute(target);
+    if (!mounted || token != _seekPreviewToken) return;
+    setState(() {
+      _isProgressDragging = false;
+    });
     await Future<void>.delayed(const Duration(milliseconds: 180));
     if (!mounted || token != _seekPreviewToken) return;
     setState(() => _seekPreviewPosition = null);
@@ -746,13 +928,20 @@ String _formatRemainingMediaTime({
 }
 
 class _MediaControls extends ConsumerWidget {
-  const _MediaControls({required this.state, this.compact = false});
+  const _MediaControls({
+    required this.state,
+    required this.onPrevious,
+    required this.onNext,
+    this.compact = false,
+  });
 
   static const double _controlButtonSize = 56;
   static const double _mainControlGap = 48;
   static const double _compactControlGap = 12;
 
   final MediaPlaybackState state;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
   final bool compact;
 
   @override
@@ -783,14 +972,11 @@ class _MediaControls extends ConsumerWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _navButton(
-                  Icons.replay_10,
-                  () => controller.previousSentence(),
-                ),
+                _navButton(Icons.replay_10, onPrevious),
                 const SizedBox(width: _mainControlGap),
                 _playPauseButton(context, controller),
                 const SizedBox(width: _mainControlGap),
-                _navButton(Icons.forward_10, () => controller.nextSentence()),
+                _navButton(Icons.forward_10, onNext),
               ],
             ),
           ],
@@ -812,7 +998,8 @@ class _MediaControls extends ConsumerWidget {
                 context,
                 icon: state.settings.singleSentenceMode
                     ? Icons.format_quote
-                    : Icons.article,
+                    : Icons.menu,
+                key: const ValueKey('media-list-mode-toggle-button'),
                 active: state.settings.singleSentenceMode,
                 onPressed: () => controller.updateSettings(
                   state.settings.copyWith(
@@ -845,17 +1032,12 @@ class _MediaControls extends ConsumerWidget {
             children: [
               _navButton(
                 Icons.skip_previous,
-                state.isFirstSentence
-                    ? null
-                    : () => controller.previousSentence(),
+                state.isFirstSentence ? null : onPrevious,
               ),
               const SizedBox(width: _mainControlGap),
               _playPauseButton(context, controller),
               const SizedBox(width: _mainControlGap),
-              _navButton(
-                Icons.skip_next,
-                state.isLastSentence ? null : () => controller.nextSentence(),
-              ),
+              _navButton(Icons.skip_next, state.isLastSentence ? null : onNext),
             ],
           ),
         ],
@@ -879,13 +1061,17 @@ class _MediaControls extends ConsumerWidget {
       isSelected: isBookmarks,
       icon: Badge(
         isLabelVisible: bookmarkCount > 0,
+        backgroundColor: AppTheme.bookmarkCountBadgeColor,
+        textColor: AppTheme.bookmarkCountBadgeTextColor,
         label: Text(badgeLabel),
         child: const Icon(Icons.bookmarks_outlined),
       ),
       selectedIcon: Badge(
         isLabelVisible: bookmarkCount > 0,
+        backgroundColor: AppTheme.bookmarkCountSelectedBadgeColor,
+        textColor: AppTheme.bookmarkCountSelectedBadgeTextColor,
         label: Text(badgeLabel),
-        child: const Icon(Icons.bookmarks),
+        child: const Icon(Icons.bookmarks, color: AppTheme.bookmarkColor),
       ),
       color: colorScheme.onSurface.withValues(alpha: 0.6),
       style: isBookmarks
@@ -948,18 +1134,72 @@ class _MediaControls extends ConsumerWidget {
     required IconData icon,
     required bool active,
     required VoidCallback onPressed,
+    Key? key,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
+    final iconColor = active
+        ? colorScheme.primary
+        : colorScheme.onSurface.withValues(alpha: 0.6);
     return IconButton(
+      key: key,
       icon: Icon(icon),
       iconSize: 22,
-      color: active
-          ? colorScheme.primary
-          : colorScheme.onSurface.withValues(alpha: 0.6),
+      color: iconColor,
       style: active
           ? IconButton.styleFrom(backgroundColor: colorScheme.primaryContainer)
           : null,
       onPressed: onPressed,
+    );
+  }
+}
+
+/// 首次打开列表后保留其滚动状态；列表未曾显示时不提前创建单句之外的内容。
+class _MediaSentencePaneSwitcher extends StatefulWidget {
+  const _MediaSentencePaneSwitcher({
+    super.key,
+    required this.showList,
+    required this.listPane,
+    required this.singleSentencePane,
+  });
+
+  final bool showList;
+  final Widget listPane;
+  final Widget singleSentencePane;
+
+  @override
+  State<_MediaSentencePaneSwitcher> createState() =>
+      _MediaSentencePaneSwitcherState();
+}
+
+class _MediaSentencePaneSwitcherState
+    extends State<_MediaSentencePaneSwitcher> {
+  late bool _hasShownList;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasShownList = widget.showList;
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaSentencePaneSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.showList) _hasShownList = true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_hasShownList) return widget.singleSentencePane;
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Offstage(
+          offstage: !widget.showList,
+          child: TickerMode(enabled: widget.showList, child: widget.listPane),
+        ),
+        if (!widget.showList) widget.singleSentencePane,
+      ],
     );
   }
 }
@@ -1117,32 +1357,61 @@ class _MediaInfoBar extends StatelessWidget {
     final captionStyle = AppTextStyles.caption(
       context,
     ).copyWith(color: mutedColor);
+    final groupSpacing = MediaQuery.sizeOf(context).width <= 360 ? 4.0 : 12.0;
     final row = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         if (state.hasSentences) ...[
-          Icon(
-            state.settings.singleSentenceMode
-                ? Icons.format_quote
-                : Icons.article,
-            size: 14,
-            color: mutedColor,
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                key: const ValueKey('media-info-playlist-mode-icon'),
+                state.playlistMode == PlaylistMode.bookmarks
+                    ? Icons.bookmarks
+                    : Icons.article,
+                size: 14,
+                color: mutedColor,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                state.playlistMode == PlaylistMode.bookmarks
+                    ? l10n.bookmarked
+                    : l10n.fullText,
+                style: captionStyle,
+              ),
+            ],
           ),
-          const SizedBox(width: 3),
-          Text(
-            state.settings.singleSentenceMode
-                ? l10n.singleSentenceMode
-                : l10n.listMode,
-            style: captionStyle,
+          SizedBox(width: groupSpacing),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (state.settings.singleSentenceMode)
+                Icon(Icons.format_quote, size: 14, color: mutedColor)
+              else
+                Icon(
+                  key: const ValueKey('media-info-sentence-mode-icon'),
+                  Icons.menu,
+                  size: 14,
+                  color: mutedColor,
+                ),
+              const SizedBox(width: 3),
+              Text(
+                state.settings.singleSentenceMode
+                    ? l10n.singleSentenceMode
+                    : l10n.listMode,
+                style: captionStyle,
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
         ],
         Text(
           formatPlaybackSpeedLabel(state.settings.playbackSpeed),
           style: captionStyle,
         ),
         if (state.settings.loopWhole) ...[
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
           _loopBadge(
             Icons.repeat,
             state.settings.wholeLoopCount,
@@ -1152,7 +1421,7 @@ class _MediaInfoBar extends StatelessWidget {
           ),
         ],
         if (state.settings.loopSentence) ...[
-          const SizedBox(width: 12),
+          SizedBox(width: groupSpacing),
           _loopBadge(
             Icons.repeat_one,
             state.settings.sentenceLoopCount,
@@ -1166,7 +1435,9 @@ class _MediaInfoBar extends StatelessWidget {
     return Padding(
       key: const ValueKey('media-info-bar'),
       padding: EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, 0),
-      child: Center(child: row),
+      child: Center(
+        child: FittedBox(fit: BoxFit.scaleDown, child: row),
+      ),
     );
   }
 

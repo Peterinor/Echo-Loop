@@ -47,6 +47,7 @@ import 'package:echo_loop/providers/learning_session/review_difficult_practice_p
 import 'package:echo_loop/providers/offline_asr_settings_provider.dart';
 import 'package:echo_loop/providers/saved_word_provider.dart';
 import 'package:echo_loop/providers/transcription_task_provider.dart';
+import 'package:echo_loop/router/app_router.dart';
 import 'package:echo_loop/theme/app_theme.dart';
 import 'package:echo_loop/utils/saved_text_index.dart';
 
@@ -144,6 +145,7 @@ Widget createTestApp(
 Widget createTestScreen(
   Widget screen, {
   List<Override>? overrides,
+  List<NavigatorObserver> navigatorObservers = const [],
   Locale locale = const Locale('en'),
 }) {
   final defaultOverrides = <Override>[
@@ -170,7 +172,10 @@ Widget createTestScreen(
   // 合并自定义 overrides
   final allOverrides = <Override>[...defaultOverrides, ...(overrides ?? [])];
 
-  final router = createTestRouter(screen);
+  final router = createTestRouter(
+    screen,
+    navigatorObservers: navigatorObservers,
+  );
 
   return ProviderScope(
     overrides: allOverrides,
@@ -387,9 +392,13 @@ Future<void> pumpFullAppWithAudio(
 ///
 /// 将传入的 [screen] 作为初始路由页面，
 /// 并添加常用的 stub 路由用于导航测试。
-GoRouter createTestRouter(Widget screen) {
+GoRouter createTestRouter(
+  Widget screen, {
+  List<NavigatorObserver> navigatorObservers = const [],
+}) {
   return GoRouter(
     initialLocation: '/',
+    observers: navigatorObservers,
     routes: [
       GoRoute(path: '/', builder: (context, state) => screen),
       // stub 路由，用于验证导航跳转
@@ -406,7 +415,7 @@ GoRouter createTestRouter(Widget screen) {
         builder: (context, state) => const Scaffold(body: Text('Paywall')),
       ),
       GoRoute(
-        path: '/podcast-subscribe',
+        path: AppRoutes.podcastSubscribe,
         builder: (context, state) =>
             const Scaffold(body: Text('Podcast Subscribe')),
       ),

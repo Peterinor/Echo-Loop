@@ -30,6 +30,9 @@ class _FakeOfflineAsrSettingsNotifier extends OfflineAsrSettingsNotifier {
 
 class _FakeSpeechPracticeBackend implements SpeechPracticeBackend {
   final _controller = StreamController<SpeechPracticeEvent>.broadcast();
+  final Completer<void> warmupStarted = Completer<void>();
+  final Completer<void> warmupGate = Completer<void>();
+  bool blockWarmup = false;
   String? activePromptId;
   int counter = 0;
   bool failStopSession = false;
@@ -56,7 +59,10 @@ class _FakeSpeechPracticeBackend implements SpeechPracticeBackend {
   }
 
   @override
-  Future<void> warmup({String locale = 'en-US'}) async {}
+  Future<void> warmup({String locale = 'en-US'}) async {
+    if (!warmupStarted.isCompleted) warmupStarted.complete();
+    if (blockWarmup) await warmupGate.future;
+  }
 
   @override
   Future<int> getDeviceRamBytes() async => 0;
@@ -96,7 +102,9 @@ class _FakeSpeechPracticeBackend implements SpeechPracticeBackend {
   }
 
   @override
-  Future<void> cancelSession() async {}
+  Future<void> cancelSession() async {
+    activePromptId = null;
+  }
 
   @override
   Future<void> deleteRecording(String filePath) async {}
@@ -198,6 +206,139 @@ void main() {
     expect(
       recordedDuration,
       greaterThanOrEqualTo(const Duration(milliseconds: 900)),
+    );
+  });
+
+  test('启动中清理会取消旧段录音，后续段落可以独立启动', () async {
+    final backend = _FakeSpeechPracticeBackend()..blockWarmup = true;
+    final container = ProviderContainer(
+      overrides: [
+        analyticsOverride(),
+        initialLearningSettingsProvider.overrideWithValue(
+          const LearningSettings(),
+        ),
+        speechPracticeBackendProvider.overrideWithValue(backend),
+        recommendedAsrModelProvider.overrideWithValue(_testAsrModel),
+        offlineAsrSettingsProvider.overrideWith(
+          () => _FakeOfflineAsrSettingsNotifier(),
+        ),
+      ],
+    );
+    final controller = container.read(
+      retellRecordingControllerProvider.notifier,
+    );
+    addTearDown(
+      () => disposeTestResources(
+        controller: controller,
+        container: container,
+        backend: backend,
+      ),
+    );
+
+    final oldStart = controller.startRecording(
+      promptId: 'retell:a1:0',
+      referenceText: 'first paragraph',
+    );
+    await backend.warmupStarted.future;
+
+    final clearing = controller.clearRecording();
+    backend.warmupGate.complete();
+    await clearing;
+    await oldStart;
+
+    expect(controller.state.phase, RetellRecordingPhase.idle);
+    expect(backend.activePromptId, isNull);
+
+    await controller.startRecording(
+      promptId: 'retell:a1:1',
+      referenceText: 'second paragraph',
+    );
+
+    expect(backend.activePromptId, 'retell:a1:1');
+    expect(controller.state.promptId, 'retell:a1:1');
+  });
+
+  test('不同 prompt 不会加入旧段尚未完成的启动 future', () async {
+    final backend = _FakeSpeechPracticeBackend()..blockWarmup = true;
+    final container = ProviderContainer(
+      overrides: [
+        analyticsOverride(),
+        initialLearningSettingsProvider.overrideWithValue(
+          const LearningSettings(),
+        ),
+        speechPracticeBackendProvider.overrideWithValue(backend),
+        recommendedAsrModelProvider.overrideWithValue(_testAsrModel),
+        offlineAsrSettingsProvider.overrideWith(
+          () => _FakeOfflineAsrSettingsNotifier(),
+        ),
+      ],
+    );
+    final controller = container.read(
+      retellRecordingControllerProvider.notifier,
+    );
+    addTearDown(
+      () => disposeTestResources(
+        controller: controller,
+        container: container,
+        backend: backend,
+      ),
+    );
+
+    final oldStart = controller.startRecording(
+      promptId: 'retell:a1:0',
+      referenceText: 'first paragraph',
+    );
+    await backend.warmupStarted.future;
+    final nextStart = controller.startRecording(
+      promptId: 'retell:a1:1',
+      referenceText: 'second paragraph',
+    );
+    backend.warmupGate.complete();
+    await Future.wait([oldStart, nextStart]);
+
+    expect(backend.activePromptId, 'retell:a1:1');
+    expect(controller.state.promptId, 'retell:a1:1');
+  });
+
+  test('停止会话失败应显示通用错误而非设备不支持', () async {
+    final backend = _FakeSpeechPracticeBackend()..failStopSession = true;
+    final container = ProviderContainer(
+      overrides: [
+        analyticsOverride(),
+        initialLearningSettingsProvider.overrideWithValue(
+          const LearningSettings(),
+        ),
+        speechPracticeBackendProvider.overrideWithValue(backend),
+        recommendedAsrModelProvider.overrideWithValue(_testAsrModel),
+        offlineAsrSettingsProvider.overrideWith(
+          () => _FakeOfflineAsrSettingsNotifier(),
+        ),
+      ],
+    );
+    final controller = container.read(
+      retellRecordingControllerProvider.notifier,
+    );
+    addTearDown(
+      () => disposeTestResources(
+        controller: controller,
+        container: container,
+        backend: backend,
+      ),
+    );
+
+    await controller.startRecording(
+      promptId: 'retell:a1:0',
+      referenceText: 'first paragraph',
+    );
+    await controller.stopAndEvaluate(referenceText: 'first paragraph');
+
+    expect(
+      controller.state.currentAttempt?.status,
+      SpeechPracticeAttemptStatus.error,
+    );
+    expect(
+      controller.state.currentAttempt?.errorMessage,
+      contains('stop failed'),
     );
   });
 

@@ -11,7 +11,7 @@ import '../../providers/collection_provider.dart';
 import '../../services/app_logger.dart';
 import '../../services/background_file_download_service.dart';
 import '../../utils/app_data_dir.dart';
-import '../../utils/audio_duration.dart';
+import '../../utils/media_duration.dart';
 import 'audio_finalization_service.dart';
 import 'audio_import_cancel.dart';
 import 'audio_import_models.dart';
@@ -40,7 +40,7 @@ class AudioImportService {
   }) : _dio = dio ?? Dio(),
        _uuid = uuid ?? const Uuid(),
        _resolveDataDir = resolveDataDir ?? getAppDataDirectory,
-       _readDurationSeconds = readDurationSeconds ?? getAudioDurationSeconds,
+       _readDurationSeconds = readDurationSeconds ?? getMediaDurationSeconds,
        _registrationService =
            registrationService ?? AudioRegistrationService(uuid: uuid),
        _finalizationService = AudioFinalizationService(
@@ -146,8 +146,10 @@ class AudioImportService {
   /// 常返回 `application/octet-stream` 或经重定向域名分发），扩展名按
   /// URL 后缀 → enclosureType → `mp3` 兜底确定。调用方拿到结果后自行更新已存在的
   /// 占位条目（保留 podcast 元字段），避免在资源库产生重复孤儿条目。
+  /// [displayName] 使用播客列表中的名称，并用于后台下载通知。
   Future<DownloadedAudio> downloadEpisodeToSandbox({
     required String url,
+    required String displayName,
     String? enclosureType,
     CancelToken? cancelToken,
     AudioImportProgressCallback? onProgress,
@@ -181,7 +183,7 @@ class AudioImportService {
     final downloadedPath = await _downloadToTemp(
       resolved: ResolvedAudioImport(
         uri: normalizedUri,
-        displayName: safeBaseName,
+        displayName: displayName,
         fileName: '$safeBaseName.$extension',
         extension: extension,
       ),
@@ -311,6 +313,7 @@ class AudioImportService {
       await _backgroundDownloader.download(
         uri: resolved.uri,
         savePath: downloadedFile.path,
+        displayName: resolved.displayName,
         cancelToken: cancelToken,
         onProgress: (received, total) => onProgress?.call(received, total),
       );
