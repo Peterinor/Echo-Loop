@@ -22,7 +22,20 @@
 工作流会先执行本地版行为测试和 Apple 配置测试，再验证编译产物。
 现有上游 `CI`、`Release` 工作流保持原样；不要通过 `Release` 打包本地版。
 
-## 最新构建：同步上游与本地版精简（2026-09-26）
+## 最新构建：1.0.39（构建 2026-10-05，交付 2026-10-08）
+
+- [成功运行 #6](https://github.com/Peterinor/Echo-Loop/actions/runs/37215136886)，源码 `fc3f60f61eb97b6b2b1682f50b9daf8a275b1923`；已推送 `codex/local-edition`，包含上游 `01e9f0e7`。云端 job 用时 14 分 50 秒。
+- 云端 6 项 Python、18 项本地版/访问策略、67 项资源与播客、19 项 AI 客户端/官方访问策略全部通过，共 110 项。
+- macOS 15.7.9 / Xcode 16.4 / Flutter 3.41.5，iPhone ARM64 Release，版本 `1.0.39 (6)`，最低 iOS 15.0；原生统计关闭，本机模型密钥未打入产物。
+- 下载因网络中断续传，于 2026-10-08 完成。外层 Artifact、内层 ZIP SHA256 校验通过；重打包后的 684 个应用条目内容及权限与云端产物一致。
+- IPA：`D:\env\echo-loop\ios-build\run-6\Echo-Loop-local-1.0.39-6.ipa`，61,706,234 字节，供 Sideloadly 使用原 Apple 账号和 Bundle ID 配置签名覆盖安装，不要先卸载旧版。尚未执行 iPhone 真机验证。
+- IPA SHA256：`2d870c57e5e4f555086cfafc9e48393a5dba79a5961f52e77ba244473288fef0`。
+- 应用 ZIP SHA256：`47057dc21a4a40f2c314081fbde09d4004ad8db022e9a10abc644224857a68aa`。
+- GitHub Artifact SHA256：`cdb130a7ffc3f83e19db675aa3b45c987cf77f2bee4b70b87860bf8fb27868b2`。
+
+本轮复用现有工作流，没有修改应用或工作流代码；只更新 PLAN.md、TASKS.md 和本构建记录。未重跑 `scripts/check.sh` 或 UI/Maestro：上一轮同步已执行相关回归、Android 集成测试与升级验证；全量脚本仍有既有 Kokoro 集成测试编译阻塞。
+
+## 历史构建：同步上游与本地版精简（2026-09-26）
 
 - [成功运行 #5](https://github.com/Peterinor/Echo-Loop/actions/runs/36160762454)，源码 `018e07d1fad20f9143e9a4d736ba5e90ac78104c`，耗时 18 分 19 秒；已包含上游 `315a326a` 和合并提交 `6789c3d2`。
 - 云端 6 项 Python、18 项本地版/访问策略、61 项资源与播客、19 项 AI 客户端/官方访问策略测试全部通过，共 104 项。
