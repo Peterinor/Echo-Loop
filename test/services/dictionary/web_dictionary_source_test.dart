@@ -65,7 +65,7 @@ void main() {
 
     if (result case WebDictResult(:final sourceId, :final url)) {
       expect(sourceId, 'eudic');
-      expect(url.toString(), 'https://dict.eudic.net/dicts/en/ice%20cream');
+      expect(url.toString(), 'https://dict.eudic.net/mdicts/en/ice%20cream');
     } else {
       fail('Expected an Eudic web dictionary result.');
     }

@@ -223,4 +223,4 @@ String _wordReferenceUrl(String w) =>
     'https://www.wordreference.com/definition/$w';
 String _etymonlineUrl(String w) => 'https://www.etymonline.com/search?q=$w';
 String _youdaoUrl(String w) => 'https://m.youdao.com/dict?le=eng&q=$w';
-String _eudicUrl(String w) => 'https://dict.eudic.net/dicts/en/$w';
+String _eudicUrl(String w) => 'https://dict.eudic.net/mdicts/en/$w';
