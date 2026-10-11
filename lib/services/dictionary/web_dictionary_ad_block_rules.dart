@@ -86,8 +86,9 @@ const _adDomains = <String>[
 const _thirdPartyAdPaths = <String>[
   r'/pagead/',
   r'/gampad/',
-  r'/adsbygoogle\.js(?:[?#]|$)',
-  r'/show_ads\.js(?:[?#]|$)',
+  // WKContentRuleList 不支持正则分支；外层 `.*` 已覆盖 URL 查询参数。
+  r'/adsbygoogle\.js',
+  r'/show_ads\.js',
   r'/adserver/',
   r'/adserving/',
   r'/ad-delivery/',
@@ -103,7 +104,7 @@ const _adResourceTypes = <ContentBlockerTriggerResourceType>[
 ];
 
 /// 只隐藏具有明确广告语义的页面元素，避免使用 `.ad`、`.banner` 等宽泛规则。
-const _adSelectors = <String>[
+const webDictionaryAdCssSelectors = <String>[
   // 标准广告类名
   '.adsbygoogle',
   '.adsense',
@@ -206,6 +207,10 @@ const _adSelectors = <String>[
   '[aria-label="广告"]',
 ];
 
+/// 页面元素广告过滤所使用的 CSS 规则，供不支持网络拦截的平台注入。
+final String webDictionaryAdHidingCss =
+    '${webDictionaryAdCssSelectors.join(', ')} { display: none !important; }';
+
 /// 将广告域名转换为完整 URL 正则，并检查主机名边界。
 String _domainUrlPattern(String domain) {
   final escapedDomain = RegExp.escape(domain);
@@ -243,7 +248,7 @@ final List<ContentBlocker> webDictionaryCommonAdBlockers =
         trigger: ContentBlockerTrigger(urlFilter: '.*'),
         action: ContentBlockerAction(
           type: ContentBlockerActionType.CSS_DISPLAY_NONE,
-          selector: _adSelectors.join(', '),
+          selector: webDictionaryAdCssSelectors.join(', '),
         ),
       ),
     ]);

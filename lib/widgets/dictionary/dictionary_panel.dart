@@ -469,10 +469,10 @@ class _DictionaryPanelState extends ConsumerState<DictionaryPanel> {
             // 可拉伸源用显式高度（默认 3/5，可拖拽指示条调整）；本地源按内容自适应。
             height: isResizable ? (_sheetHeight ?? _defaultSheetHeight) : null,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.l,
+              padding: EdgeInsets.fromLTRB(
+                isWeb ? AppSpacing.m : AppSpacing.l,
                 6,
-                AppSpacing.l,
+                isWeb ? AppSpacing.m : AppSpacing.l,
                 AppSpacing.s,
               ),
               child: Column(

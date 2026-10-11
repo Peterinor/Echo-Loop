@@ -4,6 +4,19 @@
 
 ## 本次完成
 
+- [x] 修复 macOS 网页词典广告规则编译失败（2026-10-11）：移除 WebKit 不支持的广告脚本 URL 正则分支，保留脚本路径匹配；增加规则集回归测试，确保交给原生拦截器的 URL 过滤器不含正则分支。定向 Widget 测试 2 项通过，相关 3 个 Dart 文件 `flutter analyze` 通过，`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动只涉及网页词典广告规则。仍需在 macOS 重启 App 确认 WKContentRuleList 成功编译并正常显示词典页面。**完成时间**: 2026-10-11 12:17
+- [x] 恢复网页词典默认页面清理与 Cookie 同意脚本（2026-10-11）：恢复隐藏常见页眉、页脚及 Cookie 横幅的默认 CSS，并自动点击 OneTrust 或通用 Cookie 接受按钮；在页面提交和加载完成时执行，保留提前展示内容的加载行为。回归测试确认 WebView 注入清理 CSS 并执行接受脚本；定向 `flutter analyze`、该测试、`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动仅限网页词典视图。仍需在 macOS/移动端确认站点布局及 Cookie 提示表现。**完成时间**: 2026-10-11 12:14
+- [x] 恢复网页词典广告过滤（2026-10-11）：将已有规则接回 WebView，Android/iOS/macOS 启用广告请求拦截与广告元素隐藏；所有平台在页面样式注入时隐藏匹配的广告元素，Windows 插件不支持网络请求拦截，因此仅隐藏页面广告。新增 Widget 回归测试确认规则传入 WebView。`flutter test test/widgets/dictionary/web_dictionary_ad_filter_test.dart`、相关文件定向 `flutter analyze`、`dart format` 与 `git diff --check` 通过；未运行 `scripts/check.sh`，改动只涉及网页词典广告过滤。仍需在 macOS/移动端实际确认广告展示效果。**完成时间**: 2026-10-11 12:08
+- [x] 升级应用版本至 1.0.40（2026-10-11）：将 `pubspec.yaml` 中的版本从 1.0.39 提升至 1.0.40。已核对版本字段并通过 `git diff --check`；版本元数据变更无需运行测试，未运行 `scripts/check.sh`。**完成时间**: 2026-10-11 12:01
+- [x] 缩小网页词典弹窗左右留白（2026-10-11）：网页词典面板左右内边距从 `24dp` 调至 `16dp`，其他词典面板保持原间距。`dart format`、定向 `flutter analyze lib/widgets/dictionary/dictionary_panel.dart` 与 `git diff --check` 通过；未运行测试和 `scripts/check.sh`。需用户在 macOS 确认视觉效果。**完成时间**: 2026-10-11 11:58
+- [x] 隐藏网页词典滚动条（2026-10-11）：Android/iOS 关闭原生竖向滚动指示器，并在页面提交及加载完成时注入隐藏 WebKit 滚动条的 CSS，覆盖 macOS 页面滚动条。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过；未运行测试和 `scripts/check.sh`。需用户在 macOS 确认视觉效果。**完成时间**: 2026-10-11 11:55
+- [x] 为网页词典设置移动 Safari User-Agent（2026-10-11）：移动内容模式仍返回桌面布局后，为 WebView 配置移动 Safari UA；macOS 插件将该设置映射到 WKWebView 的 `customUserAgent`。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过；未运行测试和 `scripts/check.sh`。仍需用户重启 App 实测。**完成时间**: 2026-10-11 11:52
+- [x] 网页词典显式请求移动版布局（2026-10-11）：当前 WebView 未设置移动端内容模式，Apple WKWebView 默认模式可能让词典站点返回桌面布局。为 Android、iOS、macOS 设置 `preferredContentMode=MOBILE`，不改 URL 模板或手动伪造 UA。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过；未运行测试和 `scripts/check.sh`。仍需在 macOS 实测确认页面布局。**完成时间**: 2026-10-11 11:49
+- [x] 更新有道词典移动版地址（2026-10-11）：将旧版 `m.youdao.com/dict?le=eng&q=...` 改为 `dict.youdao.com/m/result?word=...&lang=en`，查询词继续使用既有 URL 编码。`dart format`、定向 `flutter analyze lib/services/dictionary/web_dictionary_source.dart` 与 `git diff --check` 通过；未运行测试，未运行 `scripts/check.sh`。**完成时间**: 2026-10-11 11:47
+- [x] 补充网页词典 URL 诊断日志（2026-10-11）：主框架开始、提交、完成、失败和超时事件打印完整 URL；Android、iOS、macOS 额外记录已加载子资源的类型和 URL。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过。未运行测试：本次只增加诊断日志；未运行 `scripts/check.sh`。**完成时间**: 2026-10-11 11:44
+- [x] 确认 macOS 网页词典黑闪与原生视图路径相关（2026-10-11）：临时将 `AppKitView` 替换为占据同一布局的 Flutter 色块；用户实测黑闪消失，说明黑帧来自原生 WebView 创建/呈现路径。对照期间不创建 WebView，因此一直显示加载遮罩是预期结果；现已恢复网页加载。静态分析与 `git diff --check` 通过。精确到原生创建还是合成时序仍待继续排查。**完成时间**: 2026-10-11 10:55
+- [x] 统一放宽 Apple 平台 ATS 网络限制（2026-10-11）：macOS 与 iOS 的 `Info.plist` 均配置 `NSAllowsArbitraryLoads=true`，允许应用通过 ATS 加载任意网络连接；macOS Debug/Release 沙盒客户端网络权限已存在，无需修改。两个 Info.plist 校验通过。未运行 `scripts/check.sh`：本次仅修改 Apple 平台网络策略配置，Plist 校验覆盖变更；仍需重新构建 macOS/iOS App 实测有道页面。**完成时间**: 2026-10-11 10:34
+- [x] 优化网页词典跨平台首屏加载（2026-10-11）：WebView 全程挂载，上覆跟随 App 主题的加载遮罩；`onPageCommitVisible` 到达时提前展示页面，`onLoadStop` 为 Windows 等平台兜底。仅主框架错误显示重试界面，30 秒超时也会退出无限加载态；用导航 URL 和代际隔离过期回调与计时器。将 `underPageBackgroundColor` 限定配置到 iOS/macOS，并关闭透明背景；启用 Windows 内嵌 WebView。新增 9 项加载状态测试，连同网页词典弹窗高度测试共 15 项通过；4 个 Dart 文件定向分析通过，`git diff --check` 通过。未运行 `scripts/check.sh`：改动局限于网页词典加载链路，定向检查覆盖相关状态和弹窗。未运行 Maestro：需要用户在 macOS/iOS/Android/Windows 实机验证页面首次绘制，且当前 Maestro 首启 smoke flow 会清空应用数据。**完成时间**: 2026-10-11 10:02
 - [x] 修正欧路词典词条链接（2026-10-11）：将链接路径从 `/dicts/en/` 改为 `/mdicts/en/`，符合欧路词典的词条地址格式。定向测试 53 项通过，2 个 Dart 文件定向分析通过，`git diff --check` 通过。未运行 `scripts/check.sh`：改动仅涉及词条 URL 与其回归测试，定向检查已覆盖。**完成时间**: 2026-10-11 00:37
 - [x] 移除词典广告过滤说明（2026-10-10）：删除设置页说明及中英文文案；本地化生成、diff 检查通过，未运行测试。完成时间 22:37
 - [x] 扩展网页词典广告过滤规则（2026-10-10）：新增国际与中国广告域名、第三方广告路径和 CSS 隐藏规则；格式化、diff 检查通过，未运行测试。**完成时间**: 2026-10-10 22:17
@@ -53,6 +66,8 @@
 
 ## 优先处理
 
+- [ ] 实测 WebView 移动内容模式与 User-Agent：macOS 完整重启 App 后确认有道等词典是否显示移动布局；如仍为桌面版，再收集页面实际 User-Agent 与 viewport 宽度。
+- [ ] 修复 macOS 网页词典首帧黑闪：继续隔离原生 WebView 创建与 Flutter 合成时序，保持内容尽早显示且不修改插件源码。
 - [ ] Android 离线 ASR 结束录音闪退：获取真机 `logcat` 与 `/data/tombstones`，定位并修复 Silero VAD native 崩溃。
 - [ ] 段落复述页面复用统一录音识别模块。
 - [ ] 意群操作栏切换收藏时其他按钮闪烁，继续定位根因。

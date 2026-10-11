@@ -1,14 +1,11 @@
-/// 通用网页词典视图
+/// 通用网页词典视图。
 ///
-/// 在内置 WebView 中显示某个网页词典（Cambridge / Oxford / Longman 等）的词条页。
-/// 标准用法：以 `initialUrlRequest` 在组件创建时加载，加载期间用不透明遮罩盖住
-/// 直到 onLoadStop 揭示；注入 CSS/JS 收敛页面 chrome 并自动接受 cookie。
-/// 切源由父级以 `ValueKey(sourceId)` 触发整组件重建（全新 native view），
-/// 故无旧页残留、无需手动 loadUrl/保活/启发式揭示。
-/// 不支持 WebView 的平台（linux/windows）降级为「在浏览器中打开」。
+/// WebView 始终挂载；在网页出现首个可见内容前由 Flutter 主题色遮罩覆盖，
+/// 避免原生视图首次绘制时露出底色。
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -18,53 +15,45 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../services/app_logger.dart';
+import '../../services/dictionary/web_dictionary_ad_block_rules.dart';
 import '../../theme/app_theme.dart';
+import 'web_dictionary_load_state.dart';
 
-/// 移动端 User-Agent：强制各词典站返回移动版页面（布局更紧凑、适合弹窗窄屏）。
-/// 用 iPhone Safari UA，跨平台统一即可让响应式站点走移动布局。
-const _mobileUserAgent =
+/// 用移动 Safari UA 让按 User-Agent 分流的词典站点返回移动版页面。
+const _mobileSafariUserAgent =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) '
     'AppleWebKit/605.1.15 (KHTML, like Gecko) '
     'Version/17.0 Mobile/15E148 Safari/604.1';
 
-/// 默认通用注入：隐藏页眉/广告/cookie 横幅，并自动点掉 cookie 同意（OneTrust 等）
+/// 收敛词典页常见页眉、页脚与 Cookie 提示；广告元素由专用规则隐藏。
 const _defaultTidyCss = '''
   header, nav, .hfl-h, #onetrust-consent-sdk, .cookie-banner,
-  .ad_*, [id^="google_ads"], .bb, .footer, footer { display: none !important; }
+  .bb, .footer, footer { display: none !important; }
   body { padding-top: 0 !important; }
 ''';
+
+/// 自动点击常见 Cookie 同意按钮，兼容 OneTrust 与通用接受按钮。
 const _defaultAcceptCookieJs = '''
-  (function(){
-    var b = document.querySelector('#onetrust-accept-btn-handler')
-         || document.querySelector('.cookie-accept');
-    if (b) b.click();
+  (function() {
+    var button = document.querySelector('#onetrust-accept-btn-handler')
+      || document.querySelector('.cookie-accept');
+    if (button) button.click();
   })();
 ''';
 
-/// 网页词典 WebView 容器
+/// 在各平台内嵌网页词典，并管理首屏加载、失败与重试。
 class WebDictionaryView extends StatefulWidget {
-  /// 来源源 id（仅用于错误兜底文案/语义；切源由父级 key 触发重建）
+  /// 网页词典来源标识，用于诊断日志。
   final String sourceId;
 
-  /// 待加载网页
+  /// 待加载网页地址。
   final Uri url;
 
-  /// 可选：站点专用收敛 CSS（为 null 用通用默认）
-  final String? tidyCss;
-
-  /// 可选：站点专用 cookie 接受 JS（为 null 用通用默认）
-  final String? acceptCookieJs;
-
-  /// 可选：网页广告过滤器生成的原生规则。
-  final List<ContentBlocker> contentBlockers;
-
+  /// 创建网页词典视图。
   const WebDictionaryView({
     super.key,
     required this.sourceId,
     required this.url,
-    this.tidyCss,
-    this.acceptCookieJs,
-    this.contentBlockers = const [],
   });
 
   @override
@@ -72,209 +61,462 @@ class WebDictionaryView extends StatefulWidget {
 }
 
 class _WebDictionaryViewState extends State<WebDictionaryView> {
+  static const Duration _loadTimeout = Duration(seconds: 30);
+
+  /// Apple 的 didCommit 早于首次绘制；等待视口出现内容并经过两次浏览器帧回调。
+  static const String _firstVisibleContentScript = r'''
+    const deadline = performance.now() + 25000;
+    let foundVisibleContent = false;
+    while (performance.now() < deadline) {
+      const body = document.body;
+      if (body) {
+        const text = typeof body.innerText === 'string'
+          ? body.innerText.trim()
+          : '';
+        const hasVisibleMedia = Array.from(
+          body.querySelectorAll('img, svg, canvas, video, iframe')
+        ).some((element) => {
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            Number(style.opacity) > 0 &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            rect.right > 0 &&
+            rect.bottom > 0 &&
+            rect.left < window.innerWidth &&
+            rect.top < window.innerHeight;
+        });
+        if (text.length > 0 || hasVisibleMedia) {
+          foundVisibleContent = true;
+          break;
+        }
+      }
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+    }
+
+    if (!foundVisibleContent) return false;
+
+    await new Promise((resolve) => window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve);
+    }));
+    return true;
+  ''';
+  static const String _afterWebKitPaintScript = r'''
+    await new Promise((resolve) => window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(resolve);
+    }));
+    return true;
+  ''';
+  static final String _applyPageStylesScript =
+      '''
+    (() => {
+      const styleId = '__echo_loop_web_dictionary_styles__';
+      if (document.getElementById(styleId)) return;
+      const style = document.createElement('style');
+      style.id = styleId;
+      style.textContent = ${jsonEncode('$_defaultTidyCss\n$webDictionaryAdHidingCss\n*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }')};
+      (document.head || document.documentElement)?.appendChild(style);
+    })();
+  ''';
+
+  late WebDictionaryLoadState _loadState;
   InAppWebViewController? _controller;
-  bool _loading = true;
-  bool _error = false;
-
-  /// 加载超时计时器（onLoadStop/onReceivedError 到达即取消）
-  Timer? _timeoutTimer;
-
-  /// 加载超时阈值：超时未完成即视作失败，展示重试
-  static const _loadTimeout = Duration(seconds: 20);
+  Timer? _loadTimeoutTimer;
 
   bool get _webViewSupported =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS ||
-          defaultTargetPlatform == TargetPlatform.macOS);
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.windows);
 
   @override
   void initState() {
     super.initState();
-    // initialUrlRequest 在组件创建时即开始加载，这里同步起超时兜底。
-    _armTimeout();
+    _loadState = WebDictionaryLoadState.initial(widget.url.toString());
+    _scheduleLoadTimeout(_loadState.generation);
   }
 
   @override
   void dispose() {
-    _timeoutTimer?.cancel();
+    _loadTimeoutTimer?.cancel();
     super.dispose();
   }
 
-  void _armTimeout() {
-    _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(_loadTimeout, () {
-      if (mounted && _loading) {
+  /// 新导航开始后显示遮罩，并为这次导航重新计时。
+  void _onLoadStart(WebUri? url) {
+    if (!mounted) return;
+    final nextState = _loadState.navigationStarted(url?.toString());
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} load started '
+          'generation=${nextState.generation} '
+          'url=${url?.toString() ?? 'unknown'}',
+    );
+    _updateLoadState(nextState);
+    _scheduleLoadTimeout(nextState.generation);
+  }
+
+  /// 等待 Apple WebKit 首次绘出实际内容；Android 直接使用可见提交回调。
+  Future<void> _onPageCommitVisible(
+    InAppWebViewController controller,
+    WebUri? url,
+  ) async {
+    if (!mounted) return;
+    if (!_loadState.isLoading) return;
+    final generation = _loadState.generation;
+    await _applyPageEnhancements(controller);
+    if (!mounted ||
+        !_loadState.isLoading ||
+        _loadState.generation != generation) {
+      return;
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} content visible via=page_commit '
+            'generation=$generation '
+            'url=${url?.toString() ?? 'unknown'} '
+            'activeUrl=${_loadState.activeUrl ?? 'unknown'}',
+      );
+      _updateLoadState(_loadState.pageCommitted(url?.toString()));
+      return;
+    }
+
+    if (defaultTargetPlatform != TargetPlatform.iOS &&
+        defaultTargetPlatform != TargetPlatform.macOS) {
+      return;
+    }
+
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} page committed '
+          'generation=$generation '
+          'url=${url?.toString() ?? 'unknown'} '
+          'activeUrl=${_loadState.activeUrl ?? 'unknown'}',
+    );
+    try {
+      final result = await controller.callAsyncJavaScript(
+        functionBody: _firstVisibleContentScript,
+      );
+      if (!mounted ||
+          !_loadState.isLoading ||
+          _loadState.generation != generation) {
+        return;
+      }
+      if (result?.error != null) {
         AppLogger.log(
           'WebDictionary',
-          'load timeout source=${widget.sourceId} host=${widget.url.host}',
+          'source=${widget.sourceId} first content check failed '
+              'error=javascript',
         );
-        _onError();
+        return;
       }
-    });
+      if (result?.value != true) return;
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} content visible via=first_content '
+            'generation=$generation '
+            'url=${url?.toString() ?? 'unknown'} '
+            'activeUrl=${_loadState.activeUrl ?? 'unknown'} '
+            'callbackUrlMatchesActive=${_matchesActiveUrl(url)}',
+      );
+      // WebKit 提交回调可能使用重定向后的 URL；当前代际与页面内容均已验证，
+      // 此处不再用完整 URL 字符串阻止本次导航结束加载。
+      _updateLoadState(_loadState.pageCommitted(null));
+    } catch (error) {
+      if (!mounted ||
+          !_loadState.isLoading ||
+          _loadState.generation != generation) {
+        return;
+      }
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} first content check failed '
+            'error=${error.runtimeType}',
+      );
+      // JavaScript 检查失败时继续等待 onLoadStop 或超时兜底。
+    }
   }
 
-  /// 揭示页面（撤遮罩）：仅在 onLoadStop（页面真正完成、新页已绘制）调用，幂等。
-  void _onReady() {
-    // WebView 回调经 method channel 异步到达，弹窗关闭后仍可能触发，先校验 mounted。
-    if (!mounted || !_loading) return;
-    _timeoutTimer?.cancel();
-    setState(() => _loading = false);
-  }
-
-  /// 标记加载失败：展示错误重试。
-  void _onError() {
+  /// 加载完成兜底；Apple 平台先让 WebKit 至少完成一次绘制机会。
+  Future<void> _onLoadStop(
+    InAppWebViewController controller,
+    WebUri? url,
+  ) async {
     if (!mounted) return;
-    _timeoutTimer?.cancel();
-    setState(() {
-      _loading = false;
-      _error = true;
+    if (!_loadState.isLoading) return;
+    final generation = _loadState.generation;
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} load stopped generation=$generation '
+          'url=${url?.toString() ?? 'unknown'} '
+          'activeUrl=${_loadState.activeUrl ?? 'unknown'} '
+          'callbackUrlMatchesActive=${_matchesActiveUrl(url)}',
+    );
+    await _applyPageEnhancements(controller);
+    if (!mounted || _loadState.generation != generation) return;
+
+    if (defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS) {
+      try {
+        await controller.callAsyncJavaScript(
+          functionBody: _afterWebKitPaintScript,
+        );
+      } catch (error) {
+        AppLogger.log(
+          'WebDictionary',
+          'source=${widget.sourceId} final paint wait failed '
+              'error=${error.runtimeType}',
+        );
+      }
+      if (!mounted || _loadState.generation != generation) return;
+    }
+
+    final completionUrl =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS
+        ? null
+        : url?.toString();
+    // Apple 回调已通过当前代际和绘制机会校验，避免重定向 URL 与初始 URL
+    // 的字符串差异让加载状态卡住。
+    _updateLoadState(_loadState.loadStopped(completionUrl));
+  }
+
+  bool _matchesActiveUrl(WebUri? url) {
+    final activeUrl = _loadState.activeUrl;
+    return url == null || activeUrl == null || url.toString() == activeUrl;
+  }
+
+  /// 仅主框架错误会切换到可重试的错误界面。
+  void _onReceivedError({
+    required bool? isForMainFrame,
+    required String url,
+    required String errorType,
+  }) {
+    if (!mounted) return;
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} request failed '
+          'frame=${isForMainFrame == true ? 'main' : 'sub'} '
+          'url=$url error=$errorType',
+    );
+    if (isForMainFrame != true) return;
+
+    final nextState = _loadState.loadFailed(url);
+    if (identical(nextState, _loadState)) return;
+
+    _updateLoadState(nextState);
+  }
+
+  /// 记录 WebView 已加载的子资源 URL，便于识别慢资源和跨域跳转。
+  void _onLoadResource(LoadedResource resource) {
+    final url = resource.url?.toString();
+    if (url == null || url.isEmpty) return;
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} resource loaded '
+          'type=${resource.initiatorType ?? 'unknown'} '
+          'durationMs=${resource.duration?.toString() ?? 'unknown'} '
+          'url=$url',
+    );
+  }
+
+  /// 注入页面清理样式并尝试接受 Cookie；网络广告请求另由平台规则拦截。
+  Future<void> _applyPageEnhancements(InAppWebViewController controller) async {
+    try {
+      await controller.evaluateJavascript(source: _applyPageStylesScript);
+    } catch (error) {
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} page style injection failed '
+            'error=${error.runtimeType}',
+      );
+    }
+    try {
+      await controller.evaluateJavascript(source: _defaultAcceptCookieJs);
+    } catch (error) {
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} cookie acceptance script failed '
+            'error=${error.runtimeType}',
+      );
+    }
+  }
+
+  /// 超时后结束加载态，防止慢网络下动画无限显示。
+  void _scheduleLoadTimeout(int generation) {
+    if (!mounted) return;
+    _loadTimeoutTimer?.cancel();
+    _loadTimeoutTimer = Timer(_loadTimeout, () {
+      if (!mounted) return;
+      final nextState = _loadState.timedOut(generation);
+      if (identical(nextState, _loadState)) return;
+
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} load timed out generation=$generation '
+            'activeUrl=${_loadState.activeUrl ?? 'unknown'}',
+      );
+      _updateLoadState(nextState);
     });
   }
 
-  /// 重试：复位 loading 态、绕过缓存重新加载（失败响应可能被缓存）。
-  /// iOS/macOS 用 cachePolicy 绕缓存，Android 先清缓存。
+  /// 应用状态变化，并在页面离开加载态时清理超时计时器。
+  void _updateLoadState(WebDictionaryLoadState nextState) {
+    if (!mounted) return;
+    if (identical(nextState, _loadState)) return;
+    final previousPhase = _loadState.phase;
+    _loadState = nextState;
+    if (!nextState.isLoading) _loadTimeoutTimer?.cancel();
+    AppLogger.log(
+      'WebDictionary',
+      'source=${widget.sourceId} phase=${previousPhase.name}'
+          '->${nextState.phase.name} generation=${nextState.generation}',
+    );
+    setState(() {});
+  }
+
+  /// 重载当前网页，并为重试建立新的加载代际。
   Future<void> _retry() async {
     final controller = _controller;
     if (controller == null) return;
-    setState(() {
-      _loading = true;
-      _error = false;
-    });
-    _armTimeout();
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      await InAppWebViewController.clearAllCache();
-      if (!mounted) return;
+
+    final retryState = _loadState.retryStarted();
+    _updateLoadState(retryState);
+    _scheduleLoadTimeout(retryState.generation);
+
+    try {
+      await controller.reload();
+    } catch (error) {
+      if (!mounted ||
+          _loadState.generation != retryState.generation ||
+          !_loadState.isLoading) {
+        return;
+      }
+      AppLogger.log(
+        'WebDictionary',
+        'source=${widget.sourceId} reload failed '
+            'error=${error.runtimeType}',
+      );
+      _updateLoadState(_loadState.loadFailed(_loadState.activeUrl));
     }
-    await controller.loadUrl(
-      urlRequest: URLRequest(
-        url: WebUri(widget.url.toString()),
-        cachePolicy: URLRequestCachePolicy.RELOAD_IGNORING_LOCAL_CACHE_DATA,
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_webViewSupported) return _unsupportedFallback(context);
 
-    // 填满父级（词典弹窗内容区）给出的约束，随弹窗上拉一起放大。父级保证高度有界。
+    final theme = Theme.of(context);
+    final backgroundColor = theme.colorScheme.surface;
+    final l10n = AppLocalizations.of(context)!;
+    final useOnLoadResource =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+    final preferredContentMode = useOnLoadResource
+        ? UserPreferredContentMode.MOBILE
+        : null;
+    final nativeScrollIndicatorSupported =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS;
+    final underPageBackgroundColor =
+        defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS
+        ? backgroundColor
+        : null;
+    final contentBlockersSupported =
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.macOS;
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: SizedBox.expand(
-        child: Stack(
-          children: [
-            InAppWebView(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ColoredBox(
+            color: backgroundColor,
+            child: InAppWebView(
               initialUrlRequest: URLRequest(url: WebUri(widget.url.toString())),
-              // WebView 处在可拖拽的 modal 弹窗内：默认情况下竖向拖拽会被弹窗的
-              // 拖拽手势（drag-to-dismiss）赢走，导致网页无法滚动、一拉就把弹窗拉走。
-              // 显式给 WebView 注册竖向拖拽识别器，让其在手势竞技场中赢得竖向拖拽，
-              // 网页内部滚动恢复正常。
+              initialSettings: InAppWebViewSettings(
+                javaScriptEnabled: true,
+                cacheEnabled: true,
+                transparentBackground: false,
+                userAgent: _mobileSafariUserAgent,
+                verticalScrollBarEnabled: nativeScrollIndicatorSupported
+                    ? false
+                    : null,
+                useOnLoadResource: useOnLoadResource,
+                preferredContentMode: preferredContentMode,
+                underPageBackgroundColor: underPageBackgroundColor,
+                contentBlockers: contentBlockersSupported
+                    ? webDictionaryCommonAdBlockers
+                    : null,
+              ),
               gestureRecognizers: {
                 Factory<VerticalDragGestureRecognizer>(
                   VerticalDragGestureRecognizer.new,
                 ),
               },
-              initialSettings: InAppWebViewSettings(
-                cacheEnabled: true,
-                transparentBackground: true,
-                contentBlockers: widget.contentBlockers,
-                // 优先移动端布局：preferredContentMode 在 macOS 默认桌面、
-                // 且部分词典站只按 UA 判定，故再显式注入移动端 UA 双保险。
-                preferredContentMode: UserPreferredContentMode.MOBILE,
-                userAgent: _mobileUserAgent,
-              ),
-              onWebViewCreated: (controller) => _controller = controller,
-              onLoadStop: (controller, _) async {
-                // 先注入收敛 CSS/接受 cookie，再揭示——撤遮罩时已是干净的新页。
-                try {
-                  await controller.injectCSSCode(
-                    source: widget.tidyCss ?? _defaultTidyCss,
-                  );
-                  await controller.evaluateJavascript(
-                    source: widget.acceptCookieJs ?? _defaultAcceptCookieJs,
-                  );
-                } catch (_) {
-                  // 美化注入失败不影响阅读，忽略
-                }
-                _onReady();
-              },
-              // 仅首屏加载中、主框架、非「取消」类错误才算失败。
-              // 已揭示（_loading=false）后忽略后台请求被取消/被新导航超越上报的
-              // 主框架错误（常见 -999 cancelled），避免把已显示好的页面冲成失败。
-              onReceivedError: (_, request, error) {
-                if (!_loading) return;
-                if (request.isForMainFrame != true) return;
-                if (error.type == WebResourceErrorType.CANCELLED) return;
+              onWebViewCreated: (controller) {
+                _controller = controller;
                 AppLogger.log(
                   'WebDictionary',
-                  'load error source=${widget.sourceId} '
-                      'type=${error.type} host=${request.url.host} '
-                      'description=${error.description}',
-                );
-                _onError();
-              },
-              onReceivedHttpError: (_, request, errorResponse) {
-                if (request.isForMainFrame != true) return;
-                AppLogger.log(
-                  'WebDictionary',
-                  'HTTP error source=${widget.sourceId} '
-                      'status=${errorResponse.statusCode} '
-                      'host=${request.url.host}',
+                  'source=${widget.sourceId} ad filters configured '
+                      'network=$contentBlockersSupported '
+                      'rules=${contentBlockersSupported ? webDictionaryCommonAdBlockers.length : 0} '
+                      'css=true',
                 );
               },
-            ),
-            // 加载期间不透明遮罩 + 居中转圈：盖住未绘制的空白/上一帧，
-            // onLoadStop 揭示时页面已绘制完成，无闪烁。
-            if (_loading) _loadingOverlay(context),
-            if (_error) _errorOverlay(context),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// 加载遮罩：不透明底 + 居中转圈 + 顶部细进度条
-  Widget _loadingOverlay(BuildContext context) {
-    final theme = Theme.of(context);
-    return Positioned.fill(
-      child: ColoredBox(
-        color: theme.colorScheme.surface,
-        child: Stack(
-          children: [
-            Align(
-              alignment: Alignment.topCenter,
-              child: LinearProgressIndicator(
-                minHeight: 2,
-                backgroundColor: Colors.transparent,
-                color: theme.colorScheme.primary.withValues(alpha: 0.35),
+              onLoadStart: (_, url) => _onLoadStart(url),
+              onPageCommitVisible: (controller, url) =>
+                  _onPageCommitVisible(controller, url),
+              onLoadStop: (controller, url) => _onLoadStop(controller, url),
+              onLoadResource: (controller, resource) =>
+                  _onLoadResource(resource),
+              onReceivedError: (_, request, error) => _onReceivedError(
+                isForMainFrame: request.isForMainFrame,
+                url: request.url.toString(),
+                errorType: error.type.toString(),
               ),
             ),
-            const Center(child: CircularProgressIndicator.adaptive()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _errorOverlay(BuildContext context) {
-    final theme = Theme.of(context);
-    final l10n = AppLocalizations.of(context)!;
-    return Positioned.fill(
-      child: ColoredBox(
-        color: theme.colorScheme.surface,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, color: theme.colorScheme.error),
-              const SizedBox(height: AppSpacing.s),
-              Text(l10n.aiLoadFailed, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: AppSpacing.s),
-              TextButton(onPressed: _retry, child: Text(l10n.aiRetry)),
-            ],
           ),
-        ),
+          if (_loadState.phase == WebDictionaryLoadPhase.loading)
+            ColoredBox(
+              color: backgroundColor,
+              child: const Center(child: CircularProgressIndicator.adaptive()),
+            ),
+          if (_loadState.phase == WebDictionaryLoadPhase.error)
+            ColoredBox(
+              color: backgroundColor,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.m),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        l10n.aiLoadFailed,
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.s),
+                      FilledButton.tonal(
+                        onPressed: _retry,
+                        child: Text(l10n.aiRetry),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

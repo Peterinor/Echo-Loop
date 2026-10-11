@@ -81,6 +81,11 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>FirebaseAutomaticScreenReportingEnabled</key>
 	<false/>
 	<key>FLTEnableMergedPlatformUIThread</key>

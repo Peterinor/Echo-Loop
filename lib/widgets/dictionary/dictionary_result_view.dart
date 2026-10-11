@@ -6,19 +6,15 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../../models/dictionary/dictionary_lookup_result.dart';
 import '../../providers/dictionary/lookup_controller.dart';
-import '../../providers/dictionary/dictionary_settings_provider.dart';
-import '../../services/dictionary/web_dictionary_ad_block_rules.dart';
 import 'ai_dict_result_view.dart';
 import 'local_dict_result_view.dart';
 import 'web_dictionary_view.dart';
 
 /// 结果分发视图
-class DictionaryResultView extends ConsumerWidget {
+class DictionaryResultView extends StatelessWidget {
   /// 当前选中源 id
   final String sourceId;
 
@@ -48,7 +44,7 @@ class DictionaryResultView extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     switch (sourceId) {
       case 'local':
         return LocalDictResultView(state: state, word: word);
@@ -60,27 +56,17 @@ class DictionaryResultView extends ConsumerWidget {
           onUpgrade: onUpgrade,
         );
       default:
-        final adFilteringEnabled = ref
-            .watch(dictionarySettingsNotifierProvider)
-            .adFilteringEnabled;
-        final adFilterBlockers = adFilteringEnabled
-            ? webDictionaryCommonAdBlockers
-            : const <ContentBlocker>[];
         // 其余源（含全部网页词典 cambridge/oxford/... ）走结果子类穷尽 switch
         // 兜底——新增结果子类需在此补分支。
         if (state case LookupLoaded(:final result)) {
-          return _loadedFallback(result, adFilterBlockers, adFilteringEnabled);
+          return _loadedFallback(result);
         }
         return const _Loading();
     }
   }
 
   /// sealed 结果穷尽分发（新增源安全网）
-  Widget _loadedFallback(
-    DictionaryLookupResult result,
-    List<ContentBlocker> adFilterBlockers,
-    bool adFilteringEnabled,
-  ) => switch (result) {
+  Widget _loadedFallback(DictionaryLookupResult result) => switch (result) {
     LocalDictResult() => LocalDictResultView(state: state, word: word),
     AiDictResult() => AiDictResultView(
       state: state,
@@ -88,12 +74,11 @@ class DictionaryResultView extends ConsumerWidget {
       onSignIn: onSignIn,
       onUpgrade: onUpgrade,
     ),
-    // 切换词典源或过滤开关时重建 WebView，让初始过滤规则立即生效。
+    // 查询新词时创建对应的原生 WebView。
     WebDictResult(:final sourceId, :final url) => WebDictionaryView(
-      key: ValueKey('web_${sourceId}_$adFilteringEnabled'),
+      key: ValueKey('web_${sourceId}_${url.toString()}'),
       sourceId: sourceId,
       url: url,
-      contentBlockers: adFilterBlockers,
     ),
   };
 }

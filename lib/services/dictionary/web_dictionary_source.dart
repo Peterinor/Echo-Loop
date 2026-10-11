@@ -222,5 +222,8 @@ String _forvoUrl(String w) => 'https://forvo.com/word/$w/#en';
 String _wordReferenceUrl(String w) =>
     'https://www.wordreference.com/definition/$w';
 String _etymonlineUrl(String w) => 'https://www.etymonline.com/search?q=$w';
-String _youdaoUrl(String w) => 'https://m.youdao.com/dict?le=eng&q=$w';
+
+/// 构造有道移动网页版查询地址，`w` 已由调用方进行 URL 编码。
+String _youdaoUrl(String w) =>
+    'https://dict.youdao.com/m/result?word=$w&lang=en';
 String _eudicUrl(String w) => 'https://dict.eudic.net/mdicts/en/$w';
