@@ -49,11 +49,15 @@ class WebDictionaryView extends StatefulWidget {
   /// 待加载网页地址。
   final Uri url;
 
+  /// 是否启用网页广告过滤。
+  final bool adFilteringEnabled;
+
   /// 创建网页词典视图。
   const WebDictionaryView({
     super.key,
     required this.sourceId,
     required this.url,
+    required this.adFilteringEnabled,
   });
 
   @override
@@ -109,17 +113,21 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
     }));
     return true;
   ''';
-  static final String _applyPageStylesScript =
-      '''
+  String get _applyPageStylesScript {
+    final adHidingCss = widget.adFilteringEnabled
+        ? '\n$webDictionaryAdHidingCss'
+        : '';
+    return '''
     (() => {
       const styleId = '__echo_loop_web_dictionary_styles__';
       if (document.getElementById(styleId)) return;
       const style = document.createElement('style');
       style.id = styleId;
-      style.textContent = ${jsonEncode('$_defaultTidyCss\n$webDictionaryAdHidingCss\n*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }')};
+      style.textContent = ${jsonEncode('$_defaultTidyCss$adHidingCss\n*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }')};
       (document.head || document.documentElement)?.appendChild(style);
     })();
   ''';
+  }
 
   late WebDictionaryLoadState _loadState;
   InAppWebViewController? _controller;
@@ -312,17 +320,11 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
     _updateLoadState(nextState);
   }
 
-  /// 记录 WebView 已加载的子资源 URL，便于识别慢资源和跨域跳转。
+  /// 仅记录 WebView 已加载的子资源 URL，便于识别跨域请求。
   void _onLoadResource(LoadedResource resource) {
     final url = resource.url?.toString();
     if (url == null || url.isEmpty) return;
-    AppLogger.log(
-      'WebDictionary',
-      'source=${widget.sourceId} resource loaded '
-          'type=${resource.initiatorType ?? 'unknown'} '
-          'durationMs=${resource.duration?.toString() ?? 'unknown'} '
-          'url=$url',
-    );
+    AppLogger.log('WebDictionary', url);
   }
 
   /// 注入页面清理样式并尝试接受 Cookie；网络广告请求另由平台规则拦截。
@@ -432,6 +434,8 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
         defaultTargetPlatform == TargetPlatform.android ||
         defaultTargetPlatform == TargetPlatform.iOS ||
         defaultTargetPlatform == TargetPlatform.macOS;
+    final networkAdFilteringEnabled =
+        widget.adFilteringEnabled && contentBlockersSupported;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -453,7 +457,7 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
                 useOnLoadResource: useOnLoadResource,
                 preferredContentMode: preferredContentMode,
                 underPageBackgroundColor: underPageBackgroundColor,
-                contentBlockers: contentBlockersSupported
+                contentBlockers: networkAdFilteringEnabled
                     ? webDictionaryCommonAdBlockers
                     : null,
               ),
@@ -467,9 +471,10 @@ class _WebDictionaryViewState extends State<WebDictionaryView> {
                 AppLogger.log(
                   'WebDictionary',
                   'source=${widget.sourceId} ad filters configured '
-                      'network=$contentBlockersSupported '
-                      'rules=${contentBlockersSupported ? webDictionaryCommonAdBlockers.length : 0} '
-                      'css=true',
+                      'enabled=${widget.adFilteringEnabled} '
+                      'network=$networkAdFilteringEnabled '
+                      'rules=${networkAdFilteringEnabled ? webDictionaryCommonAdBlockers.length : 0} '
+                      'css=${widget.adFilteringEnabled}',
                 );
               },
               onLoadStart: (_, url) => _onLoadStart(url),

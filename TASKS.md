@@ -4,6 +4,8 @@
 
 ## 本次完成
 
+- [x] 简化网页词典子资源访问日志（2026-10-11）：资源加载时仅打印 URL，移除来源、资源类型及耗时字段，便于查看 WebView 实际访问地址且避免冗长日志。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过；未运行测试：仅调整日志内容；未运行 `scripts/check.sh`：改动局限于网页词典诊断日志。**完成时间**: 2026-10-11 13:54
+- [x] 恢复网页词典广告屏蔽开关（2026-10-11）：结果视图订阅已持久化的 `adFilteringEnabled`，切换时重建 WebView；关闭时不传网络规则且不注入广告隐藏 CSS，开启时 Android/iOS/macOS 使用网络规则、Windows 使用 CSS 隐藏。页面清理、Cookie 同意与滚动条样式保持独立。定向广告过滤 Widget 测试 4 项通过，相关 3 个 Dart 文件 `flutter analyze` 通过，`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动限于词典 WebView；未运行 Maestro：没有网页词典专用 Flow，现有首次启动 Flow 会清理应用状态。仍需在 macOS 实测开关开/关及页面加载。**完成时间**: 2026-10-11 13:42
 - [x] 修复 macOS 网页词典广告规则编译失败（2026-10-11）：移除 WebKit 不支持的广告脚本 URL 正则分支，保留脚本路径匹配；增加规则集回归测试，确保交给原生拦截器的 URL 过滤器不含正则分支。定向 Widget 测试 2 项通过，相关 3 个 Dart 文件 `flutter analyze` 通过，`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动只涉及网页词典广告规则。仍需在 macOS 重启 App 确认 WKContentRuleList 成功编译并正常显示词典页面。**完成时间**: 2026-10-11 12:17
 - [x] 恢复网页词典默认页面清理与 Cookie 同意脚本（2026-10-11）：恢复隐藏常见页眉、页脚及 Cookie 横幅的默认 CSS，并自动点击 OneTrust 或通用 Cookie 接受按钮；在页面提交和加载完成时执行，保留提前展示内容的加载行为。回归测试确认 WebView 注入清理 CSS 并执行接受脚本；定向 `flutter analyze`、该测试、`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动仅限网页词典视图。仍需在 macOS/移动端确认站点布局及 Cookie 提示表现。**完成时间**: 2026-10-11 12:14
 - [x] 恢复网页词典广告过滤（2026-10-11）：将已有规则接回 WebView，Android/iOS/macOS 启用广告请求拦截与广告元素隐藏；所有平台在页面样式注入时隐藏匹配的广告元素，Windows 插件不支持网络请求拦截，因此仅隐藏页面广告。新增 Widget 回归测试确认规则传入 WebView。`flutter test test/widgets/dictionary/web_dictionary_ad_filter_test.dart`、相关文件定向 `flutter analyze`、`dart format` 与 `git diff --check` 通过；未运行 `scripts/check.sh`，改动只涉及网页词典广告过滤。仍需在 macOS/移动端实际确认广告展示效果。**完成时间**: 2026-10-11 12:08
