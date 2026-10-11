@@ -1,6 +1,7 @@
-import '../models/audio_item.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/audio_item.dart';
 import '../database/daos/stage_completion_dao.dart';
 import '../database/enums.dart';
 import '../database/providers.dart';
@@ -326,6 +327,157 @@ int _typeRank(StudyTaskType type) {
 
 extension on AudioItem {
   String get audioNameForSort => name.toLowerCase();
+}
+
+final _playbackSavedAtByAudioProvider = StreamProvider<Map<String, DateTime>>((
+  ref,
+) {
+  return ref.watch(playbackStateDaoProvider).watchLastSavedAtByAudio();
+});
+
+final _latestCompletionAtByAudioProvider =
+    StreamProvider<Map<String, DateTime>>((ref) {
+      return ref
+          .watch(stageCompletionDaoProvider)
+          .watchLatestCompletionAtByAudio();
+    });
+
+/// 学习页推荐的单条材料；依赖数据尚未就绪时保持 loading。
+final studyRecommendationProvider = Provider<AsyncValue<AudioItem?>>((ref) {
+  final audioState = ref.watch(audioLibraryProvider);
+  final progressState = ref.watch(learningProgressNotifierProvider);
+  final playbackSavedAt = ref.watch(_playbackSavedAtByAudioProvider);
+  final latestCompletionAt = ref.watch(_latestCompletionAtByAudioProvider);
+  final recentCompletions = ref.watch(recentCompletionsProvider);
+
+  if (audioState.isLoading || progressState.isLoading) {
+    return const AsyncLoading();
+  }
+
+  return playbackSavedAt.when(
+    data: (playbackTimes) => latestCompletionAt.when(
+      data: (completionTimes) => recentCompletions.when(
+        data: (recentItems) => AsyncData(
+          selectStudyRecommendation(
+            materials: audioState.audioItems,
+            progressByAudioId: progressState.progressMap,
+            playbackSavedAtByAudioId: playbackTimes,
+            latestCompletionAtByAudioId: completionTimes,
+            recentCompletions: recentItems,
+          ),
+        ),
+        loading: () => const AsyncLoading(),
+        error: (error, stackTrace) => AsyncError(error, stackTrace),
+      ),
+      loading: () => const AsyncLoading(),
+      error: (error, stackTrace) => AsyncError(error, stackTrace),
+    ),
+    loading: () => const AsyncLoading(),
+    error: (error, stackTrace) => AsyncError(error, stackTrace),
+  );
+});
+
+/// 按学习活动时间和最近完成记录选择学习页推荐材料。
+@visibleForTesting
+AudioItem? selectStudyRecommendation({
+  required List<AudioItem> materials,
+  required Map<String, LearningProgress> progressByAudioId,
+  required Map<String, DateTime> playbackSavedAtByAudioId,
+  required Map<String, DateTime> latestCompletionAtByAudioId,
+  required List<RecentCompletion> recentCompletions,
+}) {
+  final recentCompletionIds = recentCompletions
+      .map((completion) => completion.audioId)
+      .toSet();
+  bool isEligibleForRecommendation(AudioItem material) =>
+      !recentCompletionIds.contains(material.id) &&
+      progressByAudioId[material.id]?.isCompleted != true;
+
+  AudioItem? mostRecentlyStudied;
+  DateTime? mostRecentActivityAt;
+  for (final material in materials) {
+    if (!isEligibleForRecommendation(material)) continue;
+
+    final activityAt = _latestStudyActivityAt(
+      material.id,
+      progressByAudioId,
+      playbackSavedAtByAudioId,
+      latestCompletionAtByAudioId,
+    );
+    if (activityAt == null) continue;
+
+    final currentMaterial = mostRecentlyStudied;
+    final currentActivityAt = mostRecentActivityAt;
+    if (currentMaterial == null ||
+        currentActivityAt == null ||
+        activityAt.isAfter(currentActivityAt) ||
+        (activityAt.isAtSameMomentAs(currentActivityAt) &&
+            _compareRecommendedMaterials(material, currentMaterial) < 0)) {
+      mostRecentlyStudied = material;
+      mostRecentActivityAt = activityAt;
+    }
+  }
+  if (mostRecentlyStudied != null) return mostRecentlyStudied;
+
+  final sortedMaterials = [...materials]..sort(_compareRecommendedMaterials);
+  if (sortedMaterials.isEmpty) return null;
+
+  AudioItem? firstEligibleMaterial({int startIndex = 0}) {
+    for (var index = startIndex; index < sortedMaterials.length; index++) {
+      final material = sortedMaterials[index];
+      if (isEligibleForRecommendation(material)) return material;
+    }
+    return null;
+  }
+
+  if (recentCompletions.isEmpty) return firstEligibleMaterial();
+
+  final sortedRecentCompletions = [...recentCompletions]
+    ..sort((a, b) {
+      final completedAtComparison = b.completedAt.compareTo(a.completedAt);
+      if (completedAtComparison != 0) return completedAtComparison;
+      return a.audioId.compareTo(b.audioId);
+    });
+
+  var anchorIndex = -1;
+  for (final completion in sortedRecentCompletions) {
+    anchorIndex = sortedMaterials.indexWhere(
+      (material) => material.id == completion.audioId,
+    );
+    if (anchorIndex >= 0) break;
+  }
+  if (anchorIndex < 0) return firstEligibleMaterial();
+  return firstEligibleMaterial(startIndex: anchorIndex + 1);
+}
+
+/// 汇总播放断点、学习断点和子步骤完成时间，忽略普通进度更新时间。
+DateTime? _latestStudyActivityAt(
+  String audioId,
+  Map<String, LearningProgress> progressByAudioId,
+  Map<String, DateTime> playbackSavedAtByAudioId,
+  Map<String, DateTime> latestCompletionAtByAudioId,
+) {
+  final progress = progressByAudioId[audioId];
+  final activityTimes = [
+    playbackSavedAtByAudioId[audioId],
+    progress?.newLearningBreakpointSavedAt,
+    progress?.freePlayBreakpointSavedAt,
+    latestCompletionAtByAudioId[audioId],
+  ];
+
+  DateTime? latest;
+  for (final activityAt in activityTimes) {
+    if (activityAt == null) continue;
+    if (latest == null || activityAt.isAfter(latest)) latest = activityAt;
+  }
+  return latest;
+}
+
+/// 按展示名称不区分大小写排序，并以材料 ID 稳定处理同名材料。
+int _compareRecommendedMaterials(AudioItem a, AudioItem b) {
+  final nameComparison = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  if (nameComparison != 0) return nameComparison;
+  return a.id.compareTo(b.id);
 }
 
 /// 最近 24 小时完成的子步骤记录

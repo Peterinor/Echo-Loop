@@ -4280,11 +4280,11 @@ abstract class AppLocalizations {
   /// **'{count} review tasks will unlock later'**
   String upcomingReviewsSummary(int count);
 
-  /// No description provided for @firstStudySection.
+  /// No description provided for @recommendedForYou.
   ///
   /// In en, this message translates to:
-  /// **'First Round ({count})'**
-  String firstStudySection(int count);
+  /// **'Recommended for you'**
+  String get recommendedForYou;
 
   /// No description provided for @completedSection.
   ///

@@ -57,6 +57,26 @@ class StageCompletionDao extends DatabaseAccessor<AppDatabase>
         .get();
   }
 
+  /// 监听每条材料全历史中最新的子步骤完成时间。
+  Stream<Map<String, DateTime>> watchLatestCompletionAtByAudio() {
+    final latestCompletedAt = stageCompletions.completedAt.max();
+    final query = selectOnly(stageCompletions)
+      ..addColumns([stageCompletions.audioItemId, latestCompletedAt])
+      ..groupBy([stageCompletions.audioItemId]);
+
+    return query.watch().map((rows) {
+      final result = <String, DateTime>{};
+      for (final row in rows) {
+        final audioId = row.read(stageCompletions.audioItemId);
+        final completedAt = row.read(latestCompletedAt);
+        if (audioId != null && completedAt != null) {
+          result[audioId] = completedAt;
+        }
+      }
+      return result;
+    });
+  }
+
   /// 查询指定时间之后的完成记录（含音频名称，按完成时间倒序）
   ///
   /// 用于"最近完成"区段，JOIN audio_items 获取音频名称。

@@ -1079,7 +1079,7 @@
   "readyToReview": "待复习 ({count})",
   "upcomingReviews": "待解锁 ({count})",
   "upcomingReviewsSummary": "{count} 个复习任务将在稍后解锁",
-  "firstStudySection": "首次学习 ({count})",
+  "recommendedForYou": "为你推荐",
   "completedSection": "已学完的材料 ({count})",
   "noStudyTasks": "暂无学习任务",
   "noStudyTasksHint": "导入音频后即可开始学习。",

@@ -2346,9 +2346,7 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String firstStudySection(int count) {
-    return '首次学习 ($count)';
-  }
+  String get recommendedForYou => '为你推荐';
 
   @override
   String completedSection(int count) {

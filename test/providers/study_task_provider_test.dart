@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:echo_loop/database/daos/stage_completion_dao.dart';
 import 'package:echo_loop/database/enums.dart';
 import 'package:echo_loop/models/audio_item.dart';
 import 'package:echo_loop/models/learning_progress.dart';
@@ -1134,6 +1135,239 @@ void main() {
 
       final completed = container.read(completedAudioProvider);
       expect(completed, isEmpty);
+    });
+  });
+
+  group('selectStudyRecommendation', () {
+    final now = DateTime(2026, 10, 11, 12);
+
+    AudioItem material(String id, String name) => AudioItem(
+      id: id,
+      name: name,
+      audioPath: 'materials/$id.mp3',
+      addedDate: now,
+    );
+
+    RecentCompletion completion(String audioId, DateTime completedAt) =>
+        RecentCompletion(
+          audioId: audioId,
+          audioName: audioId,
+          stage: 'firstLearn',
+          subStage: 'blindListen',
+          completedAt: completedAt,
+          durationMs: 1000,
+        );
+
+    test('选择最近活动材料并排除已完成和最近完成材料', () {
+      final materials = [
+        material('free-play', 'Free Play'),
+        material('planned', 'Planned'),
+        material('completed', 'Completed'),
+        material('recently-completed', 'Recently Completed'),
+        material('updated-only', 'Updated Only'),
+      ];
+      final progress = {
+        'planned': LearningProgress(
+          audioItemId: 'planned',
+          newLearningBreakpointSavedAt: now.add(const Duration(hours: 8)),
+          updatedAt: now.add(const Duration(hours: 9)),
+        ),
+        'completed': LearningProgress(
+          audioItemId: 'completed',
+          currentStage: LearningStage.completed,
+          updatedAt: now.add(const Duration(hours: 12)),
+        ),
+        'updated-only': LearningProgress(
+          audioItemId: 'updated-only',
+          updatedAt: now.add(const Duration(hours: 20)),
+        ),
+      };
+
+      final result = selectStudyRecommendation(
+        materials: materials,
+        progressByAudioId: progress,
+        playbackSavedAtByAudioId: {
+          'free-play': now.add(const Duration(hours: 7)),
+          'recently-completed': now.add(const Duration(hours: 30)),
+        },
+        latestCompletionAtByAudioId: {
+          'planned': now.add(const Duration(hours: 10)),
+        },
+        recentCompletions: [
+          completion('recently-completed', now.add(const Duration(hours: 11))),
+        ],
+      );
+
+      expect(result?.id, 'planned');
+    });
+
+    test('随心听播放、两类学习断点和完成记录都能标记最近学习', () {
+      AudioItem? select({
+        Map<String, LearningProgress> progress = const {},
+        Map<String, DateTime> playbackTimes = const {},
+        Map<String, DateTime> completionTimes = const {},
+      }) {
+        return selectStudyRecommendation(
+          materials: [material('a', 'Alpha')],
+          progressByAudioId: progress,
+          playbackSavedAtByAudioId: playbackTimes,
+          latestCompletionAtByAudioId: completionTimes,
+          recentCompletions: const [],
+        );
+      }
+
+      expect(select(playbackTimes: {'a': now})?.id, 'a');
+      expect(
+        select(
+          progress: {
+            'a': LearningProgress(
+              audioItemId: 'a',
+              newLearningBreakpointSavedAt: now,
+              updatedAt: now.add(const Duration(days: 1)),
+            ),
+          },
+        )?.id,
+        'a',
+      );
+      expect(
+        select(
+          progress: {
+            'a': LearningProgress(
+              audioItemId: 'a',
+              freePlayBreakpointSavedAt: now,
+              updatedAt: now,
+            ),
+          },
+        )?.id,
+        'a',
+      );
+      expect(select(completionTimes: {'a': now})?.id, 'a');
+    });
+
+    test('没有最近学习候选时选择最近完成锚点之后的首个未完成材料', () {
+      final materials = [
+        material('delta', 'Delta'),
+        material('charlie', 'Charlie'),
+        material('alpha', 'Alpha'),
+        material('bravo', 'Bravo'),
+      ];
+
+      final result = selectStudyRecommendation(
+        materials: materials,
+        progressByAudioId: const {},
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: [
+          completion('bravo', now),
+          completion('charlie', now.subtract(const Duration(hours: 1))),
+        ],
+      );
+
+      expect(result?.id, 'delta');
+    });
+
+    test('没有可匹配的最近完成材料时选择名称排序后的第一条', () {
+      final result = selectStudyRecommendation(
+        materials: [
+          material('lower', 'alpha'),
+          material('upper', 'Alpha'),
+          material('z', 'Zulu'),
+        ],
+        progressByAudioId: const {},
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: [completion('removed', now)],
+      );
+
+      expect(result?.id, 'lower');
+    });
+
+    test('回退时跳过已完成材料，全部完成时不返回推荐', () {
+      final materials = [
+        material('completed-first', 'Alpha'),
+        material('available', 'Bravo'),
+      ];
+      final completedProgress = {
+        'completed-first': LearningProgress(
+          audioItemId: 'completed-first',
+          currentStage: LearningStage.completed,
+          updatedAt: now,
+        ),
+      };
+
+      final available = selectStudyRecommendation(
+        materials: materials,
+        progressByAudioId: completedProgress,
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: const [],
+      );
+      final allCompleted = selectStudyRecommendation(
+        materials: [materials.first],
+        progressByAudioId: completedProgress,
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: const [],
+      );
+
+      expect(available?.id, 'available');
+      expect(allCompleted, isNull);
+    });
+
+    test('最近完成锚点后的回退也跳过更早已完成的材料', () {
+      final materials = [
+        material('anchor', 'Alpha'),
+        material('completed-after-anchor', 'Bravo'),
+        material('available', 'Charlie'),
+      ];
+
+      final result = selectStudyRecommendation(
+        materials: materials,
+        progressByAudioId: {
+          'completed-after-anchor': LearningProgress(
+            audioItemId: 'completed-after-anchor',
+            currentStage: LearningStage.completed,
+            updatedAt: now,
+          ),
+        },
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: [completion('anchor', now)],
+      );
+
+      expect(result?.id, 'available');
+    });
+
+    test('最近完成锚点之后没有材料时不循环', () {
+      final result = selectStudyRecommendation(
+        materials: [material('last', 'Zulu'), material('first', 'Alpha')],
+        progressByAudioId: const {},
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: [completion('last', now)],
+      );
+
+      expect(result, isNull);
+    });
+
+    test('没有最近完成记录时取名称排序第一条，空材料列表返回 null', () {
+      final first = selectStudyRecommendation(
+        materials: [material('z', 'Zulu'), material('a', 'alpha')],
+        progressByAudioId: const {},
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: const [],
+      );
+      final empty = selectStudyRecommendation(
+        materials: const [],
+        progressByAudioId: const {},
+        playbackSavedAtByAudioId: const {},
+        latestCompletionAtByAudioId: const {},
+        recentCompletions: const [],
+      );
+
+      expect(first?.id, 'a');
+      expect(empty, isNull);
     });
   });
 }

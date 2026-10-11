@@ -29,6 +29,12 @@ class AppTheme {
   /// 导航栏选中态颜色：明亮蓝
   static const Color navActiveColor = Color(0xFF3AA0FF);
 
+  /// 学习页「为你推荐」区段的蓝紫强调色。
+  static Color studyRecommendationAccentColor(Brightness brightness) =>
+      brightness == Brightness.dark
+      ? const Color(0xFFB39DDB)
+      : const Color(0xFF7655A6);
+
   /// 语义色：书签/收藏/星标
   static const Color bookmarkColor = Colors.amber;
   static const Color bookmarkCountBadgeColor = bookmarkColor;

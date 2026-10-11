@@ -19,6 +19,13 @@ class PlaybackStateDao extends DatabaseAccessor<AppDatabase>
     )..where((t) => t.audioItemId.equals(audioItemId))).getSingleOrNull();
   }
 
+  /// 监听每条材料最近保存播放断点的时间。
+  Stream<Map<String, DateTime>> watchLastSavedAtByAudio() {
+    return select(playbackStates).watch().map((states) {
+      return {for (final state in states) state.audioItemId: state.savedAt};
+    });
+  }
+
   /// 保存播放状态（插入或更新）
   Future<void> saveState(PlaybackStatesCompanion entry) {
     return into(playbackStates).insertOnConflictUpdate(entry);

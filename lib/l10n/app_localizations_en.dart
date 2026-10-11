@@ -2451,9 +2451,7 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String firstStudySection(int count) {
-    return 'First Round ($count)';
-  }
+  String get recommendedForYou => 'Recommended for you';
 
   @override
   String completedSection(int count) {

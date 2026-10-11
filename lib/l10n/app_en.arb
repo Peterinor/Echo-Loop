@@ -1360,10 +1360,7 @@
   "@upcomingReviewsSummary": {
     "placeholders": { "count": { "type": "int" } }
   },
-  "firstStudySection": "First Round ({count})",
-  "@firstStudySection": {
-    "placeholders": { "count": { "type": "int" } }
-  },
+  "recommendedForYou": "Recommended for you",
   "completedSection": "Completed Materials ({count})",
   "@completedSection": {
     "placeholders": { "count": { "type": "int" } }

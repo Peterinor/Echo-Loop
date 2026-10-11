@@ -34,6 +34,8 @@ void main() {
     required LearningProgressState progressState,
     DateTime? fixedNow,
     List<RecentCompletion>? recentCompletions,
+    AudioItem? recommendedMaterial,
+    AsyncValue<AudioItem?>? recommendationState,
   }) {
     final router = GoRouter(
       initialLocation: '/study',
@@ -103,6 +105,9 @@ void main() {
           recentCompletionsProvider.overrideWith(
             (ref) => Future.value(recentCompletions),
           ),
+        studyRecommendationProvider.overrideWithValue(
+          recommendationState ?? AsyncData<AudioItem?>(recommendedMaterial),
+        ),
       ],
       child: MaterialApp.router(
         supportedLocales: const [Locale('en'), Locale('zh')],
@@ -127,6 +132,81 @@ void main() {
 
     expect(find.text('No study tasks yet'), findsOneWidget);
     expect(find.text('Go to Library'), findsOneWidget);
+  });
+
+  testWidgets('没有首次学习任务时显示推荐材料并可打开学习计划', (tester) async {
+    final now = DateTime(2026, 10, 11, 12);
+    final recommended = AudioItem(
+      id: 'recommended-audio',
+      name: 'Recommended Audio',
+      audioPath: 'audios/recommended.mp3',
+      addedDate: now,
+    );
+
+    await tester.pumpWidget(
+      createTestWidget(
+        audioItems: [recommended],
+        progressState: const LearningProgressState(isLoading: false),
+        fixedNow: now,
+        recommendedMaterial: recommended,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recommended for you'), findsOneWidget);
+    expect(find.text('Recommended Audio'), findsOneWidget);
+    await tester.tap(find.widgetWithText(FilledButton, 'Start'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Learning Plan'), findsOneWidget);
+  });
+
+  testWidgets('为你推荐显示在待解锁任务之前', (tester) async {
+    final now = DateTime(2026, 10, 11, 12);
+    final upcoming = AudioItem(
+      id: 'upcoming-audio',
+      name: 'Upcoming Audio',
+      audioPath: 'audios/upcoming.mp3',
+      addedDate: now,
+    );
+    final recommended = AudioItem(
+      id: 'recommended-audio',
+      name: 'Recommended Audio',
+      audioPath: 'audios/recommended.mp3',
+      addedDate: now,
+    );
+
+    await tester.pumpWidget(
+      createTestWidget(
+        audioItems: [upcoming, recommended],
+        progressState: LearningProgressState(
+          progressMap: {
+            upcoming.id: LearningProgress(
+              audioItemId: upcoming.id,
+              currentStage: LearningStage.review2,
+              lastStageCompletedAt: now,
+              updatedAt: now,
+            ),
+          },
+          isLoading: false,
+        ),
+        fixedNow: now,
+        recentCompletions: const [],
+        recommendedMaterial: recommended,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final upcomingHeader = find.text('Upcoming Reviews (1)');
+    await tester.ensureVisible(upcomingHeader);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Recommended for you'), findsOneWidget);
+    expect(upcomingHeader, findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Recommended for you')).dy,
+      lessThan(tester.getTopLeft(upcomingHeader).dy),
+    );
   });
 
   testWidgets('音频列表加载中时显示骨架，不显示空状态', (tester) async {
@@ -154,6 +234,29 @@ void main() {
     expect(find.text('Go to Library'), findsNothing);
   });
 
+  testWidgets('推荐数据加载中时不闪现空状态', (tester) async {
+    final now = DateTime(2026, 10, 11, 12);
+    final material = AudioItem(
+      id: 'audio-1',
+      name: 'Audio One',
+      audioPath: 'audios/audio-1.mp3',
+      addedDate: now,
+    );
+
+    await tester.pumpWidget(
+      createTestWidget(
+        audioItems: [material],
+        progressState: const LearningProgressState(isLoading: false),
+        fixedNow: now,
+        recommendationState: const AsyncLoading<AudioItem?>(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No study tasks yet'), findsNothing);
+    expect(find.text('Go to Library'), findsNothing);
+  });
+
   testWidgets('已有任务时即使库正在 reload 也保留任务，不显示骨架', (tester) async {
     final now = DateTime(2026, 2, 25, 12, 0);
     final audioItems = [
@@ -173,7 +276,16 @@ void main() {
           audioItems: audioItems,
           isLoading: true,
         ),
-        progressState: const LearningProgressState(isLoading: false),
+        progressState: LearningProgressState(
+          progressMap: {
+            'audio-1': LearningProgress(
+              audioItemId: 'audio-1',
+              currentStage: LearningStage.review1,
+              updatedAt: now,
+            ),
+          },
+          isLoading: false,
+        ),
         fixedNow: now,
       ),
     );
@@ -355,7 +467,7 @@ void main() {
     expect(startButtons, findsAtLeast(1));
   });
 
-  testWidgets('首次学习任务显示子阶段标签', (tester) async {
+  testWidgets('首次学习材料由推荐卡展示，不再展示阶段任务卡', (tester) async {
     final now = DateTime(2026, 2, 25, 12, 0);
     final audioItems = [
       AudioItem(
@@ -387,14 +499,14 @@ void main() {
         audioItems: audioItems,
         progressState: progressState,
         fixedNow: now,
+        recommendedMaterial: audioItems.first,
       ),
     );
     await tester.pumpAndSettle();
 
-    // 子阶段标签
-    expect(find.textContaining('Listen sentence by sentence'), findsAtLeast(1));
-    // 按钮文案为 Continue（已开始首次学习）
-    expect(find.text('Continue'), findsAtLeast(1));
+    expect(find.text('Recommended for you'), findsOneWidget);
+    expect(find.text('First Study Audio'), findsOneWidget);
+    expect(find.textContaining('Listen sentence by sentence'), findsOneWidget);
   });
 
   testWidgets('已完成音频显示在折叠区', (tester) async {
@@ -516,9 +628,9 @@ void main() {
 
     // 不应出现 Hero Card 的 "Continue practicing" 标签
     expect(find.text('Continue practicing'), findsNothing);
-    // 任务应直接在对应 section 中显示
+    // 复习任务直接显示；未完成首次学习材料由推荐区统一承载。
     expect(find.text('Review Audio'), findsAtLeast(1));
-    expect(find.text('First Study Audio'), findsAtLeast(1));
+    expect(find.text('First Study Audio'), findsNothing);
   });
 
   testWidgets('任务分组标题使用固定 SVG 图标替换 emoji', (tester) async {
@@ -562,7 +674,7 @@ void main() {
     expect(find.text('🔁'), findsNothing);
     expect(find.text('🌱'), findsNothing);
     expect(_findSvgAsset('assets/icon/refresh.svg'), findsOneWidget);
-    expect(_findSvgAsset('assets/icon/reading.svg'), findsOneWidget);
+    expect(_findSvgAsset('assets/icon/reading.svg'), findsNothing);
   });
 
   testWidgets('学习社群入口保持紧凑高度并使用发现入口青蓝色系', (tester) async {
@@ -581,6 +693,7 @@ void main() {
         audioItems: audioItems,
         progressState: const LearningProgressState(isLoading: false),
         fixedNow: now,
+        recommendedMaterial: audioItems.first,
       ),
     );
     await tester.pumpAndSettle();
@@ -623,7 +736,16 @@ void main() {
     await tester.pumpWidget(
       createTestWidget(
         audioItems: audioItems,
-        progressState: const LearningProgressState(isLoading: false),
+        progressState: LearningProgressState(
+          progressMap: {
+            'audio-1': LearningProgress(
+              audioItemId: 'audio-1',
+              currentStage: LearningStage.review1,
+              updatedAt: now,
+            ),
+          },
+          isLoading: false,
+        ),
         fixedNow: now,
       ),
     );
@@ -632,7 +754,7 @@ void main() {
     expect(find.byType(LearningProgressIcon), findsAtLeast(1));
   });
 
-  testWidgets('多个未学习音频时页面只展示规则选中的 1 个首次学习任务', (tester) async {
+  testWidgets('多个未学习音频时页面只显示一条推荐材料', (tester) async {
     final now = DateTime(2026, 2, 25, 12, 0);
     final audioItems = [
       AudioItem(
@@ -675,6 +797,7 @@ void main() {
         audioItems: audioItems,
         progressState: progressState,
         fixedNow: now,
+        recommendedMaterial: audioItems[1],
       ),
     );
     await tester.pumpAndSettle();

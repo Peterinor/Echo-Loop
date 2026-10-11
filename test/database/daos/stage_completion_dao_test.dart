@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -150,6 +152,36 @@ void main() {
       );
 
       expect(results.first.durationMs, 5000);
+    });
+  });
+
+  group('watchLatestCompletionAtByAudio', () {
+    test('监听并返回每条材料最新的完成时间', () async {
+      await insertAudio('a1', 'Audio One');
+      final earlier = DateTime(2026, 3, 25, 11);
+      final later = earlier.add(const Duration(hours: 1));
+      await insertCompletion(
+        audioId: 'a1',
+        stage: 'firstLearn',
+        subStage: 'blindListen',
+        completedAt: earlier,
+      );
+
+      final events = StreamIterator(
+        db.stageCompletionDao.watchLatestCompletionAtByAudio(),
+      );
+      addTearDown(() async => events.cancel());
+      expect(await events.moveNext(), isTrue);
+      expect(events.current, {'a1': earlier});
+
+      await insertCompletion(
+        audioId: 'a1',
+        stage: 'firstLearn',
+        subStage: 'intensiveListen',
+        completedAt: later,
+      );
+      expect(await events.moveNext(), isTrue);
+      expect(events.current, {'a1': later});
     });
   });
 
