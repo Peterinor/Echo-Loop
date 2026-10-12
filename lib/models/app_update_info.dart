@@ -163,10 +163,14 @@ class AndroidApkUpdateConfig {
   final String? minimumVersion;
   final String? downloadUrl;
 
+  /// 中国区 APK 下载地址；未配置或确认文件缺失时回退到 [downloadUrl]。
+  final String? downloadUrlChina;
+
   const AndroidApkUpdateConfig({
     this.latestVersion,
     this.minimumVersion,
     this.downloadUrl,
+    this.downloadUrlChina,
   });
 
   factory AndroidApkUpdateConfig.fromJson(dynamic value) {
@@ -175,6 +179,7 @@ class AndroidApkUpdateConfig {
       latestVersion: _stringOrNull(value['latestVersion']),
       minimumVersion: _stringOrNull(value['minimumVersion']),
       downloadUrl: _stringOrNull(value['downloadUrl']),
+      downloadUrlChina: _stringOrNull(value['downloadUrlChina']),
     );
   }
 }

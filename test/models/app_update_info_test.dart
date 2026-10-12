@@ -78,6 +78,7 @@ void main() {
               'latestVersion': '1.1.1',
               'minimumVersion': '1.0.3',
               'downloadUrl': 'https://cdn.example.com/app-1.1.1.apk',
+              'downloadUrlChina': 'https://cdn-cn.example.com/app-1.1.1.apk',
             },
           },
         },
@@ -99,6 +100,27 @@ void main() {
         info.platforms.android.apk.downloadUrl,
         'https://cdn.example.com/app-1.1.1.apk',
       );
+      expect(
+        info.platforms.android.apk.downloadUrlChina,
+        'https://cdn-cn.example.com/app-1.1.1.apk',
+      );
+    });
+
+    test('中国 APK 地址缺失或为空时解析为 null', () {
+      final info = AppUpdateInfo.fromJson({
+        'latestVersion': '1.1.0',
+        'minimumVersion': '1.0.0',
+        'platforms': {
+          'android': {
+            'apk': {
+              'downloadUrl': 'https://cdn.example.com/app.apk',
+              'downloadUrlChina': '',
+            },
+          },
+        },
+      });
+
+      expect(info.platforms.android.apk.downloadUrlChina, isNull);
     });
   });
 }

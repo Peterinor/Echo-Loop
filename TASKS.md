@@ -4,6 +4,8 @@
 
 ## 本次完成
 
+- [x] 升级应用版本至 1.0.41（2026-10-12）：将 `pubspec.yaml` 版本从 1.0.40 提升至 1.0.41。核对版本字段并通过 `git diff --check`；版本元数据变更无需运行测试，未运行 `scripts/check.sh`。**完成时间**: 2026-10-12 12:43
+- [x] 中国用户优先使用中国区 APK 下载链接（2026-10-12）：解析 `platforms.android.apk.downloadUrlChina`；中国区非 Google Play 更新检查用 5 秒 HEAD 探测，只有 404/410 时回退到原默认 APK 链接，超时及其他响应保留中国链接；全球用户、Google Play 和未配置中国链接时不探测。模型与更新检查器定向测试共 38 项通过，4 个相关 Dart 文件 `flutter analyze` 通过，`git diff --check` 通过。未运行 `scripts/check.sh`：改动限于 APK 更新链接解析与选择。仍需在中国区 Android 设备验证 CDN 对 HEAD 的实际响应。**完成时间**: 2026-10-12 12:42
 - [x] 将学习页首次学习区替换为「为你推荐」（2026-10-11）：优先推荐最近有播放/学习活动、学习流程未完成且不在最近 24 小时完成列表中的材料；无候选时按材料展示名称不区分大小写排序，从最近完成材料之后选择下一条，不循环，无锚点时取首条，并跳过已完成材料；全部材料已完成时不显示推荐。增加播放断点与全历史子步骤完成时间监听，更新中英文区段标题和单卡操作；任务卡与推荐卡共用布局，保留首次学习任务调度，不再渲染旧任务卡。定向 provider、DAO、widget 测试共 67 项通过；8 个 Dart 文件定向分析通过；Android dev 包构建并安装成功，非清理 Maestro Flow 确认 Study 页与推荐卡显示。后续顺序调整：可立即复习任务仍置前，推荐卡移到待解锁任务之前；后续配色调整：推荐区浅色模式使用蓝紫、深色模式使用提亮紫。Study 页 widget 测试 23 项、两个 Dart 文件定向分析及 Android 非清理 Maestro Flow 均通过。未运行 `scripts/check.sh`：改动限定在学习页推荐区展示与配色及相关 DAO/provider。**完成时间**: 2026-10-11 16:50
 - [x] 简化网页词典子资源访问日志（2026-10-11）：资源加载时仅打印 URL，移除来源、资源类型及耗时字段，便于查看 WebView 实际访问地址且避免冗长日志。定向 `flutter analyze lib/widgets/dictionary/web_dictionary_view.dart` 与 `git diff --check` 通过；未运行测试：仅调整日志内容；未运行 `scripts/check.sh`：改动局限于网页词典诊断日志。**完成时间**: 2026-10-11 13:54
 - [x] 恢复网页词典广告屏蔽开关（2026-10-11）：结果视图订阅已持久化的 `adFilteringEnabled`，切换时重建 WebView；关闭时不传网络规则且不注入广告隐藏 CSS，开启时 Android/iOS/macOS 使用网络规则、Windows 使用 CSS 隐藏。页面清理、Cookie 同意与滚动条样式保持独立。定向广告过滤 Widget 测试 4 项通过，相关 3 个 Dart 文件 `flutter analyze` 通过，`dart format` 与 `git diff --check` 通过。未运行 `scripts/check.sh`：改动限于词典 WebView；未运行 Maestro：没有网页词典专用 Flow，现有首次启动 Flow 会清理应用状态。仍需在 macOS 实测开关开/关及页面加载。**完成时间**: 2026-10-11 13:42

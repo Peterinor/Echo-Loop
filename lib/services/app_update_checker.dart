@@ -33,6 +33,8 @@ const _logTag = 'AppUpdateChecker';
 ///
 /// iOS 单独走 App Store Lookup API，[bundleId] 必填。
 class AppUpdateChecker {
+  static const _chinaApkProbeTimeout = Duration(seconds: 5);
+
   final Dio _dio;
   final String _url;
   final String? _bundleId;
@@ -66,11 +68,12 @@ class AppUpdateChecker {
     String? bundleId,
     bool useIosLookup = false,
     AppUpdateRuntimePlatform? platform,
+    RuntimeEndpointRouter? endpointRouter,
     AndroidUpdateBridge androidBridge =
         const MethodChannelAndroidUpdateBridge(),
   }) : _url = url,
        _bundleId = bundleId,
-       _endpointRouter = null,
+       _endpointRouter = endpointRouter,
        _platform =
            platform ??
            (useIosLookup
@@ -147,7 +150,7 @@ class AppUpdateChecker {
         manifest.platforms.android.apk.latestVersion ?? manifest.latestVersion;
     // 只认渠道级 minimumVersion；顶层仅供旧版本 App 兼容，新版本忽略。
     final minimum = manifest.platforms.android.apk.minimumVersion ?? '0.0.0';
-    final apkUrl = _apkDownloadUrl(manifest);
+    final apkUrl = await _apkDownloadUrlForCurrentRegion(manifest);
     return AppUpdateInfo(
       latestVersion: latest,
       minimumVersion: minimum,
@@ -302,6 +305,45 @@ class AppUpdateChecker {
     return manifest.platforms.android.apk.downloadUrl ??
         manifest.downloadUrl['androidApk'] ??
         manifest.downloadUrl['android'];
+  }
+
+  Future<String?> _apkDownloadUrlForCurrentRegion(
+    AppUpdateInfo manifest,
+  ) async {
+    final defaultUrl = _apkDownloadUrl(manifest);
+    final chinaUrl = manifest.platforms.android.apk.downloadUrlChina;
+    if (_endpointRouter?.isChinaUser != true ||
+        chinaUrl == null ||
+        chinaUrl.trim().isEmpty) {
+      return defaultUrl;
+    }
+
+    if (await _chinaApkFileIsMissing(chinaUrl)) {
+      AppLogger.log(_logTag, 'China APK missing: using default download URL');
+      return defaultUrl;
+    }
+    return chinaUrl;
+  }
+
+  /// 仅把明确的 404/410 当作中国区 APK 文件不存在；其他探测失败保留原链接。
+  Future<bool> _chinaApkFileIsMissing(String url) async {
+    try {
+      final response = await _dio.head<void>(
+        url.trim(),
+        options: Options(
+          connectTimeout: _chinaApkProbeTimeout,
+          receiveTimeout: _chinaApkProbeTimeout,
+          followRedirects: true,
+          validateStatus: (_) => true,
+        ),
+      );
+      final statusCode = response.statusCode;
+      AppLogger.log(_logTag, 'China APK HEAD status=${statusCode ?? "null"}');
+      return statusCode == 404 || statusCode == 410;
+    } catch (error) {
+      AppLogger.log(_logTag, 'China APK HEAD failed: $error');
+      return false;
+    }
   }
 }
 

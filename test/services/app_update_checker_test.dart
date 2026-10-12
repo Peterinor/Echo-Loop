@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:echo_loop/config/regional_service_endpoints.dart';
 import 'package:echo_loop/models/app_update_info.dart';
 import 'package:echo_loop/services/android_update_bridge.dart';
 import 'package:echo_loop/services/app_update_checker.dart';
+import 'package:echo_loop/services/runtime_endpoint_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 class MockDio extends Mock implements Dio {}
@@ -454,16 +456,32 @@ void main() {
     late FakeAndroidUpdateBridge bridge;
     late AppUpdateChecker androidChecker;
 
-    setUp(() {
-      bridge = FakeAndroidUpdateBridge();
-      androidChecker = AppUpdateChecker.withDio(
+    RuntimeEndpointRouter buildRouter({required bool isChinaUser}) {
+      return RuntimeEndpointRouter(
+        endpoints: const RegionalServiceEndpoints(
+          globalApiBaseUrl: 'https://global-api.example',
+          chinaApiBaseUrl: 'https://china-api.example',
+          globalModelCdnBaseUrl: 'https://global-cdn.example',
+          chinaModelCdnBaseUrl: 'https://china-cdn.example',
+        ),
+      )..updateFromUserRegion(isChinaUser: isChinaUser);
+    }
+
+    AppUpdateChecker buildAndroidChecker({required bool isChinaUser}) {
+      return AppUpdateChecker.withDio(
         mockDio,
         platform: AppUpdateRuntimePlatform.android,
+        endpointRouter: buildRouter(isChinaUser: isChinaUser),
         androidBridge: bridge,
       );
+    }
+
+    setUp(() {
+      bridge = FakeAndroidUpdateBridge();
+      androidChecker = buildAndroidChecker(isChinaUser: false);
     });
 
-    void stubManifest() {
+    void stubManifest({bool includeChinaUrl = false}) {
       when(
         () => mockDio.get<Map<String, dynamic>>(
           any(),
@@ -493,6 +511,9 @@ void main() {
                   'latestVersion': '2.0.1',
                   'minimumVersion': '1.7.0',
                   'downloadUrl': 'https://cdn.example.com/app-2.0.1.apk',
+                  if (includeChinaUrl)
+                    'downloadUrlChina':
+                        'https://cdn-cn.example.com/app-2.0.1.apk',
                 },
               },
             },
@@ -501,8 +522,21 @@ void main() {
       );
     }
 
+    void stubChinaApkHead({required int statusCode}) {
+      when(
+        () => mockDio.head<void>(any(), options: any(named: 'options')),
+      ).thenAnswer(
+        (_) async => Response<void>(
+          requestOptions: RequestOptions(
+            path: 'https://cdn-cn.example.com/app-2.0.1.apk',
+          ),
+          statusCode: statusCode,
+        ),
+      );
+    }
+
     test('Google Play 安装来源使用商店渠道配置', () async {
-      stubManifest();
+      stubManifest(includeChinaUrl: true);
       bridge.installer = 'com.android.vending';
 
       final result = await androidChecker.check();
@@ -512,10 +546,13 @@ void main() {
       expect(result.latestVersion, '2.0.0');
       expect(result.minimumVersion, '1.6.0');
       expect(result.downloadUrl['android'], 'market://details?id=app.echoloop');
+      verifyNever(
+        () => mockDio.head<void>(any(), options: any(named: 'options')),
+      );
     });
 
     test('非 Google Play 安装来源使用 APK 渠道配置', () async {
-      stubManifest();
+      stubManifest(includeChinaUrl: true);
       bridge.installer = null;
 
       final result = await androidChecker.check();
@@ -527,6 +564,107 @@ void main() {
       expect(
         result.downloadUrl['android'],
         'https://cdn.example.com/app-2.0.1.apk',
+      );
+      verifyNever(
+        () => mockDio.head<void>(any(), options: any(named: 'options')),
+      );
+    });
+
+    test('中国用户链接可用时优先使用中国 APK 地址', () async {
+      stubManifest(includeChinaUrl: true);
+      stubChinaApkHead(statusCode: 200);
+      bridge.installer = null;
+      final chinaChecker = buildAndroidChecker(isChinaUser: true);
+
+      final result = await chinaChecker.check();
+
+      expect(result, isNotNull);
+      expect(
+        result?.downloadUrl['android'],
+        'https://cdn-cn.example.com/app-2.0.1.apk',
+      );
+      expect(
+        result?.downloadUrl['androidApk'],
+        'https://cdn-cn.example.com/app-2.0.1.apk',
+      );
+      verify(
+        () => mockDio.head<void>(
+          'https://cdn-cn.example.com/app-2.0.1.apk',
+          options: any(named: 'options'),
+        ),
+      ).called(1);
+    });
+
+    for (final statusCode in [404, 410]) {
+      test('中国 APK 返回 $statusCode 时回退到默认地址', () async {
+        stubManifest(includeChinaUrl: true);
+        stubChinaApkHead(statusCode: statusCode);
+        bridge.installer = null;
+        final chinaChecker = buildAndroidChecker(isChinaUser: true);
+
+        final result = await chinaChecker.check();
+
+        expect(result, isNotNull);
+        expect(
+          result?.downloadUrl['android'],
+          'https://cdn.example.com/app-2.0.1.apk',
+        );
+      });
+    }
+
+    test('中国 APK 地址缺失时使用默认地址且不探测', () async {
+      stubManifest();
+      bridge.installer = null;
+      final chinaChecker = buildAndroidChecker(isChinaUser: true);
+
+      final result = await chinaChecker.check();
+
+      expect(result, isNotNull);
+      expect(
+        result?.downloadUrl['android'],
+        'https://cdn.example.com/app-2.0.1.apk',
+      );
+      verifyNever(
+        () => mockDio.head<void>(any(), options: any(named: 'options')),
+      );
+    });
+
+    test('中国 APK 探测遇到非 404 状态时保留中国地址', () async {
+      stubManifest(includeChinaUrl: true);
+      stubChinaApkHead(statusCode: 500);
+      bridge.installer = null;
+      final chinaChecker = buildAndroidChecker(isChinaUser: true);
+
+      final result = await chinaChecker.check();
+
+      expect(result, isNotNull);
+      expect(
+        result?.downloadUrl['android'],
+        'https://cdn-cn.example.com/app-2.0.1.apk',
+      );
+    });
+
+    test('中国 APK 探测网络异常时保留中国地址', () async {
+      stubManifest(includeChinaUrl: true);
+      when(
+        () => mockDio.head<void>(any(), options: any(named: 'options')),
+      ).thenThrow(
+        DioException(
+          requestOptions: RequestOptions(
+            path: 'https://cdn-cn.example.com/app-2.0.1.apk',
+          ),
+          type: DioExceptionType.connectionTimeout,
+        ),
+      );
+      bridge.installer = null;
+      final chinaChecker = buildAndroidChecker(isChinaUser: true);
+
+      final result = await chinaChecker.check();
+
+      expect(result, isNotNull);
+      expect(
+        result?.downloadUrl['android'],
+        'https://cdn-cn.example.com/app-2.0.1.apk',
       );
     });
 
